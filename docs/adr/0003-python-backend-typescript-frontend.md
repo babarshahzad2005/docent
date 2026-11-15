@@ -1,0 +1,3 @@
+# Python backend, TypeScript frontend
+
+The web app and embeddable widget are TypeScript (Next.js); the API, ingestion workers, and evaluation harness are Python (FastAPI). Python has the strongest document parsing (PDF/DOCX structure and tables) and evaluation tooling, and the project's emphasis is retrieval and answer quality. TypeScript-everywhere was the main alternative: one toolchain and shared types, but weaker parsing and eval libraries. Type safety across the boundary comes from generating a TypeScript client from the API's OpenAPI schema, so the frontend never hand-writes request or response types.

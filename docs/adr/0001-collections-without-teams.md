@@ -1,0 +1,3 @@
+# Collections are shared person by person; there is no Team
+
+Docent targets small groups, but v1 has no Team or Workspace that owns Collections. Each Collection has its own Members, invited individually. A Team concept belongs with org-level admin, which is out of scope for v1, and per-Collection membership keeps the permission check inside retrieval a single, simple filter. The cost: giving a new person access to many Collections takes one invite per Collection. Adding Teams later means introducing an owning entity above Collections and inherited membership, so this is a real boundary, not a placeholder.

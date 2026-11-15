@@ -1,0 +1,3 @@
+# Supabase for database, auth, and file storage
+
+Postgres (with vector and full-text search), sign-in (magic link and Google), and original-file storage all come from one Supabase project. The alternative was Neon for Postgres, Cloudflare R2 for files, and a self-hosted auth library: no inactivity pause and more room, but three providers to wire and secure. Supabase's free plan pauses after seven days without activity; the backend's scheduled keep-alive also touches the database to prevent it. Auth is the hardest piece to swap later (user identities and sessions), which is why this is recorded. Retrieval and permissions use plain Postgres SQL, not Supabase-specific APIs, so the database itself stays portable.
