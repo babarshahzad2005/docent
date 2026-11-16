@@ -5,13 +5,19 @@ description = "Docent API: ingestion, retrieval, and cited answers."
 authors = [{ name = "M. Babar Shahzad" }]
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.20.1",
     "fastapi>=0.163.1",
+    "psycopg[binary,pool]>=3.3.9",
     "pydantic>=2.14.3",
+    "pydantic-settings>=2.16.3",
+    "pyjwt[crypto]>=2.15.1",
+    "sqlalchemy>=2.1.8",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [project.scripts]
 docent-export-openapi = "docent_api.openapi:main"
+docent-migrate = "docent_api.migrate:main"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]
@@ -27,6 +33,10 @@ dev = [
 
 [tool.vercel]
 entrypoint = "src.docent_api.main:app"
+
+[tool.vercel.scripts]
+# Applies database migrations for production deployments only (see docent_api/migrate.py).
+build = "python -m docent_api.migrate"
 
 [tool.ruff]
 line-length = 100

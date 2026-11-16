@@ -59,21 +59,25 @@ Results, methodology, and cost per answer will be published here once the eval s
 **Requirements:** Node.js 22 or newer, [pnpm](https://pnpm.io), [uv](https://docs.astral.sh/uv/), and Python 3.13 (uv can install it for you).
 
 ```bash
-pnpm install                     # web app and shared packages
-uv --directory apps/api sync     # API and its dev tools
-pnpm dev                         # API on :8000, web app on :3000
+pnpm install                       # web app and shared packages
+uv --directory apps/api sync       # API and its dev tools
+cp .env.example .env               # then fill it in (see the file for where each value comes from)
+uv --directory apps/api run docent-migrate   # create or update the database tables
+pnpm dev                           # API on :8000, web app on :3000
 ```
 
-Open http://localhost:3000. The home page shows whether the web app can reach the API.
+The web app reads `apps/web/.env.local` (its variables are listed at the bottom of [.env.example](.env.example)). Open http://localhost:3000 and sign in with Google or an email link.
 
-Configuration variables are listed in [.env.example](.env.example).
+### Database
+
+Tables live in a private `app` schema that Supabase's auto-generated Data API can't reach ([ADR 0009](docs/adr/0009-private-app-schema.md)). Migrations are versioned in `apps/api/src/docent_api/migrations` and applied with `docent-migrate`: CI applies them to a fresh database on every pull request, and production deployments apply them during the API's build. Preview deployments never touch the production database.
 
 ### Repository layout
 
 | Path | What it is |
 |---|---|
 | `apps/web` | Next.js web app |
-| `apps/api` | FastAPI service (API and background worker) |
+| `apps/api` | FastAPI service: API, database migrations, and background work |
 | `packages/client` | TypeScript client generated from the API's OpenAPI schema |
 | `evals` | Eval Set and quality harness |
 | `docs` | Requirements, architecture, and decision records |

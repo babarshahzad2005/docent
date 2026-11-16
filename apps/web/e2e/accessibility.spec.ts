@@ -14,47 +14,47 @@ for (const colorScheme of ["light", "dark"] as const) {
   test.describe(`${colorScheme} mode`, () => {
     test.use({ colorScheme });
 
-    test("the empty Library meets WCAG 2.2 AA", async ({ page }) => {
-      await page.goto("/");
-      await expect(page.getByRole("heading", { level: 1, name: "Your library is empty" })).toBeVisible();
-      // Wait for streamed content to settle before scanning.
-      await expect(page.getByText("Checking the server…")).toHaveCount(0);
+    test("the sign-in page meets WCAG 2.2 AA", async ({ page }) => {
+      await page.goto("/sign-in");
+      await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
+
+      await expectNoViolations(page);
+    });
+
+    test("a sign-in link error is announced and still meets WCAG 2.2 AA", async ({ page }) => {
+      await page.goto("/sign-in?error=link");
+      // Next.js adds its own route announcer with role="alert", so pick ours by its text.
+      await expect(page.getByRole("alert").filter({ hasText: "didn't work" })).toBeVisible();
+
+      await expectNoViolations(page);
+    });
+
+    test("the privacy notice meets WCAG 2.2 AA", async ({ page }) => {
+      await page.goto("/privacy");
+      await expect(page.getByRole("heading", { level: 1, name: "Privacy notice" })).toBeVisible();
 
       await expectNoViolations(page);
     });
   });
 }
 
-test("the page has one h1 and the expected landmarks", async ({ page }) => {
+test("signed-out visitors are sent to sign-in, and come back to where they were going", async ({
+  page,
+}) => {
   await page.goto("/");
+  await expect(page).toHaveURL(/\/sign-in$/);
 
-  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole("main")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Upload documents" })).toBeVisible();
+  await page.goto("/collections/example");
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fcollections%2Fexample$/);
 });
 
-test("on tablets, the Library opens in a drawer that can be used by keyboard", async ({
+test("the sign-in page has one h1, a labelled email field, and both sign-in options", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== "tablet", "The drawer only exists below 1024px.");
-  await page.goto("/");
+}) => {
+  await page.goto("/sign-in");
 
-  await expect(page.getByRole("navigation", { name: "Library" })).toBeHidden();
-
-  const open = page.getByRole("button", { name: "Open library" });
-  await open.focus();
-  await page.keyboard.press("Enter");
-
-  const drawer = page.getByRole("dialog", { name: "Library" });
-  await expect(drawer).toBeVisible();
-  // Let the 300ms slide finish so the scan sees final colors, not mid-fade ones.
-  await expect(drawer).not.toHaveAttribute("data-starting-style");
-  await page.waitForTimeout(350);
-  await expect(drawer.getByRole("navigation", { name: "Library" })).toBeVisible();
-  expect((await drawer.boundingBox())?.width).toBe(280);
-  await expectNoViolations(page);
-
-  await page.keyboard.press("Escape");
-  await expect(drawer).toBeHidden();
-  await expect(open).toBeFocused();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+  await expect(page.getByLabel("Email")).toHaveAttribute("type", "email");
+  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toBeVisible();
 });

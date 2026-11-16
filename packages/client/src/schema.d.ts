@@ -24,10 +24,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/database": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Database Health
+         * @description Report that the database answers. Pinged on a schedule so the free database never pauses.
+         */
+        get: operations["getDatabaseHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Me
+         * @description The signed-in User and their Collections. Creates both on first sign-in.
+         */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** CollectionSummary */
+        CollectionSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Personal */
+            is_personal: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "editor" | "viewer";
+        };
         /** Health */
         Health: {
             /**
@@ -37,6 +94,13 @@ export interface components {
             status: "ok";
             /** Version */
             version: string;
+        };
+        /** Me */
+        Me: {
+            /** Collections */
+            collections: components["schemas"]["CollectionSummary"][];
+            /** Email */
+            email: string;
         };
     };
     responses: never;
@@ -63,6 +127,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    getDatabaseHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
                 };
             };
         };

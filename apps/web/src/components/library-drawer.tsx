@@ -17,7 +17,7 @@ export function LibraryDrawer({ children }: { children: ReactNode }) {
       </SheetTrigger>
       <SheetContent side="left" className="w-70 max-w-none gap-6 bg-background p-4 pt-5">
         <SheetTitle className="px-2 font-serif text-wordmark">Library</SheetTitle>
-        <nav aria-label="Library" className="flex flex-col gap-1">
+        <nav aria-label="Library" className="flex flex-1 flex-col">
           {children}
         </nav>
       </SheetContent>
