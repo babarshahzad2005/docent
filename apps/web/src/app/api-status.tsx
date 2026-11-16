@@ -11,8 +11,8 @@ export async function ApiStatusMessage() {
     return <p role="status">Server connected (version {status.version})</p>;
   }
   return (
-    <p role="status" title={status.reason}>
-      Can&rsquo;t reach the server right now.
+    <p role="status">
+      Can&rsquo;t reach the server. It may be starting up; reload the page in a minute.
     </p>
   );
 }

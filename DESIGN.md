@@ -25,10 +25,13 @@ Light mode is the primary theme. Dark mode is supported from the first release.
 | `--text-secondary` | `#3D3A34` | `#CFCBC2` | Secondary nav items |
 | `--text-muted` | `#625E55` | `#A8A49A` | Labels, metadata, placeholders |
 | `--text-context` | `#6F6A60` | `#9E998E` | Source text around the cited passage |
-| `--accent` | `#2F5D50` | `#7FB6A4` | Links, primary buttons (light), verification |
-| `--accent-strong` | `#1F4238` | `#A6D1C2` | Link hover |
-| `--accent-button` | `#2F5D50` | `#3F7A69` | Primary button background (white text) |
-| `--accent-subtle` | `#E7F0EC` | `#22332D` | Scope chips |
+| `--brand` | `#2F5D50` | `#7FB6A4` | Links, focus outline, verification |
+| `--brand-strong` | `#1F4238` | `#A6D1C2` | Link hover |
+| `--brand-button` | `#2F5D50` | `#3F7A69` | Primary button background (white text) |
+| `--brand-subtle` | `#E7F0EC` | `#22332D` | Scope chip background |
+| `--brand-subtle-text` | `#234A3F` | `#A6D1C2` | Scope chip text |
+| `--danger` | `#B42318` | `#F97066` | Destructive actions and errors (always with text) |
+| `--scrim` | `rgb(31 30 27 / 0.24)` | `rgb(0 0 0 / 0.5)` | Backdrop behind drawers and dialogs |
 | `--mark` | `#F6E3AE` | `#4A3D17` | Highlighter background |
 | `--mark-edge` | `#D9A72E` | `#C99A2E` | Highlighter underline |
 | `--mark-text` | `#5E4310` | `#F2D58A` | Citation number on the mark |
@@ -40,6 +43,7 @@ Rules:
 - The highlighter colors (`--mark*`) mean "this is cited." Never use them for warnings, selection, or decoration.
 - Color never carries meaning alone: the conflict notice has an icon and a heading, verification has a check mark and words.
 - No gradient washes, no decorative textures.
+- The brand color is named `--brand`, not "accent": the component library uses "accent" for hover surfaces, and the code maps its names onto these tokens.
 
 ## Typography
 
@@ -99,7 +103,7 @@ Rules:
 - **Highlighted passage:** the cited text in the source wrapped in `<mark>` with the same `--mark` and `--mark-edge`. Surrounding text uses `--text-context`, so the passage reads first without the rest becoming illegible.
 - **Conflict notice:** a bordered surface with an icon, the heading "Your documents disagree", and a table of each value, its document, and its Effective Date, newest first.
 - **Verification line:** a check mark and "All N citations checked against their source". If claims were removed, it says how many.
-- **Scope chips:** pill-shaped, `--accent-subtle`; "Add a collection" is a dashed pill.
+- **Scope chips:** pill-shaped, `--brand-subtle` with `--brand-subtle-text`; "Add a collection" is a dashed pill.
 
 ## Motion
 
@@ -136,7 +140,7 @@ Rules:
 
 - WCAG 2.2 AA minimum, checked with automated audits in CI plus manual keyboard and screen-reader passes before each release.
 - Native elements first: `<button>`, `<a href>`, `<input>` with a `<label>`, `<table>` for tabular data, `<mark>` for highlights.
-- Visible focus everywhere: a 2px `--accent` outline with a 2px offset.
+- Visible focus everywhere: a 2px `--brand` outline with a 2px offset. Components never replace it with their own ring.
 - One `h1` per screen (the question in a Conversation); headings descend in order.
 - Landmarks: library `nav`, answer `main`, source `aside` with a label.
 - Streaming answers are announced politely (`aria-live="polite"`) once complete, not per token.

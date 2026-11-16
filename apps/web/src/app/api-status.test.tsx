@@ -25,11 +25,11 @@ describe("ApiStatusMessage", () => {
     expect(await renderMessage()).toContain("Server connected (version 0.1.0)");
   });
 
-  it("says the server can't be reached, with the reason as a tooltip", async () => {
+  it("says the server can't be reached and what to do about it", async () => {
     status.current = { kind: "unreachable", reason: "The API didn't respond." };
 
-    const html = await renderMessage();
-    expect(html).toContain("Can’t reach the server right now.");
-    expect(html).toContain('title="The API didn&#x27;t respond."');
+    expect(await renderMessage()).toContain(
+      "Can’t reach the server. It may be starting up; reload the page in a minute.",
+    );
   });
 });

@@ -45,9 +45,13 @@ test("on tablets, the Library opens in a drawer that can be used by keyboard", a
   await open.focus();
   await page.keyboard.press("Enter");
 
-  const drawer = page.getByRole("dialog");
+  const drawer = page.getByRole("dialog", { name: "Library" });
   await expect(drawer).toBeVisible();
+  // Let the 300ms slide finish so the scan sees final colors, not mid-fade ones.
+  await expect(drawer).not.toHaveAttribute("data-starting-style");
+  await page.waitForTimeout(350);
   await expect(drawer.getByRole("navigation", { name: "Library" })).toBeVisible();
+  expect((await drawer.boundingBox())?.width).toBe(280);
   await expectNoViolations(page);
 
   await page.keyboard.press("Escape");

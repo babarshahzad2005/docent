@@ -1,6 +1,6 @@
 export function Wordmark() {
   return (
-    <span className="flex items-center gap-2.5 px-2">
+    <span className="flex items-center gap-2 px-2">
       <svg
         width="22"
         height="22"

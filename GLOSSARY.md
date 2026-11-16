@@ -4,6 +4,10 @@ A chat that answers questions only from documents its users upload, citing the e
 
 ## Content
 
+**Library**:
+Everything a User can reach in Docent: their Collections and the Documents in them.
+_Avoid_: Workspace, dashboard, home
+
 **Collection**:
 A named set of Documents with its own Members; the unit of sharing and of asking.
 _Avoid_: Folder, workspace, space, knowledge base

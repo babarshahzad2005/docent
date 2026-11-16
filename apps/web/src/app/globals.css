@@ -5,11 +5,21 @@
 /* Dark mode follows the system setting. */
 @custom-variant dark (@media (prefers-color-scheme: dark));
 
+/* Hover styles apply only with a precise pointer, so taps on touch screens never leave hover states behind. */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
 /*
  * Design tokens. Source of truth: DESIGN.md at the repository root.
  * Change a value there first, then here, in the same pull request.
  */
 :root {
+  color-scheme: light dark;
   --bg: #f3f2ee;
   --surface: #ffffff;
   --surface-muted: #e8e6df;
@@ -29,6 +39,7 @@
   --mark-text: #5e4310;
   --warning-icon: #9a6516;
   --danger: #b42318;
+  --scrim: rgb(31 30 27 / 0.24);
 
   /* Names the component library expects, mapped onto Docent's tokens. */
   --background: var(--bg);
@@ -72,6 +83,7 @@
     --mark-text: #f2d58a;
     --warning-icon: #d9a72e;
     --danger: #f97066;
+    --scrim: rgb(0 0 0 / 0.5);
   }
 }
 
@@ -111,6 +123,7 @@
   --color-mark-text: var(--mark-text);
   --color-warning-icon: var(--warning-icon);
   --color-border-strong: var(--border-strong);
+  --color-scrim: var(--scrim);
 
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
@@ -173,12 +186,22 @@
   }
 
   /*
-   * Tailwind's hover: variant already applies only on devices that can hover,
-   * so touch screens never get stuck hover states.
+   * Reduced motion: nothing moves. Opacity and color still transition so state changes stay
+   * legible; transforms apply instantly, and drawers fade in place instead of sliding.
    */
   @media (prefers-reduced-motion: reduce) {
     html {
       scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      transition-property: opacity, color, background-color, border-color !important;
+    }
+
+    [data-slot="sheet-content"] {
+      translate: none !important;
     }
   }
 }
