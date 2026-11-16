@@ -8,3 +8,5 @@ export function createDocentClient(baseUrl: string, options: { fetch?: typeof fe
 }
 
 export type DocentClient = ReturnType<typeof createDocentClient>;
+
+export type { components, paths } from "./schema";

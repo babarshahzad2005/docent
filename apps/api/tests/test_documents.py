@@ -1,5 +1,6 @@
 """Adding Documents and ingesting them, against a real database (TEST_DATABASE_URL)."""
 
+import re
 from collections.abc import Iterator, Sequence
 from uuid import UUID, uuid4
 
@@ -158,7 +159,7 @@ def test_uploads_that_break_a_rule_are_refused(
     size: int,
     message: str,
 ) -> None:
-    with pytest.raises(UploadRejected, match=message):
+    with pytest.raises(UploadRejected, match=re.escape(message)):
         start_upload(conn, store, user.id, personal(conn, user), name, size)
     assert list_documents(conn, user.id) == []
 
