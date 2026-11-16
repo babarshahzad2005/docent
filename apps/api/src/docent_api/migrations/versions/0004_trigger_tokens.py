@@ -1,4 +1,7 @@
-"""Tokens that let the database's scheduler start ingestion batches.
+"""Tokens that let the database's scheduler start ingestion batches; retryable failures.
+
+`failure_retryable` marks failures a retry could fix (a provider kept erroring), as opposed to
+ones it can't (no text in the file), so the Library offers Retry only when it can help.
 
 Only a hash is stored here; the token itself lives in Supabase Vault, where the scheduled job
 reads it. Set up with `docent-setup-scheduler`.
@@ -27,7 +30,11 @@ def upgrade() -> None:
         """
     )
     op.execute("alter table app.trigger_tokens enable row level security")
+    op.execute(
+        "alter table app.documents add column failure_retryable boolean not null default false"
+    )
 
 
 def downgrade() -> None:
+    op.execute("alter table app.documents drop column failure_retryable")
     op.execute("drop table app.trigger_tokens")

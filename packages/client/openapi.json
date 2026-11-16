@@ -37,6 +37,10 @@
       },
       "DocumentSummary": {
         "properties": {
+          "can_retry": {
+            "title": "Can Retry",
+            "type": "boolean"
+          },
           "collection_id": {
             "format": "uuid",
             "title": "Collection Id",
@@ -101,6 +105,7 @@
           "size_bytes",
           "status",
           "failure_reason",
+          "can_retry",
           "effective_date",
           "created_at",
           "updated_at"
@@ -388,7 +393,7 @@
     },
     "/documents/{document_id}/retry": {
       "post": {
-        "description": "Queue a failed Document again.",
+        "description": "Queue a failed Document again, when retrying could help.",
         "operationId": "retryDocument",
         "parameters": [
           {

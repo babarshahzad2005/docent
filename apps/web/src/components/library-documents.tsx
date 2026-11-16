@@ -37,10 +37,13 @@ export function LibraryDocuments({
   collection,
   initialDocuments,
 }: {
-  collection: { id: string; name: string };
+  collection: { id: string; name: string; role: "owner" | "editor" | "viewer" };
   initialDocuments: DocumentSummary[];
 }) {
   const [documents, setDocuments] = useState(initialDocuments);
+  // Bumped to restart status refreshing after it stopped on an error.
+  const [refreshes, setRefreshes] = useState(0);
+  const canEdit = collection.role !== "viewer";
   const [errors, setErrors] = useState<string[]>([]);
   const [announcement, setAnnouncement] = useState("");
   const input = useRef<HTMLInputElement>(null);
@@ -75,7 +78,7 @@ export function LibraryDocuments({
       stopped = true;
       clearTimeout(timer);
     };
-  }, [processing]);
+  }, [processing, refreshes]);
 
   // Announce Documents that just finished, once, for screen readers.
   useEffect(() => {
@@ -205,15 +208,24 @@ export function LibraryDocuments({
           <DocumentRow
             key={document.id}
             document={document}
+            canRetry={canEdit && document.can_retry}
             onRetry={async () => {
-              const retried = await retryDocument(document.id);
-              if (retried.ok) {
+              try {
+                const retried = await retryDocument(document.id);
+                if (!retried.ok) {
+                  setErrors([retried.message]);
+                  return false;
+                }
                 setErrors([]);
+                setAnnouncement(`${document.name} is being processed again.`);
                 setDocuments((current) =>
                   current.map((d) => (d.id === document.id ? retried.value : d)),
                 );
-              } else {
-                setErrors([retried.message]);
+                setRefreshes((n) => n + 1);
+                return true;
+              } catch {
+                setErrors([`${document.name} couldn't be retried. Check your connection.`]);
+                return false;
               }
             }}
           />
@@ -225,19 +237,29 @@ export function LibraryDocuments({
 
 function DocumentRow({
   document,
+  canRetry,
   onRetry,
 }: {
   document: DocumentSummary;
-  onRetry: () => Promise<void>;
+  canRetry: boolean;
+  /** Resolves to whether the Document was queued again. */
+  onRetry: () => Promise<boolean>;
 }) {
   const failed = document.status === "failed";
+  const [retrying, setRetrying] = useState(false);
+  const row = useRef<HTMLLIElement>(null);
   const tone = failed
     ? "text-destructive"
     : document.status === "indexed"
       ? "text-brand"
       : "text-muted-foreground";
   return (
-    <li className="flex flex-col gap-1 border-b border-border py-3">
+    <li
+      ref={row}
+      tabIndex={-1}
+      aria-label={document.name}
+      className="flex flex-col gap-1 border-b border-border py-3"
+    >
       <div className="flex items-baseline justify-between gap-4">
         <span className="min-w-0 truncate font-medium" title={document.name}>
           {document.name}
@@ -257,14 +279,23 @@ function DocumentRow({
           {document.failure_reason && (
             <p className="text-meta text-destructive">{document.failure_reason}</p>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label={`Retry ${document.name}`}
-            onClick={() => void onRetry()}
-          >
-            Retry
-          </Button>
+          {canRetry && (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={`Retry ${document.name}`}
+              disabled={retrying}
+              onClick={async () => {
+                setRetrying(true);
+                const queued = await onRetry();
+                setRetrying(false);
+                // The button disappears once the Document is queued; keep focus on its row.
+                if (queued) row.current?.focus();
+              }}
+            >
+              {retrying ? "Retrying…" : "Retry"}
+            </Button>
+          )}
         </div>
       )}
     </li>

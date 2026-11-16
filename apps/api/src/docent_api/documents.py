@@ -31,6 +31,7 @@ class DocumentSummary(BaseModel):
     size_bytes: int
     status: DocumentStatus
     failure_reason: str | None
+    can_retry: bool
     effective_date: date
     created_at: datetime
     updated_at: datetime
@@ -44,12 +45,17 @@ class NotAllowed(Exception):
     """The User can't add or change Documents in this Collection."""
 
 
+class NotRetryable(Exception):
+    """Retrying can't help: the problem is in the file itself."""
+
+
 class DocumentNotFound(Exception):
     """No such Document in any Collection the User can reach."""
 
 
 _SUMMARY_COLUMNS = """
     d.id, d.collection_id, d.name, d.size_bytes, d.status, d.failure_reason,
+    d.status = 'failed' and d.failure_retryable as can_retry,
     d.effective_date, d.created_at, d.updated_at
 """
 
@@ -118,17 +124,31 @@ def start_upload(
 
 def finish_upload(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -> DocumentSummary:
     """The file is stored: queue the Document for ingestion. Repeating the call is harmless."""
-    return _requeue(conn, user_id, document_id, from_status="uploading")
+    row = _editable(conn, user_id, document_id)
+    if row["status"] != "uploading":
+        return DocumentSummary.model_validate(row)
+    return _queue(conn, document_id, "uploading", reset_attempts=False) or (
+        DocumentSummary.model_validate(row)
+    )
 
 
 def retry_document(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -> DocumentSummary:
-    """Queue a failed Document again, with a fresh count of attempts. Harmless otherwise."""
-    return _requeue(conn, user_id, document_id, from_status="failed")
+    """Queue a Document again after a failure a retry could fix. Harmless if it didn't fail.
+
+    Only the attempt count is reset: a Document that keeps breaking batches stays marked as
+    such, so retrying can't loop it forever.
+    """
+    row = _editable(conn, user_id, document_id)
+    if row["status"] != "failed":
+        return DocumentSummary.model_validate(row)
+    if not row["can_retry"]:
+        raise NotRetryable(document_id)
+    return _queue(conn, document_id, "failed", reset_attempts=True) or (
+        DocumentSummary.model_validate(row)
+    )
 
 
-def _requeue(
-    conn: Connection[DictRow], user_id: UUID, document_id: UUID, from_status: DocumentStatus
-) -> DocumentSummary:
+def _editable(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -> DictRow:
     row = conn.execute(
         f"""
         select {_SUMMARY_COLUMNS}, m.role
@@ -142,20 +162,25 @@ def _requeue(
         raise DocumentNotFound(document_id)
     if row["role"] not in ("owner", "editor"):
         raise NotAllowed(row["collection_id"])
-    if row["status"] != from_status:
-        return DocumentSummary.model_validate(row)
+    return row
+
+
+def _queue(
+    conn: Connection[DictRow], document_id: UUID, from_status: DocumentStatus, reset_attempts: bool
+) -> DocumentSummary | None:
     with conn.transaction():
-        queued = conn.execute(
+        row = conn.execute(
             f"""
             update app.documents d
-            set status = 'queued', failure_reason = null, attempts = 0, claims = 0,
+            set status = 'queued', failure_reason = null, failure_retryable = false,
+                attempts = case when %(reset)s then 0 else attempts end,
                 locked_until = null, updated_at = now()
             where d.id = %(id)s and d.status = %(from_status)s
             returning {_SUMMARY_COLUMNS}
             """,
-            {"id": document_id, "from_status": from_status},
+            {"id": document_id, "from_status": from_status, "reset": reset_attempts},
         ).fetchone()
-    return DocumentSummary.model_validate(queued or row)
+    return DocumentSummary.model_validate(row) if row else None
 
 
 def clean_name(name: str) -> str:

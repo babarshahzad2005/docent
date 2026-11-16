@@ -16,6 +16,7 @@ from docent_api.documents import (
     DocumentNotFound,
     DocumentSummary,
     NotAllowed,
+    NotRetryable,
     UploadRejected,
     finish_upload,
     list_documents,
@@ -40,6 +41,7 @@ INGESTION_BATCH_SECONDS = 200.0
 
 _NOT_FOUND = "That document doesn't exist."
 _CANT_EDIT = "You can't add documents to this collection."
+_CANT_CHANGE = "You can't change documents in this collection."
 
 
 class Health(BaseModel):
@@ -145,13 +147,18 @@ def uploaded(document_id: UUID, user: User, conn: Db) -> DocumentSummary:
 
 @app.post("/documents/{document_id}/retry", operation_id="retryDocument", tags=["documents"])
 def retry(document_id: UUID, user: User, conn: Db) -> DocumentSummary:
-    """Queue a failed Document again."""
+    """Queue a failed Document again, when retrying could help."""
     try:
         return retry_document(conn, user.id, document_id)
     except DocumentNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_FOUND) from None
     except NotAllowed:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_EDIT) from None
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_CHANGE) from None
+    except NotRetryable:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Retrying won't help with this document. Fix the file and upload it again.",
+        ) from None
 
 
 @app.post("/ingestion/run", operation_id="runIngestion", tags=["documents"])

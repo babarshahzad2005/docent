@@ -39,7 +39,7 @@ export interface paths {
         put?: never;
         /**
          * Retry
-         * @description Queue a failed Document again.
+         * @description Queue a failed Document again, when retrying could help.
          */
         post: operations["retryDocument"];
         delete?: never;
@@ -172,6 +172,8 @@ export interface components {
         };
         /** DocumentSummary */
         DocumentSummary: {
+            /** Can Retry */
+            can_retry: boolean;
             /**
              * Collection Id
              * Format: uuid
