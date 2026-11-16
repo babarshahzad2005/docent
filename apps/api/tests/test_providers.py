@@ -389,7 +389,7 @@ def test_unknown_answer_models_are_rejected(spec: str) -> None:
 
 def test_only_the_adapters_talk_to_providers() -> None:
     package = Path(__file__).parents[1] / "src" / "docent_api"
-    allowed = {"providers", "measure_models.py"}
+    allowed = {"providers", "measure_models.py", "storage.py"}  # storage talks to Supabase
     offenders = [
         str(path.relative_to(package))
         for path in package.rglob("*.py")

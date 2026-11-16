@@ -32,5 +32,8 @@ def database_url() -> str:
 def conn(database_url: str) -> Iterator[Connection[DictRow]]:
     with psycopg.connect(database_url, row_factory=dict_row) as connection:
         yield connection
-        connection.execute("truncate app.memberships, app.collections, app.users")
+        connection.execute(
+            "truncate app.chunks, app.documents, app.memberships, app.collections, app.users"
+        )
+        connection.execute("update app.ingestion_lease set held_until = '-infinity'")
         connection.commit()

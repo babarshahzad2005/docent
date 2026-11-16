@@ -27,8 +27,9 @@ Solid arrows: main path. Dotted: edge paths and the follow-up loop.
 
 ## Doc status
 
-`queued → parsing → embedding → indexed`, or `failed` (reason, retry, remove)
+`uploading → queued → parsing → embedding → indexed`, or `failed` (reason, retry, remove)
 
+- `uploading`: the browser is sending the file to storage; an upload never reported finished fails after an hour
 - Bad file fails alone; batch continues
 - Re-upload: chunk-hash diff, re-embed changed only; old version serves until new one is indexed
 - Delete: confirm → chunks + vectors purged together; old citations show “source removed”
