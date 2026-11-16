@@ -43,6 +43,18 @@ _EMBED_CALL_ALLOWANCE = 60.0
 # Statuses a Document passes through while ingestion owns it.
 ACTIVE_STATUSES = ("queued", "parsing", "embedding")
 
+# What counts as waiting work, in one place: the claim query, the stale-upload sweep, and the
+# scheduler's every-minute check (scheduler.py) all use these.
+CLAIMABLE_SQL = "status in ({}) and (locked_until is null or locked_until < now())".format(
+    ", ".join(f"'{status}'" for status in ACTIVE_STATUSES)
+)
+STALE_UPLOAD_SQL = (
+    f"status = 'uploading' and created_at < now() - interval '{STALE_UPLOAD_HOURS} hours'"
+)
+WORK_WAITING_SQL = (
+    f"exists (select 1 from app.documents where ({CLAIMABLE_SQL}) or ({STALE_UPLOAD_SQL}))"
+)
+
 _CHUNKERS: dict[str, Callable[[str], list[Chunk]]] = {
     "text": chunk_plain_text,
     "markdown": chunk_markdown,
@@ -50,8 +62,12 @@ _CHUNKERS: dict[str, Callable[[str], list[Chunk]]] = {
 
 _UPLOAD_UNFINISHED = "The upload didn't finish. Upload the document again."
 _GAVE_UP = (
-    "Docent couldn't process this document after several tries. Upload it again, and if it "
-    "fails again, check that it opens on your computer."
+    "Docent couldn't process this document after several tries. Retry, and if it fails again, "
+    "check that it opens on your computer."
+)
+_KEEPS_FAILING = (
+    "Docent couldn't process this document. Check that it opens on your computer, then upload "
+    "it again."
 )
 
 Outcome = Literal["indexed", "failed", "paused", "retrying"]
@@ -137,7 +153,8 @@ def _run(
         if document is None:
             break
         if document["claims"] > MAX_CLAIMS:
-            _finish(conn, document["id"], "failed", _GAVE_UP)
+            # Picked up again and again without progress: something about it breaks batches.
+            _finish(conn, document["id"], "failed", _KEEPS_FAILING)
             failed += 1
             continue
         outcome = _DocumentWorker(conn, store, embedder, document, budget).run()
@@ -151,20 +168,19 @@ def _run(
 def _claim(conn: Connection[DictRow]) -> dict[str, Any] | None:
     with conn.transaction():
         return conn.execute(
-            """
+            f"""
             update app.documents
             set locked_until = now() + make_interval(secs => %(lease)s), claims = claims + 1
             where id = (
                 select id from app.documents
-                where status = any(%(active)s::app.document_status[])
-                  and (locked_until is null or locked_until < now())
+                where {CLAIMABLE_SQL}
                 order by created_at
                 for update skip locked
                 limit 1
             )
             returning id, collection_id, name, storage_path, status, attempts, claims
             """,
-            {"lease": LEASE_SECONDS, "active": list(ACTIVE_STATUSES)},
+            {"lease": LEASE_SECONDS},
         ).fetchone()
 
 
@@ -179,24 +195,31 @@ def _remaining(conn: Connection[DictRow]) -> int:
 def _fail_unfinished_uploads(conn: Connection[DictRow]) -> None:
     """A browser that never reported its upload finished (closed tab, failed upload)."""
     conn.execute(
-        """
+        f"""
         update app.documents
         set status = 'failed', failure_reason = %(reason)s, updated_at = now()
-        where status = 'uploading' and created_at < now() - make_interval(hours => %(hours)s)
+        where {STALE_UPLOAD_SQL}
         """,
-        {"reason": _UPLOAD_UNFINISHED, "hours": STALE_UPLOAD_HOURS},
+        {"reason": _UPLOAD_UNFINISHED},
     )
 
 
-def _finish(conn: Connection[DictRow], document_id: UUID, status: str, reason: str | None) -> None:
+def _finish(
+    conn: Connection[DictRow],
+    document_id: UUID,
+    status: str,
+    reason: str | None,
+    retryable: bool = False,
+) -> None:
+    """End ingestion. `retryable` says whether retrying could help (a temporary problem)."""
     conn.execute(
         """
         update app.documents
-        set status = %(status)s, failure_reason = %(reason)s, locked_until = null,
-            updated_at = now()
+        set status = %(status)s, failure_reason = %(reason)s,
+            failure_retryable = %(retryable)s, locked_until = null, updated_at = now()
         where id = %(id)s
         """,
-        {"status": status, "reason": reason, "id": document_id},
+        {"status": status, "reason": reason, "retryable": retryable, "id": document_id},
     )
 
 
@@ -215,6 +238,9 @@ class _DocumentWorker:
         self.document = document
         self.id: UUID = document["id"]
         self.budget = budget
+        # Whether this claim saved any work. A Document that progresses is never given up on
+        # for being picked up often: a large one legitimately takes many batches.
+        self.progressed = False
 
     def run(self) -> Outcome:
         try:
@@ -271,6 +297,7 @@ class _DocumentWorker:
                     ],
                 )
             self._set_status("embedding")
+        self.progressed = True
 
     def _embed(self) -> None:
         self._reuse_identical_embeddings()
@@ -311,6 +338,7 @@ class _DocumentWorker:
                         for row, vector in zip(pending, result.vectors, strict=True)
                     ],
                 )
+            self.progressed = True
 
     def _reuse_identical_embeddings(self) -> None:
         """Repeated passages (a footer on every page, say) are embedded once per Document."""
@@ -339,16 +367,22 @@ class _DocumentWorker:
         attempts = self.document["attempts"] + 1
         logger.warning("ingesting %s failed (attempt %s): %r", self.id, attempts, error)
         if attempts >= MAX_ATTEMPTS:
-            _finish(self.conn, self.id, "failed", _GAVE_UP)
+            _finish(self.conn, self.id, "failed", _GAVE_UP, retryable=True)
             return "failed"
         self.conn.execute(
             """
             update app.documents
             set attempts = %(attempts)s,
-                locked_until = now() + make_interval(secs => %(backoff)s)
+                locked_until = now() + make_interval(secs => %(backoff)s),
+                claims = case when %(progressed)s then 0 else claims end
             where id = %(id)s
             """,
-            {"attempts": attempts, "backoff": 30 * 2**attempts, "id": self.id},
+            {
+                "attempts": attempts,
+                "backoff": backoff_seconds(attempts),
+                "progressed": self.progressed,
+                "id": self.id,
+            },
         )
         return "retrying"
 
@@ -362,11 +396,17 @@ class _DocumentWorker:
         self.conn.execute(
             """
             update app.documents
-            set locked_until = now() + make_interval(secs => %(retry_in)s)
+            set locked_until = now() + make_interval(secs => %(retry_in)s),
+                claims = case when %(progressed)s then 0 else claims end
             where id = %(id)s
             """,
-            {"retry_in": retry_in, "id": self.id},
+            {"retry_in": retry_in, "progressed": self.progressed, "id": self.id},
         )
+
+
+def backoff_seconds(attempts: int) -> int:
+    """Wait before trying a failing Document again: 1, 2, 4, 8 minutes."""
+    return int(30 * 2**attempts)
 
 
 def _decode(data: bytes) -> str:

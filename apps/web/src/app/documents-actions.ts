@@ -53,17 +53,23 @@ export async function finishUpload(documentId: string): Promise<Result<DocumentS
   return { ok: true, value: data };
 }
 
-/**
- * Nudge processing along while the Library is open, for Documents that paused (the free
- * embedding quota ran out) or are waiting to retry. The API runs one batch at a time, so extra
- * nudges cost nothing.
- */
-export async function resumeProcessing(): Promise<void> {
+/** Queue a failed Document again and start processing it. */
+export async function retryDocument(documentId: string): Promise<Result<DocumentSummary>> {
   const caller = await apiAsUser();
-  if (caller) processInBackground(caller);
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { data, response } = await caller.api.POST("/documents/{document_id}/retry", {
+    headers: caller.headers,
+    params: { path: { document_id: documentId } },
+  });
+  if (!data) return { ok: false, message: problem(response.status) };
+  processInBackground(caller);
+  return { ok: true, value: data };
 }
 
-/** Starts a batch after the response is sent; the function stays alive until it finishes. */
+/**
+ * Starts a batch after the response is sent, so a new Document doesn't wait for the scheduler's
+ * next minute. The function stays alive until the batch finishes.
+ */
 function processInBackground(caller: NonNullable<Awaited<ReturnType<typeof apiAsUser>>>) {
   after(async () => {
     await caller.api.POST("/ingestion/run", { headers: caller.headers });

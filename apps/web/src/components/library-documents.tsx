@@ -7,7 +7,7 @@ import {
   type DocumentSummary,
   finishUpload,
   listDocuments,
-  resumeProcessing,
+  retryDocument,
   startUpload,
 } from "@/app/documents-actions";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,6 @@ import { createClient } from "@/lib/supabase/client";
 
 const ACCEPT = ".md,.markdown,.txt,text/markdown,text/plain";
 const POLL_MS = 2000;
-// While Documents are processing, nudge the server this often in case a batch paused.
-const RESUME_EVERY_POLLS = 30;
 
 type Status = DocumentSummary["status"];
 
@@ -39,10 +37,13 @@ export function LibraryDocuments({
   collection,
   initialDocuments,
 }: {
-  collection: { id: string; name: string };
+  collection: { id: string; name: string; role: "owner" | "editor" | "viewer" };
   initialDocuments: DocumentSummary[];
 }) {
   const [documents, setDocuments] = useState(initialDocuments);
+  // Bumped to restart status refreshing after it stopped on an error.
+  const [refreshes, setRefreshes] = useState(0);
+  const canEdit = collection.role !== "viewer";
   const [errors, setErrors] = useState<string[]>([]);
   const [announcement, setAnnouncement] = useState("");
   const input = useRef<HTMLInputElement>(null);
@@ -56,12 +57,9 @@ export function LibraryDocuments({
   useEffect(() => {
     if (!processing) return;
     let stopped = false;
-    let polls = 0;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      polls += 1;
       try {
-        if (polls % RESUME_EVERY_POLLS === 0) await resumeProcessing();
         const result = await listDocuments();
         if (stopped) return;
         if (!result.ok) {
@@ -80,7 +78,7 @@ export function LibraryDocuments({
       stopped = true;
       clearTimeout(timer);
     };
-  }, [processing]);
+  }, [processing, refreshes]);
 
   // Announce Documents that just finished, once, for screen readers.
   useEffect(() => {
@@ -207,22 +205,61 @@ export function LibraryDocuments({
       {messages}
       <ul aria-label="Documents" className="flex flex-col border-t border-border">
         {documents.map((document) => (
-          <DocumentRow key={document.id} document={document} />
+          <DocumentRow
+            key={document.id}
+            document={document}
+            canRetry={canEdit && document.can_retry}
+            onRetry={async () => {
+              try {
+                const retried = await retryDocument(document.id);
+                if (!retried.ok) {
+                  setErrors([retried.message]);
+                  return false;
+                }
+                setErrors([]);
+                setAnnouncement(`${document.name} is being processed again.`);
+                setDocuments((current) =>
+                  current.map((d) => (d.id === document.id ? retried.value : d)),
+                );
+                setRefreshes((n) => n + 1);
+                return true;
+              } catch {
+                setErrors([`${document.name} couldn't be retried. Check your connection.`]);
+                return false;
+              }
+            }}
+          />
         ))}
       </ul>
     </div>
   );
 }
 
-function DocumentRow({ document }: { document: DocumentSummary }) {
+function DocumentRow({
+  document,
+  canRetry,
+  onRetry,
+}: {
+  document: DocumentSummary;
+  canRetry: boolean;
+  /** Resolves to whether the Document was queued again. */
+  onRetry: () => Promise<boolean>;
+}) {
   const failed = document.status === "failed";
+  const [retrying, setRetrying] = useState(false);
+  const row = useRef<HTMLLIElement>(null);
   const tone = failed
     ? "text-destructive"
     : document.status === "indexed"
       ? "text-brand"
       : "text-muted-foreground";
   return (
-    <li className="flex flex-col gap-1 border-b border-border py-3">
+    <li
+      ref={row}
+      tabIndex={-1}
+      aria-label={document.name}
+      className="flex flex-col gap-1 border-b border-border py-3"
+    >
       <div className="flex items-baseline justify-between gap-4">
         <span className="min-w-0 truncate font-medium" title={document.name}>
           {document.name}
@@ -237,8 +274,29 @@ function DocumentRow({ document }: { document: DocumentSummary }) {
       <span className="text-meta text-muted-foreground tabular-nums">
         {formatSize(document.size_bytes)}
       </span>
-      {failed && document.failure_reason && (
-        <p className="text-meta text-destructive">{document.failure_reason}</p>
+      {failed && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {document.failure_reason && (
+            <p className="text-meta text-destructive">{document.failure_reason}</p>
+          )}
+          {canRetry && (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={`Retry ${document.name}`}
+              disabled={retrying}
+              onClick={async () => {
+                setRetrying(true);
+                const queued = await onRetry();
+                setRetrying(false);
+                // The button disappears once the Document is queued; keep focus on its row.
+                if (queued) row.current?.focus();
+              }}
+            >
+              {retrying ? "Retrying…" : "Retry"}
+            </Button>
+          )}
+        </div>
       )}
     </li>
   );

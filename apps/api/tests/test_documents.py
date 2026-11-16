@@ -10,21 +10,37 @@ from fastapi.testclient import TestClient
 from psycopg import Connection
 from psycopg.rows import DictRow, dict_row
 
+from docent_api import ingestion, main
 from docent_api.auth import AuthUser, current_user
 from docent_api.db import get_connection
 from docent_api.documents import (
     MAX_FILE_BYTES,
     DocumentNotFound,
     NotAllowed,
+    NotRetryable,
     UploadRejected,
     finish_upload,
     list_documents,
+    retry_document,
     start_upload,
 )
-from docent_api.ingestion import MAX_ATTEMPTS, MAX_CLAIMS, _claim, run_batch
+from docent_api.ingestion import (
+    MAX_ATTEMPTS,
+    MAX_CLAIMS,
+    _claim,
+    backoff_seconds,
+    run_batch,
+)
 from docent_api.library import ensure_user, list_collections
 from docent_api.main import app
-from docent_api.providers.base import Embeddings, Purpose, RateLimited, Usage
+from docent_api.providers.base import (
+    Embeddings,
+    ProviderUnavailable,
+    Purpose,
+    RateLimited,
+    Usage,
+)
+from docent_api.scheduler import set_trigger_token
 from docent_api.storage import FileMissing, SignedUpload, get_file_store
 
 POLICY = b"# Leave\n\n## Carry-over\n\nUp to 10 days.\n\n## Footer\n\nCompany confidential.\n"
@@ -54,15 +70,16 @@ class FakeEmbedder:
 
     def __init__(self, broken: Exception | None = None) -> None:
         self.texts: list[str] = []
-        self.limits: list[float] = []
+        self.limits: list[float | None] = []  # per call: None succeeds, a number limits
         self.broken = broken
 
     async def embed(self, texts: Sequence[str], purpose: Purpose) -> Embeddings:
         assert purpose is Purpose.PASSAGE
         if self.broken:
             raise self.broken
-        if self.limits:
-            raise RateLimited("fake", "slow down", retry_after=self.limits.pop(0))
+        limit = self.limits.pop(0) if self.limits else None
+        if limit is not None:
+            raise RateLimited("fake", "slow down", retry_after=limit)
         self.texts += texts
         vectors = [[1.0] + [0.0] * 1023 for _ in texts]
         return Embeddings(vectors, Usage("fake", "embed-1", "embed-1-v2", latency_ms=1.0))
@@ -504,3 +521,207 @@ def test_a_refused_upload_explains_why(
 
 def test_an_unknown_document_is_not_found(client: TestClient) -> None:
     assert client.post(f"/documents/{uuid4()}/uploaded").status_code == 404
+
+
+# --- Retry and backoff --------------------------------------------------------------------
+
+
+def fail_retryably(conn: Connection[DictRow], store: FakeStore, user: AuthUser) -> UUID:
+    """A Document that failed because the embedding provider kept erroring."""
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    broken = FakeEmbedder(broken=ProviderUnavailable("fake", "down"))
+    for _ in range(MAX_ATTEMPTS):
+        run_batch(conn, store, broken, seconds=240)
+        conn.execute("update app.documents set locked_until = null where id = %s", (document_id,))
+        conn.commit()
+    return document_id
+
+
+def embedded(conn: Connection[DictRow], document_id: UUID) -> list[object]:
+    return [c["embedded"] for c in chunks(conn, document_id)]
+
+
+def test_a_failing_document_waits_longer_before_each_try(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+
+    run_batch(conn, store, FakeEmbedder(broken=ValueError("unexpected")), seconds=240)
+
+    row = conn.execute(
+        """
+        select attempts, extract(epoch from locked_until - now()) as wait
+        from app.documents where id = %s
+        """,
+        (document_id,),
+    ).fetchone()
+    conn.commit()
+    assert row is not None and row["attempts"] == 1
+    assert backoff_seconds(1) - 5 < row["wait"] <= backoff_seconds(1)
+    assert [backoff_seconds(n) for n in range(1, 5)] == [60, 120, 240, 480]
+    assert _claim(conn) is None  # not picked up again until the wait is over
+    conn.rollback()
+
+
+def test_a_half_embedded_document_resumes_without_repeating_work(
+    conn: Connection[DictRow],
+    store: FakeStore,
+    user: AuthUser,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ingestion, "EMBED_BATCH", 1)
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    embedder = FakeEmbedder()
+    embedder.limits = [None, 600.0]  # the first passage goes through, then the quota runs out
+
+    run_batch(conn, store, embedder, seconds=240)
+    assert sorted(embedded(conn, document_id), key=bool) == [False, True]
+
+    conn.execute("update app.documents set locked_until = null where id = %s", (document_id,))
+    conn.commit()
+    run_batch(conn, store, embedder, seconds=240)
+
+    assert status(conn, document_id) == ("indexed", None)
+    assert len(embedder.texts) == len(set(embedder.texts)) == 2
+
+
+def test_a_document_that_makes_progress_is_never_given_up_on(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    conn.execute(
+        "update app.documents set claims = %s where id = %s", (MAX_CLAIMS - 1, document_id)
+    )
+    conn.commit()
+    embedder = FakeEmbedder()
+    embedder.limits = [600.0]
+
+    run_batch(conn, store, embedder, seconds=240)  # parses, then pauses on the rate limit
+
+    row = conn.execute("select claims from app.documents where id = %s", (document_id,)).fetchone()
+    conn.commit()
+    assert row == {"claims": 0}
+    assert status(conn, document_id) == ("embedding", None)
+
+
+def test_retrying_requeues_a_document_a_retry_can_help(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = fail_retryably(conn, store, user)
+    conn.execute("update app.documents set claims = 3 where id = %s", (document_id,))
+    conn.commit()
+    failed = next(d for d in list_documents(conn, user.id) if d.id == document_id)
+    assert (failed.status, failed.can_retry) == ("failed", True)
+
+    retried = retry_document(conn, user.id, document_id)
+    conn.commit()
+
+    assert (retried.status, retried.failure_reason, retried.can_retry) == ("queued", None, False)
+    row = conn.execute(
+        "select attempts, claims, locked_until from app.documents where id = %s", (document_id,)
+    ).fetchone()
+    conn.commit()
+    assert row == {"attempts": 0, "claims": 3, "locked_until": None}  # claims are kept
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    assert status(conn, document_id) == ("indexed", None)
+
+
+def test_problems_in_the_file_itself_cant_be_retried(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "blank.md", b"# Title only")
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert not next(d for d in list_documents(conn, user.id) if d.id == document_id).can_retry
+    with pytest.raises(NotRetryable):
+        retry_document(conn, user.id, document_id)
+
+
+def test_retrying_a_document_that_hasnt_failed_changes_nothing(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "a.txt", b"text")
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert retry_document(conn, user.id, document_id).status == "indexed"
+
+
+def test_only_editors_can_retry(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = fail_retryably(conn, store, user)
+    stranger = AuthUser(id=uuid4(), email="stranger@example.com")
+    viewer = AuthUser(id=uuid4(), email="viewer@example.com")
+    ensure_user(conn, stranger)
+    ensure_user(conn, viewer)
+    conn.execute(
+        "insert into app.memberships (collection_id, user_id, role) values (%s, %s, 'viewer')",
+        (personal(conn, user), viewer.id),
+    )
+    conn.commit()
+
+    with pytest.raises(DocumentNotFound):
+        retry_document(conn, stranger.id, document_id)
+    with pytest.raises(NotAllowed):
+        retry_document(conn, viewer.id, document_id)
+
+
+def test_the_retry_endpoint_queues_or_explains(
+    client: TestClient, conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    retryable = fail_retryably(conn, store, user)
+    blank = upload(conn, store, user, "blank.md", b"# Title only")
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert client.post(f"/documents/{retryable}/retry").json()["status"] == "queued"
+    refused = client.post(f"/documents/{blank}/retry")
+    assert refused.status_code == 409
+    assert "won't help" in refused.json()["detail"]
+
+
+# --- Scheduler ----------------------------------------------------------------------------
+
+
+@pytest.fixture
+def scheduler_token(conn: Connection[DictRow]) -> Iterator[str]:
+    set_trigger_token(conn, "the-real-token")
+    conn.commit()
+    yield "the-real-token"
+    conn.execute("delete from app.trigger_tokens")
+    conn.commit()
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Bearer guessed"}, {"Authorization": "Basic the-real-token"}],
+    ids=["none", "wrong-token", "wrong-scheme"],
+)
+def test_only_the_scheduler_can_start_a_scheduled_batch(
+    client: TestClient, scheduler_token: str, headers: dict[str, str]
+) -> None:
+    assert client.post("/ingestion/scheduled", headers=headers).status_code == 401
+
+
+def test_without_a_token_set_up_nothing_can_start_a_scheduled_batch(client: TestClient) -> None:
+    response = client.post("/ingestion/scheduled", headers={"Authorization": "Bearer "})
+
+    assert response.status_code == 401
+
+
+def test_the_scheduler_processes_waiting_documents(
+    client: TestClient,
+    conn: Connection[DictRow],
+    store: FakeStore,
+    user: AuthUser,
+    scheduler_token: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    monkeypatch.setattr(main, "embedder", FakeEmbedder)
+
+    response = client.post(
+        "/ingestion/scheduled", headers={"Authorization": f"Bearer {scheduler_token}"}
+    )
+
+    assert response.json() == {"indexed": 1, "failed": 0, "remaining": 0, "ran": True}
+    assert status(conn, document_id) == ("indexed", None)

@@ -73,6 +73,8 @@ The web app reads `apps/web/.env.local` (its variables are listed at the bottom 
 
 Tables live in a private `app` schema that Supabase's auto-generated Data API can't reach ([ADR 0009](docs/adr/0009-private-app-schema.md)). Migrations are versioned in `apps/api/src/docent_api/migrations` and applied with `docent-migrate`: CI applies them to a fresh database on every pull request, and production deployments apply them during the API's build. Preview deployments never touch the production database.
 
+Ingestion runs in short batches: one starts right after each upload, and a pg_cron job in the database starts another every minute while Documents are waiting, so processing continues with the browser closed. `docent-setup-scheduler --api-url <deployed API>` creates the job and its token (kept in Supabase Vault; the API stores only a hash); run it once per Supabase project, and again to rotate the token. Without the scheduler (local development), a Document that pauses waits until the next upload starts a batch.
+
 ### File storage
 
 Uploaded files go straight from the browser to a private Supabase Storage bucket, `documents`, using a one-time upload link the API issues after checking the User may add to that Collection. Only the API (with the secret key) can read or delete them. `docent-setup-storage` creates the bucket, or checks its settings (private, 20 MB per file); run it once per Supabase project.
