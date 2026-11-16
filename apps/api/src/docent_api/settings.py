@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     supabase_url: str = ""
     database_url: str = ""
+    supabase_secret_key: str = ""
     voyage_api_key: str = ""
     gemini_api_key: str = ""
     groq_api_key: str = ""
