@@ -22,6 +22,14 @@ export default defineConfig({
   webServer: {
     command: `pnpm build && pnpm start --port ${port}`,
     port,
+    // Signed-out pages only: a placeholder project is enough, and no session ever exists.
+    // Locally, apps/web/.env.local provides the real values.
+    env: process.env.CI
+      ? {
+          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co",
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_placeholder",
+        }
+      : undefined,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
   },

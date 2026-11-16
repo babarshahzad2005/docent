@@ -1,6 +1,40 @@
 {
   "components": {
     "schemas": {
+      "CollectionSummary": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_personal": {
+            "title": "Is Personal",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_personal",
+          "role"
+        ],
+        "title": "CollectionSummary",
+        "type": "object"
+      },
       "Health": {
         "properties": {
           "status": {
@@ -19,6 +53,33 @@
         ],
         "title": "Health",
         "type": "object"
+      },
+      "Me": {
+        "properties": {
+          "collections": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionSummary"
+            },
+            "title": "Collections",
+            "type": "array"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "collections"
+        ],
+        "title": "Me",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -47,6 +108,55 @@
         "summary": "Health",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/health/database": {
+      "get": {
+        "description": "Report that the database answers. Pinged on a schedule so the free database never pauses.",
+        "operationId": "getDatabaseHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Database Health",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/me": {
+      "get": {
+        "description": "The signed-in User and their Collections. Creates both on first sign-in.",
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Me",
+        "tags": [
+          "library"
         ]
       }
     }

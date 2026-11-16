@@ -18,9 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         className="hidden w-62 shrink-0 flex-col gap-6 border-r px-4 py-6 lg:flex"
       >
         <Wordmark />
-        <div className="flex flex-col gap-1">
-          <LibraryNav />
-        </div>
+        <LibraryNav />
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">

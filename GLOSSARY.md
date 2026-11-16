@@ -97,7 +97,7 @@ An answer stating the Documents in Scope don't contain the answer, offered with 
 _Avoid_: Fallback, refusal, no-answer
 
 **Answer Log**:
-The permanent record of every answer given, including Visitors' answers, kept for quality review and evaluation.
+The record of every answer given, including Visitors' answers, kept for 90 days for quality review and evaluation (entries promoted to the Eval Set are kept).
 _Avoid_: Trace, history, audit log
 
 **Eval Set**:
