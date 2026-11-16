@@ -1,6 +1,14 @@
 import type { Metadata } from "next";
+import { Inter, Newsreader } from "next/font/google";
 
 import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  variable: "--font-newsreader",
+  axes: ["opsz"],
+});
 
 export const metadata: Metadata = {
   title: "Docent",
@@ -9,7 +17,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
       <body>{children}</body>
     </html>
   );
