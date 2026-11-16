@@ -2,6 +2,8 @@
 
 Ask questions of your own documents and get answers that cite the exact passages they came from — or a clear "I couldn't find that" instead of a guess.
 
+**Live:** https://docent-tan.vercel.app
+
 > **Status:** in development. First public release (v0.1) is planned at the end of milestone M2. See the [roadmap](#roadmap).
 
 ## Why
