@@ -74,7 +74,7 @@ Tables live in a private `app` schema that Supabase's auto-generated Data API ca
 
 ### Models
 
-Every model call goes through one provider interface in `apps/api/src/docent_api/providers`. Answers come from Groq (`openai/gpt-oss-120b`), falling back to Gemini (`gemini-3.5-flash-lite`) if Groq fails or is rate-limited; embeddings come from Gemini and reranking from Voyage. The choice was made from measured free-tier limits and speeds, recorded in [ADR 0010](docs/adr/0010-model-choice-by-measured-quota.md). Run `uv --directory apps/api run docent-measure-models` to measure again.
+Every model call goes through one provider interface in `apps/api/src/docent_api/providers`. Answers come from Groq (`openai/gpt-oss-120b`), falling back to Gemini (`gemini-3.5-flash-lite`) if Groq fails, is rate-limited, or returns no text; embeddings come from Gemini and reranking from Voyage. The choice was made from measured free-tier limits and speeds, recorded in [ADR 0010](docs/adr/0010-model-choice-by-measured-quota.md). Run `uv --directory apps/api run docent-measure-models` to measure again.
 
 ### Repository layout
 

@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx2
 
-from docent_api.providers._http import Http
+from docent_api.providers._http import ProviderHttp
 from docent_api.providers.base import (
     Embeddings,
     ProviderUnavailable,
@@ -14,9 +14,11 @@ from docent_api.providers.base import (
     Ranking,
     Usage,
 )
+from docent_api.providers.vectors import check_count
 
 _BASE_URL = "https://api.voyageai.com/v1"
 _PROVIDER = "voyage"
+_INPUT_TYPES = {Purpose.PASSAGE: "document", Purpose.QUERY: "query"}
 
 
 class _Voyage:
@@ -25,7 +27,7 @@ class _Voyage:
     ) -> None:
         self.model = model
         self._headers = {"Authorization": f"Bearer {api_key}"}
-        self._http = Http(_PROVIDER, transport)
+        self._http = ProviderHttp(_PROVIDER, transport)
 
     def _usage(self, data: dict[str, Any], latency_ms: float) -> Usage:
         model = str(data.get("model") or self.model)
@@ -58,7 +60,7 @@ class VoyageEmbedder(_Voyage):
         body = {
             "input": list(texts),
             "model": self.model,
-            "input_type": purpose.value,
+            "input_type": _INPUT_TYPES[purpose],
             "output_dimension": self._dimensions,
         }
         data, latency_ms = await self._http.post_json(
@@ -69,8 +71,7 @@ class VoyageEmbedder(_Voyage):
             vectors = [[float(x) for x in item["embedding"]] for item in items]
         except (KeyError, TypeError, ValueError) as error:
             raise ProviderUnavailable(_PROVIDER, "unexpected embeddings response") from error
-        if len(vectors) != len(texts):
-            raise ProviderUnavailable(_PROVIDER, f"got {len(vectors)} of {len(texts)} vectors")
+        check_count(_PROVIDER, vectors, texts)
         return Embeddings(vectors, self._usage(data, latency_ms))
 
 

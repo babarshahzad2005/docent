@@ -28,7 +28,7 @@ class Usage:
 class Purpose(StrEnum):
     """Retrieval models embed stored passages and search queries differently."""
 
-    DOCUMENT = "document"
+    PASSAGE = "passage"
     QUERY = "query"
 
 
@@ -89,9 +89,17 @@ class Generator(Protocol):
     def name(self) -> str: ...
 
     def generate(
-        self, system: str, messages: Sequence[Message], max_output_tokens: int = 1024
+        self,
+        system: str,
+        messages: Sequence[Message],
+        max_output_tokens: int = 1024,
+        temperature: float | None = None,
     ) -> AsyncIterator[GenerationEvent]:
-        """Stream the answer as text deltas, ending with exactly one Finished event."""
+        """Stream the answer as text deltas, ending with exactly one Finished event.
+
+        An answer with no text (blocked, or the budget spent on hidden reasoning) is an error,
+        so a fallback can step in. `temperature` None leaves the provider's default.
+        """
         ...
 
 

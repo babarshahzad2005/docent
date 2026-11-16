@@ -3,12 +3,15 @@
     uv run docent-measure-models              # speed of every candidate, limits from headers
     uv run docent-measure-models --probe-rpm  # also burst Gemini until it rate-limits
 
-Uses real API keys from .env and spends a little free quota. The numbers feed ADR 0010.
+Uses real API keys from .env and spends a little free quota (Voyage's 3 requests a minute make a
+run take about three minutes). The numbers feed ADR 0010.
 """
 
 import argparse
 import asyncio
+import io
 import statistics
+import sys
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -23,6 +26,7 @@ from docent_api.providers.base import (
     ProviderError,
     Purpose,
     TextDelta,
+    Usage,
 )
 from docent_api.providers.gemini import GeminiEmbedder, GeminiGenerator
 from docent_api.providers.groq import GroqGenerator
@@ -58,35 +62,42 @@ def _generators() -> list[Generator]:
 
 async def _measure_generator(generator: Generator) -> str:
     first: list[float] = []
+    total: list[float] = []
     speed: list[float] = []
-    version = "?"
+    prompt: list[float] = []
+    usage: Usage | None = None
+    sample = ""
     for _ in range(_RUNS):
+        text = ""
         try:
-            text = ""
             async for event in generator.generate(_SYSTEM, _QUESTION, max_output_tokens=300):
                 if isinstance(event, TextDelta):
                     text += event.text
                 elif isinstance(event, Finished):
                     usage = event.usage
         except ProviderError as error:
-            return f"| {generator.name} | failed: {str(error)[:120]} | | | |"
-        version = usage.model_version
-        if usage.first_token_ms is not None:
-            first.append(usage.first_token_ms)
-            streaming_s = (usage.latency_ms - usage.first_token_ms) / 1000
-            if usage.output_tokens and streaming_s > 0:
-                speed.append(usage.output_tokens / streaming_s)
+            return f"| {generator.name} | failed: {str(error)[:120]} | | | | | |"
+        assert usage is not None and usage.first_token_ms is not None
+        sample = sample or text
+        first.append(usage.first_token_ms)
+        total.append(usage.latency_ms)
+        if usage.input_tokens:
+            prompt.append(usage.input_tokens)
+        if usage.output_tokens:
+            speed.append(usage.output_tokens / (usage.latency_ms / 1000))
         await asyncio.sleep(2)
+    assert usage is not None
     return (
-        f"| {generator.name} | {version} | {_median(first, 'ms')} | {_median(speed, 'tok/s')} "
-        f"| {text[:60].strip()!r}... |"
+        f"| {generator.name} | {usage.model_version} | {_median(prompt, 'tokens')} "
+        f"| {_median(first, 'ms')} | {_median(total, 'ms')} | {_median(speed, 'tok/s')} "
+        f"| {sample[:60].strip()!r}... |"
     )
 
 
 async def _measure_embedder(label: str, embedder: Embedder) -> str:
     texts = [_PASSAGE.format(n=n) for n in range(32)]
     try:
-        result = await embedder.embed(texts, Purpose.DOCUMENT)
+        result = await embedder.embed(texts, Purpose.PASSAGE)
         query = await embedder.embed(["how much leave carries over"], Purpose.QUERY)
     except ProviderError as error:
         return f"| {label} | failed: {str(error)[:120]} | |"
@@ -108,6 +119,13 @@ async def _measure_reranker() -> str:
 
 async def _limit_headers() -> list[str]:
     """Limits the providers announce in response headers."""
+    try:
+        return await _read_limit_headers()
+    except httpx2.HTTPError as error:
+        return [f"- limit headers unavailable: {error!r}"]
+
+
+async def _read_limit_headers() -> list[str]:
     s = get_settings()
     lines = []
     async with httpx2.AsyncClient(timeout=30) as client:
@@ -140,12 +158,12 @@ async def _probe_gemini_rpm(label: str, url: str, body: dict[str, Any], limit: i
         for sent in range(1, limit + 1):
             try:
                 response = await client.post(url, headers={"x-goog-api-key": key}, json=body)
-            except httpx2.TransportError as error:
+            except httpx2.HTTPError as error:
                 return f"- gemini {label}: request {sent} failed: {error!r}"
             if response.status_code != 200:
                 return (
                     f"- gemini {label}: refused request {sent} (HTTP {response.status_code}) "
-                    f"after {time.perf_counter() - start:.0f} s; {_quota_details(response.json())}"
+                    f"after {time.perf_counter() - start:.0f} s; {_quota_details(response)}"
                 )
     return f"- gemini {label}: {limit} requests accepted in {time.perf_counter() - start:.0f} s"
 
@@ -153,18 +171,34 @@ async def _probe_gemini_rpm(label: str, url: str, body: dict[str, Any], limit: i
 async def _probe_gemini() -> list[str]:
     base = "https://generativelanguage.googleapis.com/v1beta/models"
     tiny = {"contents": [{"parts": [{"text": "hi"}]}], "generationConfig": {"maxOutputTokens": 1}}
-    embed = {"content": {"parts": [{"text": "hi"}]}, "outputDimensionality": 1024}
+    # The same batch endpoint the app uses, one text per request.
+    embed = {
+        "requests": [
+            {
+                "model": "models/gemini-embedding-001",
+                "content": {"parts": [{"text": "hi"}]},
+                "outputDimensionality": 1024,
+            }
+        ]
+    }
     return [
         await _probe_gemini_rpm(model, f"{base}/{model}:generateContent", tiny, limit=40)
         for model in ("gemini-3.5-flash", "gemini-3.5-flash-lite")
     ] + [
         await _probe_gemini_rpm(
-            "gemini-embedding-001", f"{base}/gemini-embedding-001:embedContent", embed, limit=120
+            "gemini-embedding-001",
+            f"{base}/gemini-embedding-001:batchEmbedContents",
+            embed,
+            limit=120,
         )
     ]
 
 
-def _quota_details(body: dict[str, Any]) -> str:
+def _quota_details(response: httpx2.Response) -> str:
+    try:
+        body = response.json()
+    except ValueError:
+        return response.text[:200]
     details = body.get("error", {}).get("details", [])
     violations = [
         f"{v.get('quotaId')}={v.get('quotaValue')}"
@@ -181,11 +215,10 @@ def _median(values: Sequence[float], unit: str) -> str:
 
 async def _main(probe_rpm: bool) -> None:
     s = get_settings()
-    print(
-        f"## Answer models (median of {_RUNS} runs, ~1.6K-token prompt, up to 300 output tokens)\n"
-    )
-    print("| Model | Version | Time to first token | Throughput | Sample |")
-    print("| --- | --- | --- | --- | --- |")
+    print(f"## Answer models (median of {_RUNS} runs, up to 300 output tokens)\n")
+    print("Throughput is output tokens over the whole call, hidden reasoning included.\n")
+    print("| Model | Version | Prompt | First token | Whole answer | Throughput | Sample |")
+    print("| --- | --- | --- | --- | --- | --- | --- |")
     for generator in _generators():
         print(await _measure_generator(generator), flush=True)
 
@@ -207,6 +240,8 @@ async def _main(probe_rpm: bool) -> None:
 
 
 def main() -> None:
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8")  # model output isn't always cp1252-safe
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--probe-rpm", action="store_true", help="burst Gemini to find its limit")
     asyncio.run(_main(parser.parse_args().probe_rpm))

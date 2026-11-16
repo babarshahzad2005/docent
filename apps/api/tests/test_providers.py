@@ -10,6 +10,7 @@ from typing import Any
 import httpx2
 import pytest
 
+from docent_api.providers import _http
 from docent_api.providers.base import (
     Finished,
     GenerationEvent,
@@ -56,6 +57,10 @@ class Recorder:
 
 def replying(status: int = 200, **kwargs: Any) -> Recorder:
     return Recorder(lambda _: httpx2.Response(status, **kwargs))
+
+
+def gemini_text(text: str) -> dict[str, Any]:
+    return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
 
 
 def sse(*events: dict[str, Any] | str) -> bytes:
@@ -124,7 +129,7 @@ def test_a_short_embeddings_response_is_an_error() -> None:
     embedder = VoyageEmbedder("key", dimensions=1, transport=fake.transport)
 
     with pytest.raises(ProviderUnavailable):
-        run(embedder.embed(["one", "two"], Purpose.DOCUMENT))
+        run(embedder.embed(["one", "two"], Purpose.PASSAGE))
 
 
 # --- Gemini -------------------------------------------------------------------------------
@@ -134,7 +139,7 @@ def test_gemini_embeddings_are_normalized() -> None:
     fake = replying(json={"embeddings": [{"values": [3.0, 4.0]}, {"values": [0.0, 2.0]}]})
     embedder = GeminiEmbedder("key", dimensions=2, transport=fake.transport)
 
-    result = run(embedder.embed(["a", "b"], Purpose.DOCUMENT))
+    result = run(embedder.embed(["a", "b"], Purpose.PASSAGE))
 
     assert result.vectors == [[0.6, 0.8], [0.0, 1.0]]
     assert all(math.isclose(math.hypot(*v), 1.0) for v in result.vectors)
@@ -183,7 +188,7 @@ def test_gemini_streams_answer_text_without_thoughts() -> None:
 
 
 def test_gemini_sends_earlier_answers_as_model_turns() -> None:
-    fake = replying(content=sse({"candidates": []}))
+    fake = replying(content=sse(gemini_text("ok")))
     generator = GeminiGenerator("key", "m", transport=fake.transport)
     history = [Message("user", "q1"), Message("assistant", "a1"), Message("user", "q2")]
 
@@ -307,7 +312,11 @@ class ScriptedGenerator:
         return self._name
 
     async def generate(
-        self, system: str, messages: Sequence[Message], max_output_tokens: int = 1024
+        self,
+        system: str,
+        messages: Sequence[Message],
+        max_output_tokens: int = 1024,
+        temperature: float | None = None,
     ) -> AsyncIterator[GenerationEvent]:
         self.calls += 1
         for chunk in self._chunks:
@@ -388,3 +397,119 @@ def test_only_the_adapters_talk_to_providers() -> None:
     ]
 
     assert offenders == []
+
+
+# --- Answers that aren't answers ----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        ({"code": 429, "message": "quota", "status": "RESOURCE_EXHAUSTED"}, RateLimited),
+        ({"code": 500, "message": "internal"}, ProviderUnavailable),
+        ("overloaded", ProviderUnavailable),
+    ],
+)
+def test_errors_reported_inside_the_stream_are_raised(
+    error: object, expected: type[ProviderError]
+) -> None:
+    fake = replying(content=sse({"error": error}))
+
+    for generator in _generators(fake.transport):
+        with pytest.raises(expected, match="error in stream"):
+            run(collect(generator.generate("s", QUESTION)))
+
+
+def test_a_blocked_gemini_answer_is_an_error() -> None:
+    fake = replying(
+        content=sse(
+            {"promptFeedback": {"blockReason": "SAFETY"}},
+            {"candidates": [{"finishReason": "SAFETY"}]},
+        )
+    )
+    generator = GeminiGenerator("key", "m", transport=fake.transport)
+
+    with pytest.raises(ProviderUnavailable, match="SAFETY"):
+        run(collect(generator.generate("s", QUESTION)))
+
+
+def test_a_groq_answer_spent_on_hidden_reasoning_is_an_error() -> None:
+    fake = replying(
+        content=sse(
+            {"choices": [{"delta": {"reasoning": "hmm"}}]},
+            {"choices": [{"delta": {}, "finish_reason": "length"}]},
+            "[DONE]",
+        )
+    )
+    generator = GroqGenerator("key", "m", transport=fake.transport)
+
+    with pytest.raises(ProviderUnavailable, match="length"):
+        run(collect(generator.generate("s", QUESTION)))
+
+
+def test_the_backup_answers_when_the_primary_returns_nothing() -> None:
+    empty = replying(content=sse({"choices": [{"delta": {}, "finish_reason": "length"}]}))
+    backup = ScriptedGenerator("backup", ["answer"])
+    generator = FallbackGenerator(GroqGenerator("key", "m", transport=empty.transport), backup)
+
+    text, usage = run(collect(generator.generate("s", QUESTION)))
+
+    assert (text, usage.fell_back_from) == ("answer", "groq:m")
+
+
+def test_temperature_is_sent_only_when_set() -> None:
+    gemini = replying(content=sse(gemini_text("ok")))
+    groq = replying(content=sse({"choices": [{"delta": {"content": "ok"}}]}))
+
+    run(collect(GeminiGenerator("k", "m", transport=gemini.transport).generate("s", QUESTION)))
+    run(collect(GroqGenerator("k", "m", transport=groq.transport).generate("s", QUESTION, 9, 0)))
+
+    assert "temperature" not in gemini.body()["generationConfig"]
+    assert groq.body()["temperature"] == 0
+
+
+def test_a_call_that_takes_too_long_is_cut_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def slow(request: httpx2.Request) -> httpx2.Response:
+        await asyncio.sleep(5)
+        return httpx2.Response(200, json={})
+
+    monkeypatch.setattr(_http, "DEADLINE_SECONDS", 0.05)
+    transport = httpx2.MockTransport(slow)
+
+    with pytest.raises(ProviderUnavailable, match="too long"):
+        run(GeminiEmbedder("key", transport=transport).embed(["a"], Purpose.QUERY))
+    with pytest.raises(ProviderUnavailable, match="too long"):
+        run(collect(GroqGenerator("key", "m", transport=transport).generate("s", QUESTION)))
+
+
+def test_gemini_embeds_large_inputs_in_batches_of_100() -> None:
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        count = len(json.loads(request.content)["requests"])
+        return httpx2.Response(200, json={"embeddings": [{"values": [1.0]}] * count})
+
+    fake = Recorder(respond)
+    embedder = GeminiEmbedder("key", dimensions=1, transport=fake.transport)
+
+    result = run(embedder.embed([f"t{n}" for n in range(250)], Purpose.PASSAGE))
+
+    assert len(result.vectors) == 250
+    assert [len(fake.body(n)["requests"]) for n in range(3)] == [100, 100, 50]
+
+
+def test_gemini_says_when_its_quota_resets() -> None:
+    body = {
+        "error": {
+            "code": 429,
+            "message": "quota",
+            "details": [
+                {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": []},
+                {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "28s"},
+            ],
+        }
+    }
+    fake = replying(429, json=body)
+
+    with pytest.raises(RateLimited) as raised:
+        run(GeminiEmbedder("key", transport=fake.transport).embed(["a"], Purpose.QUERY))
+
+    assert raised.value.retry_after == 28.0
