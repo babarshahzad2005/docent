@@ -7,7 +7,7 @@ import {
   type DocumentSummary,
   finishUpload,
   listDocuments,
-  resumeProcessing,
+  retryDocument,
   startUpload,
 } from "@/app/documents-actions";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,6 @@ import { createClient } from "@/lib/supabase/client";
 
 const ACCEPT = ".md,.markdown,.txt,text/markdown,text/plain";
 const POLL_MS = 2000;
-// While Documents are processing, nudge the server this often in case a batch paused.
-const RESUME_EVERY_POLLS = 30;
 
 type Status = DocumentSummary["status"];
 
@@ -56,12 +54,9 @@ export function LibraryDocuments({
   useEffect(() => {
     if (!processing) return;
     let stopped = false;
-    let polls = 0;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      polls += 1;
       try {
-        if (polls % RESUME_EVERY_POLLS === 0) await resumeProcessing();
         const result = await listDocuments();
         if (stopped) return;
         if (!result.ok) {
@@ -207,14 +202,34 @@ export function LibraryDocuments({
       {messages}
       <ul aria-label="Documents" className="flex flex-col border-t border-border">
         {documents.map((document) => (
-          <DocumentRow key={document.id} document={document} />
+          <DocumentRow
+            key={document.id}
+            document={document}
+            onRetry={async () => {
+              const retried = await retryDocument(document.id);
+              if (retried.ok) {
+                setErrors([]);
+                setDocuments((current) =>
+                  current.map((d) => (d.id === document.id ? retried.value : d)),
+                );
+              } else {
+                setErrors([retried.message]);
+              }
+            }}
+          />
         ))}
       </ul>
     </div>
   );
 }
 
-function DocumentRow({ document }: { document: DocumentSummary }) {
+function DocumentRow({
+  document,
+  onRetry,
+}: {
+  document: DocumentSummary;
+  onRetry: () => Promise<void>;
+}) {
   const failed = document.status === "failed";
   const tone = failed
     ? "text-destructive"
@@ -237,8 +252,20 @@ function DocumentRow({ document }: { document: DocumentSummary }) {
       <span className="text-meta text-muted-foreground tabular-nums">
         {formatSize(document.size_bytes)}
       </span>
-      {failed && document.failure_reason && (
-        <p className="text-meta text-destructive">{document.failure_reason}</p>
+      {failed && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {document.failure_reason && (
+            <p className="text-meta text-destructive">{document.failure_reason}</p>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={`Retry ${document.name}`}
+            onClick={() => void onRetry()}
+          >
+            Retry
+          </Button>
+        </div>
       )}
     </li>
   );

@@ -118,6 +118,17 @@ def start_upload(
 
 def finish_upload(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -> DocumentSummary:
     """The file is stored: queue the Document for ingestion. Repeating the call is harmless."""
+    return _requeue(conn, user_id, document_id, from_status="uploading")
+
+
+def retry_document(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -> DocumentSummary:
+    """Queue a failed Document again, with a fresh count of attempts. Harmless otherwise."""
+    return _requeue(conn, user_id, document_id, from_status="failed")
+
+
+def _requeue(
+    conn: Connection[DictRow], user_id: UUID, document_id: UUID, from_status: DocumentStatus
+) -> DocumentSummary:
     row = conn.execute(
         f"""
         select {_SUMMARY_COLUMNS}, m.role
@@ -131,16 +142,18 @@ def finish_upload(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -
         raise DocumentNotFound(document_id)
     if row["role"] not in ("owner", "editor"):
         raise NotAllowed(row["collection_id"])
-    if row["status"] != "uploading":
+    if row["status"] != from_status:
         return DocumentSummary.model_validate(row)
     with conn.transaction():
         queued = conn.execute(
             f"""
-            update app.documents d set status = 'queued', updated_at = now()
-            where d.id = %(id)s and d.status = 'uploading'
+            update app.documents d
+            set status = 'queued', failure_reason = null, attempts = 0, claims = 0,
+                locked_until = null, updated_at = now()
+            where d.id = %(id)s and d.status = %(from_status)s
             returning {_SUMMARY_COLUMNS}
             """,
-            {"id": document_id},
+            {"id": document_id, "from_status": from_status},
         ).fetchone()
     return DocumentSummary.model_validate(queued or row)
 

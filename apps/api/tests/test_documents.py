@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from psycopg import Connection
 from psycopg.rows import DictRow, dict_row
 
+from docent_api import main
 from docent_api.auth import AuthUser, current_user
 from docent_api.db import get_connection
 from docent_api.documents import (
@@ -19,12 +20,14 @@ from docent_api.documents import (
     UploadRejected,
     finish_upload,
     list_documents,
+    retry_document,
     start_upload,
 )
 from docent_api.ingestion import MAX_ATTEMPTS, MAX_CLAIMS, _claim, run_batch
 from docent_api.library import ensure_user, list_collections
 from docent_api.main import app
 from docent_api.providers.base import Embeddings, Purpose, RateLimited, Usage
+from docent_api.scheduler import set_trigger_token
 from docent_api.storage import FileMissing, SignedUpload, get_file_store
 
 POLICY = b"# Leave\n\n## Carry-over\n\nUp to 10 days.\n\n## Footer\n\nCompany confidential.\n"
@@ -504,3 +507,105 @@ def test_a_refused_upload_explains_why(
 
 def test_an_unknown_document_is_not_found(client: TestClient) -> None:
     assert client.post(f"/documents/{uuid4()}/uploaded").status_code == 404
+
+
+# --- Retry --------------------------------------------------------------------------------
+
+
+def test_retrying_a_failed_document_queues_it_with_a_fresh_count(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "blank.md", b"# Title only")
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    conn.execute("update app.documents set attempts = 4, claims = 9 where id = %s", (document_id,))
+    conn.commit()
+
+    retried = retry_document(conn, user.id, document_id)
+    conn.commit()
+
+    assert (retried.status, retried.failure_reason) == ("queued", None)
+    row = conn.execute(
+        "select attempts, claims, locked_until from app.documents where id = %s", (document_id,)
+    ).fetchone()
+    conn.commit()
+    assert row == {"attempts": 0, "claims": 0, "locked_until": None}
+
+
+def test_retrying_a_document_that_hasnt_failed_changes_nothing(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "a.txt", b"text")
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert retry_document(conn, user.id, document_id).status == "indexed"
+
+
+def test_only_editors_can_retry(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "blank.md", b"# Title only")
+    stranger = AuthUser(id=uuid4(), email="stranger@example.com")
+    ensure_user(conn, stranger)
+    conn.commit()
+
+    with pytest.raises(DocumentNotFound):
+        retry_document(conn, stranger.id, document_id)
+
+
+def test_the_retry_endpoint_queues_the_document(
+    client: TestClient, conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "blank.md", b"# Title only")
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    response = client.post(f"/documents/{document_id}/retry")
+
+    assert response.json()["status"] == "queued"
+
+
+# --- Scheduler ----------------------------------------------------------------------------
+
+
+@pytest.fixture
+def scheduler_token(conn: Connection[DictRow]) -> Iterator[str]:
+    set_trigger_token(conn, "the-real-token")
+    conn.commit()
+    yield "the-real-token"
+    conn.execute("delete from app.trigger_tokens")
+    conn.commit()
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Bearer guessed"}, {"Authorization": "Basic the-real-token"}],
+    ids=["none", "wrong-token", "wrong-scheme"],
+)
+def test_only_the_scheduler_can_start_a_scheduled_batch(
+    client: TestClient, scheduler_token: str, headers: dict[str, str]
+) -> None:
+    assert client.post("/ingestion/scheduled", headers=headers).status_code == 401
+
+
+def test_without_a_token_set_up_nothing_can_start_a_scheduled_batch(client: TestClient) -> None:
+    response = client.post("/ingestion/scheduled", headers={"Authorization": "Bearer "})
+
+    assert response.status_code == 401
+
+
+def test_the_scheduler_processes_waiting_documents(
+    client: TestClient,
+    conn: Connection[DictRow],
+    store: FakeStore,
+    user: AuthUser,
+    scheduler_token: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    monkeypatch.setattr(main, "embedder", FakeEmbedder)
+
+    response = client.post(
+        "/ingestion/scheduled", headers={"Authorization": f"Bearer {scheduler_token}"}
+    )
+
+    assert response.json() == {"indexed": 1, "failed": 0, "remaining": 0, "ran": True}
+    assert status(conn, document_id) == ("indexed", None)

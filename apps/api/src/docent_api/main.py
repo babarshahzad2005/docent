@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection
 from psycopg.rows import DictRow
 from pydantic import BaseModel
@@ -18,11 +19,13 @@ from docent_api.documents import (
     UploadRejected,
     finish_upload,
     list_documents,
+    retry_document,
     start_upload,
 )
 from docent_api.ingestion import run_batch
 from docent_api.library import CollectionSummary, ensure_user, list_collections
 from docent_api.providers.registry import embedder
+from docent_api.scheduler import is_valid_trigger
 from docent_api.storage import FileStore, StorageError, get_file_store
 
 app = FastAPI(title="Docent API", version=__version__)
@@ -34,6 +37,9 @@ Files = Annotated[FileStore, Depends(get_file_store)]
 # Leaves room inside Vercel's 5-minute function limit for a last provider call (30 s timeout
 # between chunks) and everything around the batch.
 INGESTION_BATCH_SECONDS = 200.0
+
+_NOT_FOUND = "That document doesn't exist."
+_CANT_EDIT = "You can't add documents to this collection."
 
 
 class Health(BaseModel):
@@ -114,9 +120,7 @@ def new_document(body: NewDocument, user: User, conn: Db, files: Files) -> Start
     except UploadRejected as rejected:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(rejected)) from None
     except NotAllowed:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "You can't add documents to this collection."
-        ) from None
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_EDIT) from None
     except StorageError:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -134,17 +138,45 @@ def uploaded(document_id: UUID, user: User, conn: Db) -> DocumentSummary:
     try:
         return finish_upload(conn, user.id, document_id)
     except DocumentNotFound:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "That document doesn't exist.") from None
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_FOUND) from None
     except NotAllowed:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "You can't add documents to this collection."
-        ) from None
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_EDIT) from None
+
+
+@app.post("/documents/{document_id}/retry", operation_id="retryDocument", tags=["documents"])
+def retry(document_id: UUID, user: User, conn: Db) -> DocumentSummary:
+    """Queue a failed Document again."""
+    try:
+        return retry_document(conn, user.id, document_id)
+    except DocumentNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_FOUND) from None
+    except NotAllowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_EDIT) from None
 
 
 @app.post("/ingestion/run", operation_id="runIngestion", tags=["documents"])
 def run_ingestion(user: User, conn: Db, files: Files) -> IngestionRun:
     """Process queued Documents for a few minutes. Returns at once if a batch is already running,
     so calling it again can't multiply the work."""
+    return _run_batch(conn, files)
+
+
+_scheduler_bearer = HTTPBearer(auto_error=False)
+
+
+@app.post("/ingestion/scheduled", include_in_schema=False)
+def scheduled_ingestion(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_scheduler_bearer)],
+    conn: Db,
+    files: Files,
+) -> IngestionRun:
+    """Called every minute by the database's scheduler, and by nothing else (see scheduler.py)."""
+    if credentials is None or not is_valid_trigger(conn, credentials.credentials):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not the scheduler.")
+    return _run_batch(conn, files)
+
+
+def _run_batch(conn: Connection[DictRow], files: FileStore) -> IngestionRun:
     result = run_batch(conn, files, embedder(), INGESTION_BATCH_SECONDS)
     return IngestionRun(
         indexed=result.indexed, failed=result.failed, remaining=result.remaining, ran=result.ran

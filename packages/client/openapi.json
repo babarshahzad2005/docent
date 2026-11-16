@@ -386,6 +386,55 @@
         ]
       }
     },
+    "/documents/{document_id}/retry": {
+      "post": {
+        "description": "Queue a failed Document again.",
+        "operationId": "retryDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/documents/{document_id}/uploaded": {
       "post": {
         "description": "The file is stored: queue the Document for ingestion.",
