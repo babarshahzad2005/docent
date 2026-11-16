@@ -166,6 +166,7 @@ No fixed deadline; each milestone has a target duration to keep scope honest. Ea
 | 2026-11-15 | Eval Set: drafted from demo docs, every item human-reviewed; unanswerable and conflict items hand-written | Review makes the measurement trustworthy |
 | 2026-11-15 | Backend on Render free tier, kept awake by a scheduled ping | No card required; one always-on service fits the free hours |
 | 2026-11-15 | One backend service (API + worker loop), Postgres job queue, no Redis | [ADR 0005](./adr/0005-single-backend-service-postgres-queue.md) |
+| 2026-11-16 | API on Vercel's Python runtime (Singapore); background work in short scheduled batches. Supersedes the Render and worker-loop decisions above | Free always-on Python hosts now require a card; [ADR 0008](./adr/0008-api-on-vercel-functions.md) |
 | 2026-11-15 | Supabase for database, auth, and file storage | [ADR 0006](./adr/0006-supabase-for-database-auth-storage.md) |
 | 2026-11-15 | Upload limits: 20 MB/file, 300 pages/Document, 100 MB/User | Fits free storage; configurable |
 | 2026-11-15 | Voyage for embeddings and reranking; answer LLM chosen in M0 between Gemini and Groq by measured quota, the other as fallback | Free limits are unpublished or inconsistent; measure, don't assume |
