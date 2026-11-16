@@ -45,7 +45,35 @@ Results, methodology, and cost per answer will be published here once the eval s
 
 ## Getting started
 
-Setup instructions will be added with the first runnable milestone (M0). Configuration variables are listed in [.env.example](.env.example).
+**Requirements:** Node.js 22 or newer, [pnpm](https://pnpm.io), [uv](https://docs.astral.sh/uv/), and Python 3.13 (uv can install it for you).
+
+```bash
+pnpm install                     # web app and shared packages
+uv --directory apps/api sync     # API and its dev tools
+pnpm dev                         # API on :8000, web app on :3000
+```
+
+Open http://localhost:3000. The home page shows whether the web app can reach the API.
+
+Configuration variables are listed in [.env.example](.env.example).
+
+### Repository layout
+
+| Path | What it is |
+|---|---|
+| `apps/web` | Next.js web app |
+| `apps/api` | FastAPI service (API and background worker) |
+| `packages/client` | TypeScript client generated from the API's OpenAPI schema |
+| `evals` | Eval Set and quality harness |
+| `docs` | Requirements, architecture, and decision records |
+
+### Common tasks
+
+| Command | Does |
+|---|---|
+| `pnpm lint` / `pnpm typecheck` / `pnpm test` | Checks for the web app and client |
+| `uv --directory apps/api run pytest` | API tests (CI also runs `ruff format --check .`, `ruff check .`, and `mypy`) |
+| `pnpm gen:client` | Regenerate the API client after changing an API route or model |
 
 ## License
 

@@ -1,0 +1,19 @@
+{
+  "name": "docent",
+  "private": true,
+  "packageManager": "pnpm@12.10.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently --names api,web --prefix-colors green,blue \"pnpm dev:api\" \"pnpm --filter web dev\"",
+    "dev:api": "uv --directory apps/api run uvicorn docent_api.main:app --reload --port 8000",
+    "gen:client": "uv --directory apps/api run docent-export-openapi ../../packages/client/openapi.json && pnpm --filter @docent/client generate",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.7"
+  }
+}

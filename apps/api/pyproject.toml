@@ -1,0 +1,41 @@
+[project]
+name = "docent-api"
+version = "0.1.0"
+description = "Docent API: ingestion, retrieval, and cited answers."
+authors = [{ name = "M. Babar Shahzad" }]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.163.1",
+    "pydantic>=2.14.3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+docent-export-openapi = "docent_api.openapi:main"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.16.0",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+packages = ["docent_api"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
