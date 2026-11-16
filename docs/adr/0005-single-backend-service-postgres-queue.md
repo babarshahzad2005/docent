@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0008
+---
+
 # One backend service with a Postgres job queue (no Redis) for v1
 
 ARCHITECTURE.md describes a separate API, separate ingest workers, and Redis. On a $0 budget each would be a separately hosted free service, and free services sleep when idle. For v1, a single Python service runs both the HTTP API and a background worker loop, and ingestion jobs are queued in a Postgres table (claimed with row locking) instead of Redis. One always-on service fits within a free hosting allowance when kept awake by a scheduled ping. The API and worker share code but not runtime assumptions, so splitting them into separate deployments later — and adding Redis if throughput demands it — is a deployment change, not a rewrite.
