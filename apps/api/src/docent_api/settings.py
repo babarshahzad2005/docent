@@ -13,6 +13,12 @@ class Settings(BaseSettings):
 
     supabase_url: str = ""
     database_url: str = ""
+    voyage_api_key: str = ""
+    gemini_api_key: str = ""
+    groq_api_key: str = ""
+    # "provider:model"; chosen from measurements in ADR 0010.
+    answer_model: str = "groq:openai/gpt-oss-120b"
+    fallback_answer_model: str = "gemini:gemini-3.5-flash-lite"
 
     @property
     def auth_issuer(self) -> str:

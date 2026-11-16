@@ -72,6 +72,10 @@ The web app reads `apps/web/.env.local` (its variables are listed at the bottom 
 
 Tables live in a private `app` schema that Supabase's auto-generated Data API can't reach ([ADR 0009](docs/adr/0009-private-app-schema.md)). Migrations are versioned in `apps/api/src/docent_api/migrations` and applied with `docent-migrate`: CI applies them to a fresh database on every pull request, and production deployments apply them during the API's build. Preview deployments never touch the production database.
 
+### Models
+
+Every model call goes through one provider interface in `apps/api/src/docent_api/providers`. Answers come from Groq (`openai/gpt-oss-120b`), falling back to Gemini (`gemini-3.5-flash-lite`) if Groq fails, is rate-limited, or returns no text; embeddings come from Gemini and reranking from Voyage. The choice was made from measured free-tier limits and speeds, recorded in [ADR 0010](docs/adr/0010-model-choice-by-measured-quota.md). Run `uv --directory apps/api run docent-measure-models` to measure again.
+
 ### Repository layout
 
 | Path | What it is |
@@ -88,6 +92,7 @@ Tables live in a private `app` schema that Supabase's auto-generated Data API ca
 |---|---|
 | `pnpm lint` / `pnpm typecheck` / `pnpm test` | Checks for the web app and client |
 | `uv --directory apps/api run pytest` | API tests (CI also runs `ruff format --check .`, `ruff check .`, and `mypy`) |
+| `uv --directory apps/api run docent-measure-models` | Measure each model provider's speed and free-tier limits (uses real keys and a little quota) |
 | `pnpm gen:client` | Regenerate the API client after changing an API route or model |
 
 ## License
