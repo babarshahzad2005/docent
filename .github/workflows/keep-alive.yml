@@ -1,7 +1,7 @@
 name: Keep API awake
 
-# The free Render plan sleeps after 15 idle minutes, and waking takes about a minute.
-# Pinging every 10 minutes keeps first answers fast (PRD › decision log, ADR 0005).
+# Regular traffic keeps the API's functions warm and, once connected, stops the free
+# database from pausing after 7 idle days (ADR 0006, ADR 0008).
 on:
   schedule:
     - cron: "*/10 * * * *"

@@ -44,9 +44,9 @@ Full requirements: [docs/PRD.md](docs/PRD.md). Terminology: [GLOSSARY.md](GLOSSA
 | Part | Host | Config |
 |---|---|---|
 | Web app | Vercel (Hobby), root directory `apps/web` | Preview deployment for every pull request |
-| API | Render (free), from [`render.yaml`](render.yaml) | Deploys from `main` after CI passes |
+| API | Vercel Python runtime, root directory `apps/api` ([ADR 0008](docs/adr/0008-api-on-vercel-functions.md)) | Preview deployment for every pull request |
 
-The free API instance sleeps after 15 idle minutes, so a scheduled workflow ([`keep-alive.yml`](.github/workflows/keep-alive.yml)) pings it every 10 minutes. Dependencies are kept current by Dependabot.
+Both run in Vercel's Singapore region, next to the database. A scheduled workflow ([`keep-alive.yml`](.github/workflows/keep-alive.yml)) pings the API every 10 minutes, which also keeps the free database from pausing once it's connected. Dependencies are kept current by Dependabot.
 
 ## Evaluation
 
