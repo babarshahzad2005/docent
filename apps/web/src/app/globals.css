@@ -1,0 +1,11 @@
+/* Placeholder base styles. The design system from DESIGN.md replaces these in the app shell work. */
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  padding: 2rem;
+  font-family: system-ui, sans-serif;
+  line-height: 1.55;
+}
