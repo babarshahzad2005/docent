@@ -1,0 +1,19 @@
+name: Keep API awake
+
+# The free Render plan sleeps after 15 idle minutes, and waking takes about a minute.
+# Pinging every 10 minutes keeps first answers fast (PRD › decision log, ADR 0005).
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    name: Ping API health
+    runs-on: ubuntu-latest
+    if: vars.API_URL != ''
+    steps:
+      - name: Request /health
+        run: curl --fail --silent --show-error --max-time 90 --retry 2 "${{ vars.API_URL }}/health"
