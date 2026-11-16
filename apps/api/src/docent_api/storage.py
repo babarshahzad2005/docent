@@ -16,6 +16,7 @@ import httpx2
 from docent_api.settings import get_settings
 
 BUCKET = "documents"
+BUCKET_SETTINGS = {"public": False, "file_size_limit": 20 * 1024 * 1024}
 _TIMEOUT = httpx2.Timeout(60.0, connect=5.0)
 
 
@@ -76,6 +77,16 @@ class SupabaseFileStore:
         with self._client() as client:
             self._send(client, "DELETE", f"/object/{BUCKET}", json={"prefixes": list(paths)})
 
+    def ensure_bucket(self) -> bool:
+        """Create the private bucket if it doesn't exist. Returns True if it was created."""
+        with self._client() as client:
+            existing = client.get(f"{self._base}/bucket/{BUCKET}")
+            if existing.status_code == 200:
+                self._send(client, "PUT", f"/bucket/{BUCKET}", json=BUCKET_SETTINGS)
+                return False
+            self._send(client, "POST", "/bucket", json={"id": BUCKET, **BUCKET_SETTINGS})
+            return True
+
     def _send(
         self, client: httpx2.Client, method: str, url: str, json: object = None
     ) -> httpx2.Response:
@@ -95,3 +106,12 @@ class SupabaseFileStore:
 def get_file_store() -> FileStore:
     settings = get_settings()
     return SupabaseFileStore(settings.supabase_url, settings.supabase_secret_key)
+
+
+def main() -> None:
+    """Create or update the private `documents` bucket: `uv run docent-setup-storage`."""
+    settings = get_settings()
+    if not settings.supabase_url or not settings.supabase_secret_key:
+        raise SystemExit("Set SUPABASE_URL and SUPABASE_SECRET_KEY first.")
+    created = SupabaseFileStore(settings.supabase_url, settings.supabase_secret_key).ensure_bucket()
+    print(f"Bucket '{BUCKET}' {'created' if created else 'already exists; settings checked'}.")

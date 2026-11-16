@@ -91,9 +91,11 @@ def start_upload(
     if size_bytes <= 0:
         raise UploadRejected(f"{name} is empty.")
 
+    _require_editor(conn, user_id, collection_id)
+    document_id = uuid4()
+    # Signing first keeps the network call out of the database transaction.
+    upload = store.signed_upload(f"{collection_id}/{document_id}{extension}")
     with conn.transaction():
-        _require_editor(conn, user_id, collection_id)
-        document_id = uuid4()
         row = conn.execute(
             f"""
             insert into app.documents as d
@@ -107,37 +109,40 @@ def start_upload(
                 "user_id": user_id,
                 "name": name,
                 "size": size_bytes,
-                "path": f"{collection_id}/{document_id}{extension}",
+                "path": upload.path,
             },
         ).fetchone()
-        assert row is not None
-        upload = store.signed_upload(f"{collection_id}/{document_id}{extension}")
+    assert row is not None
     return DocumentSummary.model_validate(row), upload
 
 
 def finish_upload(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -> DocumentSummary:
     """The file is stored: queue the Document for ingestion. Repeating the call is harmless."""
+    row = conn.execute(
+        f"""
+        select {_SUMMARY_COLUMNS}, m.role
+        from app.documents d
+        join app.memberships m on m.collection_id = d.collection_id
+        where d.id = %(id)s and m.user_id = %(user_id)s
+        """,
+        {"id": document_id, "user_id": user_id},
+    ).fetchone()
+    if row is None:
+        raise DocumentNotFound(document_id)
+    if row["role"] not in ("owner", "editor"):
+        raise NotAllowed(row["collection_id"])
+    if row["status"] != "uploading":
+        return DocumentSummary.model_validate(row)
     with conn.transaction():
-        row = conn.execute(
+        queued = conn.execute(
             f"""
-            update app.documents d
-            set status = 'queued', updated_at = now()
-            from app.memberships m
-            where d.id = %(id)s
-              and m.collection_id = d.collection_id
-              and m.user_id = %(user_id)s
-              and m.role in ('owner', 'editor')
-              and d.status = 'uploading'
+            update app.documents d set status = 'queued', updated_at = now()
+            where d.id = %(id)s and d.status = 'uploading'
             returning {_SUMMARY_COLUMNS}
             """,
-            {"id": document_id, "user_id": user_id},
+            {"id": document_id},
         ).fetchone()
-    if row is not None:
-        return DocumentSummary.model_validate(row)
-    existing = next((d for d in list_documents(conn, user_id) if d.id == document_id), None)
-    if existing is None:
-        raise DocumentNotFound(document_id)
-    return existing
+    return DocumentSummary.model_validate(queued or row)
 
 
 def clean_name(name: str) -> str:

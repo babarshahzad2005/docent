@@ -49,10 +49,25 @@ export async function finishUpload(documentId: string): Promise<Result<DocumentS
     params: { path: { document_id: documentId } },
   });
   if (!data) return { ok: false, message: problem(response.status) };
+  processInBackground(caller);
+  return { ok: true, value: data };
+}
+
+/**
+ * Nudge processing along while the Library is open, for Documents that paused (the free
+ * embedding quota ran out) or are waiting to retry. The API runs one batch at a time, so extra
+ * nudges cost nothing.
+ */
+export async function resumeProcessing(): Promise<void> {
+  const caller = await apiAsUser();
+  if (caller) processInBackground(caller);
+}
+
+/** Starts a batch after the response is sent; the function stays alive until it finishes. */
+function processInBackground(caller: NonNullable<Awaited<ReturnType<typeof apiAsUser>>>) {
   after(async () => {
     await caller.api.POST("/ingestion/run", { headers: caller.headers });
   });
-  return { ok: true, value: data };
 }
 
 function detail(error: unknown): string | undefined {

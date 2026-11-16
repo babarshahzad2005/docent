@@ -150,6 +150,10 @@
             "title": "Indexed",
             "type": "integer"
           },
+          "ran": {
+            "title": "Ran",
+            "type": "boolean"
+          },
           "remaining": {
             "title": "Remaining",
             "type": "integer"
@@ -158,7 +162,8 @@
         "required": [
           "indexed",
           "failed",
-          "remaining"
+          "remaining",
+          "ran"
         ],
         "title": "IngestionRun",
         "type": "object"
@@ -476,7 +481,7 @@
     },
     "/ingestion/run": {
       "post": {
-        "description": "Process queued Documents for up to four minutes. Safe to call while another run is going.",
+        "description": "Process queued Documents for a few minutes. Returns at once if a batch is already running,\nso calling it again can't multiply the work.",
         "operationId": "runIngestion",
         "responses": {
           "200": {

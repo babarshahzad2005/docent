@@ -2,7 +2,8 @@
 
 A Document's status is its place in the pipeline (FLOWS.md, "Doc status"). Workers claim a
 Document by setting `locked_until`; a crashed or timed-out batch simply lets the lease expire
-and the next batch picks the Document up where it stopped (ADR 0008).
+and the next batch picks the Document up where it stopped (ADR 0008). `claims` counts how often
+a Document was picked up, so one that keeps killing its batch is eventually marked failed.
 
 Each chunk records the Collection it belongs to (ADR 0002), so retrieval can filter on it
 directly, and the embedding model that made its vector (ARCHITECTURE.md, "Decisions").
@@ -39,6 +40,7 @@ def upgrade() -> None:
             status app.document_status not null default 'uploading',
             failure_reason text,
             attempts integer not null default 0,
+            claims integer not null default 0,
             locked_until timestamptz,
             effective_date date not null default current_date,
             created_at timestamptz not null default now(),
@@ -78,11 +80,23 @@ def upgrade() -> None:
         using hnsw (embedding extensions.vector_cosine_ops)
         """
     )
-    for table in ("documents", "chunks"):
+    # One ingestion batch at a time: a single-row lease, because session advisory locks don't
+    # survive Supabase's transaction pooler.
+    op.execute(
+        """
+        create table app.ingestion_lease (
+            id boolean primary key default true check (id),
+            held_until timestamptz not null default '-infinity'
+        )
+        """
+    )
+    op.execute("insert into app.ingestion_lease default values")
+    for table in ("documents", "chunks", "ingestion_lease"):
         op.execute(f"alter table app.{table} enable row level security")
 
 
 def downgrade() -> None:
+    op.execute("drop table app.ingestion_lease")
     op.execute("drop table app.chunks")
     op.execute("drop table app.documents")
     op.execute("drop type app.document_status")

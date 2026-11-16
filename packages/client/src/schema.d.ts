@@ -99,7 +99,8 @@ export interface paths {
         put?: never;
         /**
          * Run Ingestion
-         * @description Process queued Documents for up to four minutes. Safe to call while another run is going.
+         * @description Process queued Documents for a few minutes. Returns at once if a batch is already running,
+         *     so calling it again can't multiply the work.
          */
         post: operations["runIngestion"];
         delete?: never;
@@ -209,6 +210,8 @@ export interface components {
             failed: number;
             /** Indexed */
             indexed: number;
+            /** Ran */
+            ran: boolean;
             /** Remaining */
             remaining: number;
         };

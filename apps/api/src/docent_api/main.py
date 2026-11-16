@@ -31,8 +31,9 @@ User = Annotated[AuthUser, Depends(current_user)]
 Db = Annotated[Connection[DictRow], Depends(get_connection)]
 Files = Annotated[FileStore, Depends(get_file_store)]
 
-# Leaves a minute of Vercel's 5-minute function limit for everything around the batch.
-INGESTION_BATCH_SECONDS = 240.0
+# Leaves room inside Vercel's 5-minute function limit for a last provider call (30 s timeout
+# between chunks) and everything around the batch.
+INGESTION_BATCH_SECONDS = 200.0
 
 
 class Health(BaseModel):
@@ -68,6 +69,7 @@ class IngestionRun(BaseModel):
     indexed: int
     failed: int
     remaining: int
+    ran: bool
 
 
 @app.get("/health", operation_id="getHealth", tags=["system"])
@@ -133,10 +135,17 @@ def uploaded(document_id: UUID, user: User, conn: Db) -> DocumentSummary:
         return finish_upload(conn, user.id, document_id)
     except DocumentNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That document doesn't exist.") from None
+    except NotAllowed:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "You can't add documents to this collection."
+        ) from None
 
 
 @app.post("/ingestion/run", operation_id="runIngestion", tags=["documents"])
 def run_ingestion(user: User, conn: Db, files: Files) -> IngestionRun:
-    """Process queued Documents for up to four minutes. Safe to call while another run is going."""
+    """Process queued Documents for a few minutes. Returns at once if a batch is already running,
+    so calling it again can't multiply the work."""
     result = run_batch(conn, files, embedder(), INGESTION_BATCH_SECONDS)
-    return IngestionRun(indexed=result.indexed, failed=result.failed, remaining=result.remaining)
+    return IngestionRun(
+        indexed=result.indexed, failed=result.failed, remaining=result.remaining, ran=result.ran
+    )

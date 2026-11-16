@@ -13,6 +13,7 @@ from psycopg.rows import DictRow, dict_row
 from docent_api.auth import AuthUser, current_user
 from docent_api.db import get_connection
 from docent_api.documents import (
+    MAX_FILE_BYTES,
     DocumentNotFound,
     NotAllowed,
     UploadRejected,
@@ -20,7 +21,7 @@ from docent_api.documents import (
     list_documents,
     start_upload,
 )
-from docent_api.ingestion import _claim, run_batch
+from docent_api.ingestion import MAX_ATTEMPTS, MAX_CLAIMS, _claim, run_batch
 from docent_api.library import ensure_user, list_collections
 from docent_api.main import app
 from docent_api.providers.base import Embeddings, Purpose, RateLimited, Usage
@@ -47,16 +48,19 @@ class FakeStore:
 
 
 class FakeEmbedder:
-    """Returns a distinct unit vector per call; can be told to rate-limit the next calls."""
+    """Returns a unit vector per text; can be told to rate-limit, or to break."""
 
     dimensions = 1024
 
-    def __init__(self) -> None:
+    def __init__(self, broken: Exception | None = None) -> None:
         self.texts: list[str] = []
         self.limits: list[float] = []
+        self.broken = broken
 
     async def embed(self, texts: Sequence[str], purpose: Purpose) -> Embeddings:
         assert purpose is Purpose.PASSAGE
+        if self.broken:
+            raise self.broken
         if self.limits:
             raise RateLimited("fake", "slow down", retry_after=self.limits.pop(0))
         self.texts += texts
@@ -200,6 +204,22 @@ def test_finishing_an_upload_queues_the_document_once(
     assert finish_upload(conn, user.id, document.id).status == "queued"
 
 
+def test_viewers_cant_queue_a_document(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document, _ = start_upload(conn, store, user.id, personal(conn, user), "a.txt", 5)
+    viewer = AuthUser(id=uuid4(), email="viewer@example.com")
+    ensure_user(conn, viewer)
+    conn.execute(
+        "insert into app.memberships (collection_id, user_id, role) values (%s, %s, 'viewer')",
+        (personal(conn, user), viewer.id),
+    )
+    conn.commit()
+
+    with pytest.raises(NotAllowed):
+        finish_upload(conn, viewer.id, document.id)
+
+
 def test_users_never_see_each_others_documents(
     conn: Connection[DictRow], store: FakeStore, user: AuthUser
 ) -> None:
@@ -267,7 +287,7 @@ def test_a_file_that_never_arrived_fails_with_a_reason(
 
     assert status(conn, document.id) == (
         "failed",
-        "The file never finished uploading. Remove it and upload it again.",
+        "The upload didn't finish. Upload the document again.",
     )
 
 
@@ -280,7 +300,7 @@ def test_a_file_without_text_fails_alone(
     result = run_batch(conn, store, FakeEmbedder(), seconds=240)
 
     assert (result.indexed, result.failed) == (1, 1)
-    assert status(conn, blank) == ("failed", "No text was found in this file.")
+    assert status(conn, blank) == ("failed", "No text was found in this document.")
     assert status(conn, good) == ("indexed", None)
 
 
@@ -354,6 +374,87 @@ def test_running_out_of_time_leaves_the_rest_for_the_next_batch(
 
     assert result.remaining == 1
     assert status(conn, document_id) == ("queued", None)
+
+
+def test_a_document_that_keeps_failing_is_marked_failed(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    embedder = FakeEmbedder(broken=ValueError("unexpected"))
+
+    for _ in range(MAX_ATTEMPTS):
+        run_batch(conn, store, embedder, seconds=240)
+        conn.execute("update app.documents set locked_until = null where id = %s", (document_id,))
+        conn.commit()
+
+    status_, reason = status(conn, document_id)
+    assert status_ == "failed"
+    assert reason is not None and "after several tries" in reason
+
+
+def test_a_document_picked_up_too_often_is_marked_failed(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    conn.execute("update app.documents set claims = %s where id = %s", (MAX_CLAIMS, document_id))
+    conn.commit()
+
+    result = run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert result.failed == 1
+    assert status(conn, document_id)[0] == "failed"
+
+
+def test_uploads_never_reported_finished_fail_after_an_hour(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    stale, _ = start_upload(conn, store, user.id, personal(conn, user), "stale.txt", 5)
+    fresh, _ = start_upload(conn, store, user.id, personal(conn, user), "fresh.txt", 5)
+    conn.execute(
+        "update app.documents set created_at = now() - interval '2 hours' where id = %s",
+        (stale.id,),
+    )
+    conn.commit()
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert status(conn, stale.id) == (
+        "failed",
+        "The upload didn't finish. Upload the document again.",
+    )
+    assert status(conn, fresh.id) == ("uploading", None)
+
+
+def test_the_real_file_size_is_checked_not_the_claimed_one(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document, target = start_upload(conn, store, user.id, personal(conn, user), "big.txt", 10)
+    store.files[target.path] = b"x" * (MAX_FILE_BYTES + 1)
+    finish_upload(conn, user.id, document.id)
+    conn.commit()
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert status(conn, document.id) == (
+        "failed",
+        "This document is larger than 20 MB, the limit per document.",
+    )
+
+
+def test_only_one_batch_runs_at_a_time(
+    database_url: str, conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "a.txt", b"one")
+    conn.execute("update app.ingestion_lease set held_until = now() + interval '1 minute'")
+    conn.commit()
+
+    blocked = run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert (blocked.ran, blocked.remaining) == (False, 1)
+    conn.execute("update app.ingestion_lease set held_until = '-infinity'")
+    conn.commit()
+    assert run_batch(conn, store, FakeEmbedder(), seconds=240).ran
+    assert status(conn, document_id) == ("indexed", None)
 
 
 # --- HTTP ---------------------------------------------------------------------------------

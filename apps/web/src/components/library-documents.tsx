@@ -7,6 +7,7 @@ import {
   type DocumentSummary,
   finishUpload,
   listDocuments,
+  resumeProcessing,
   startUpload,
 } from "@/app/documents-actions";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,8 @@ import { createClient } from "@/lib/supabase/client";
 
 const ACCEPT = ".md,.markdown,.txt,text/markdown,text/plain";
 const POLL_MS = 2000;
+// While Documents are processing, nudge the server this often in case a batch paused.
+const RESUME_EVERY_POLLS = 30;
 
 type Status = DocumentSummary["status"];
 
@@ -26,6 +29,9 @@ const STATUS_LABELS: Record<Status, string> = {
   failed: "Failed",
 };
 
+/** Statuses the server is still working through, so the Library keeps refreshing. */
+const isProcessing = (status: Status) =>
+  status === "queued" || status === "parsing" || status === "embedding";
 const isSettled = (status: Status) => status === "indexed" || status === "failed";
 
 /** The Documents in the Library, with uploading and live status. */
@@ -40,18 +46,41 @@ export function LibraryDocuments({
   const [errors, setErrors] = useState<string[]>([]);
   const [announcement, setAnnouncement] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   const previous = useRef(new Map(initialDocuments.map((d) => [d.id, d.status])));
+  const wasEmpty = useRef(initialDocuments.length === 0);
 
-  const working = documents.some((d) => !isSettled(d.status));
+  const processing = documents.some((d) => isProcessing(d.status));
 
+  // Refresh statuses while anything is processing: one request at a time, stopping on errors.
   useEffect(() => {
-    if (!working) return;
-    const timer = setInterval(async () => {
-      const result = await listDocuments();
-      if (result.ok) setDocuments(result.value);
-    }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [working]);
+    if (!processing) return;
+    let stopped = false;
+    let polls = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      polls += 1;
+      try {
+        if (polls % RESUME_EVERY_POLLS === 0) await resumeProcessing();
+        const result = await listDocuments();
+        if (stopped) return;
+        if (!result.ok) {
+          setErrors([`Progress stopped updating: ${result.message}`]);
+          return;
+        }
+        setDocuments(result.value);
+      } catch {
+        if (!stopped) setErrors(["Progress stopped updating. Reload the page to check again."]);
+        return;
+      }
+      timer = setTimeout(poll, POLL_MS);
+    };
+    timer = setTimeout(poll, POLL_MS);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [processing]);
 
   // Announce Documents that just finished, once, for screen readers.
   useEffect(() => {
@@ -68,34 +97,48 @@ export function LibraryDocuments({
     }
   }, [documents]);
 
-  async function upload(files: FileList) {
+  // The first upload swaps the empty state for the list; keep focus on the upload button.
+  useEffect(() => {
+    if (wasEmpty.current && documents.length > 0) {
+      wasEmpty.current = false;
+      button.current?.focus();
+    }
+  }, [documents.length]);
+
+  async function upload(files: File[]) {
     setErrors([]);
+    const fail = (message: string) => setErrors((current) => [...current, message]);
     const supabase = createClient();
-    for (const file of Array.from(files)) {
-      const started = await startUpload(collection.id, file.name, file.size);
-      if (!started.ok) {
-        setErrors((current) => [...current, started.message]);
-        continue;
-      }
-      const { document, upload: target } = started.value;
-      setDocuments((current) => [document, ...current]);
-      const { error } = await supabase.storage
-        .from(target.bucket)
-        .uploadToSignedUrl(target.path, target.token, file, {
-          contentType: file.type || "text/plain",
-        });
-      if (error) {
-        setErrors((current) => [
-          ...current,
-          `${file.name} couldn't be uploaded: ${error.message}. Try again.`,
-        ]);
-        continue;
-      }
-      const finished = await finishUpload(document.id);
-      if (finished.ok) {
-        setDocuments((current) => current.map((d) => (d.id === document.id ? finished.value : d)));
-      } else {
-        setErrors((current) => [...current, finished.message]);
+    for (const file of files) {
+      try {
+        const started = await startUpload(collection.id, file.name, file.size);
+        if (!started.ok) {
+          fail(started.message);
+          continue;
+        }
+        const { document, upload: target } = started.value;
+        setDocuments((current) => [document, ...current]);
+        const { error } = await supabase.storage
+          .from(target.bucket)
+          .uploadToSignedUrl(target.path, target.token, file, {
+            contentType: file.type || "text/plain",
+          });
+        if (error) {
+          // The server marks the unfinished Document as failed later; hide it here.
+          setDocuments((current) => current.filter((d) => d.id !== document.id));
+          fail(`${file.name} couldn't be uploaded (${error.message}). Upload it again.`);
+          continue;
+        }
+        const finished = await finishUpload(document.id);
+        if (!finished.ok) {
+          fail(finished.message);
+          continue;
+        }
+        setDocuments((current) =>
+          current.map((d) => (d.id === document.id ? finished.value : d)),
+        );
+      } catch {
+        fail(`${file.name} couldn't be uploaded. Check your connection and upload it again.`);
       }
     }
   }
@@ -111,11 +154,12 @@ export function LibraryDocuments({
         tabIndex={-1}
         aria-hidden="true"
         onChange={(event) => {
-          if (event.target.files?.length) void upload(event.target.files);
+          const files = Array.from(event.target.files ?? []);
           event.target.value = "";
+          if (files.length > 0) void upload(files);
         }}
       />
-      <Button size="lg" onClick={() => input.current?.click()}>
+      <Button ref={button} size="lg" onClick={() => input.current?.click()}>
         <UploadIcon aria-hidden="true" />
         Upload documents
       </Button>
@@ -129,8 +173,8 @@ export function LibraryDocuments({
       </p>
       {errors.length > 0 && (
         <ul role="alert" className="flex flex-col gap-1 text-destructive">
-          {errors.map((message) => (
-            <li key={message}>{message}</li>
+          {errors.map((message, index) => (
+            <li key={index}>{message}</li>
           ))}
         </ul>
       )}
@@ -172,6 +216,11 @@ export function LibraryDocuments({
 
 function DocumentRow({ document }: { document: DocumentSummary }) {
   const failed = document.status === "failed";
+  const tone = failed
+    ? "text-destructive"
+    : document.status === "indexed"
+      ? "text-brand"
+      : "text-muted-foreground";
   return (
     <li className="flex flex-col gap-1 border-b border-border py-3">
       <div className="flex items-baseline justify-between gap-4">
@@ -179,9 +228,7 @@ function DocumentRow({ document }: { document: DocumentSummary }) {
           {document.name}
         </span>
         <span
-          className={`flex shrink-0 items-center gap-1 text-meta tabular-nums transition-colors duration-150 ${
-            failed ? "text-destructive" : document.status === "indexed" ? "text-brand" : "text-muted-foreground"
-          }`}
+          className={`flex shrink-0 items-center gap-1 text-meta tabular-nums transition-colors duration-150 ${tone}`}
         >
           {document.status === "indexed" && <CheckIcon aria-hidden="true" className="size-4" />}
           {STATUS_LABELS[document.status]}

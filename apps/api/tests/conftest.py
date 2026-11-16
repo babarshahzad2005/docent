@@ -35,4 +35,5 @@ def conn(database_url: str) -> Iterator[Connection[DictRow]]:
         connection.execute(
             "truncate app.chunks, app.documents, app.memberships, app.collections, app.users"
         )
+        connection.execute("update app.ingestion_lease set held_until = '-infinity'")
         connection.commit()

@@ -4,7 +4,15 @@ from alembic.script import ScriptDirectory
 
 from docent_api.migrate import alembic_config, upgrade
 
-TABLES = ["alembic_version", "chunks", "collections", "documents", "memberships", "users"]
+TABLES = [
+    "alembic_version",
+    "chunks",
+    "collections",
+    "documents",
+    "ingestion_lease",
+    "memberships",
+    "users",
+]
 
 
 def head() -> str:
