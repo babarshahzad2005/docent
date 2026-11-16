@@ -39,6 +39,15 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs
 
 Full requirements: [docs/PRD.md](docs/PRD.md). Terminology: [GLOSSARY.md](GLOSSARY.md).
 
+## Deployment
+
+| Part | Host | Config |
+|---|---|---|
+| Web app | Vercel (Hobby), root directory `apps/web` | Preview deployment for every pull request |
+| API | Render (free), from [`render.yaml`](render.yaml) | Deploys from `main` after CI passes |
+
+The free API instance sleeps after 15 idle minutes, so a scheduled workflow ([`keep-alive.yml`](.github/workflows/keep-alive.yml)) pings it every 10 minutes. Dependencies are kept current by Dependabot.
+
 ## Evaluation
 
 Results, methodology, and cost per answer will be published here once the eval suite runs in CI (M2).
