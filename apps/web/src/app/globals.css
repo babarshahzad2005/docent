@@ -1,11 +1,207 @@
-/* Placeholder base styles. The design system from DESIGN.md replaces these in the app shell work. */
-:root {
-  color-scheme: light dark;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Dark mode follows the system setting. */
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+/* Hover styles apply only with a precise pointer, so taps on touch screens never leave hover states behind. */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
 }
 
-body {
-  margin: 0;
-  padding: 2rem;
-  font-family: system-ui, sans-serif;
-  line-height: 1.55;
+/*
+ * Design tokens. Source of truth: DESIGN.md at the repository root.
+ * Change a value there first, then here, in the same pull request.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: #f3f2ee;
+  --surface: #ffffff;
+  --surface-muted: #e8e6df;
+  --border: #e1dfd8;
+  --border-strong: #d3d0c6;
+  --text: #1f1e1b;
+  --text-secondary: #3d3a34;
+  --text-muted: #625e55;
+  --text-context: #6f6a60;
+  --brand: #2f5d50;
+  --brand-strong: #1f4238;
+  --brand-button: #2f5d50;
+  --brand-subtle: #e7f0ec;
+  --brand-subtle-text: #234a3f;
+  --mark: #f6e3ae;
+  --mark-edge: #d9a72e;
+  --mark-text: #5e4310;
+  --warning-icon: #9a6516;
+  --danger: #b42318;
+  --scrim: rgb(31 30 27 / 0.24);
+
+  /* Names the component library expects, mapped onto Docent's tokens. */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --primary: var(--brand-button);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-muted);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--surface-muted);
+  --accent-foreground: var(--text);
+  --destructive: var(--danger);
+  --input: var(--border-strong);
+  --ring: var(--brand);
+  --radius: 0.625rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a18;
+    --surface: #22221f;
+    --surface-muted: #2b2b27;
+    --border: #34332f;
+    --border-strong: #45443f;
+    --text: #eceae4;
+    --text-secondary: #cfcbc2;
+    --text-muted: #a8a49a;
+    --text-context: #9e998e;
+    --brand: #7fb6a4;
+    --brand-strong: #a6d1c2;
+    --brand-button: #3f7a69;
+    --brand-subtle: #22332d;
+    --brand-subtle-text: #a6d1c2;
+    --mark: #4a3d17;
+    --mark-edge: #c99a2e;
+    --mark-text: #f2d58a;
+    --warning-icon: #d9a72e;
+    --danger: #f97066;
+    --scrim: rgb(0 0 0 / 0.5);
+  }
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-newsreader), Georgia, ui-serif, serif;
+  --font-heading: var(--font-serif);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-surface: var(--surface);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-context: var(--text-context);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-brand-subtle-text: var(--brand-subtle-text);
+  --color-mark: var(--mark);
+  --color-mark-edge: var(--mark-edge);
+  --color-mark-text: var(--mark-text);
+  --color-warning-icon: var(--warning-icon);
+  --color-border-strong: var(--border-strong);
+  --color-scrim: var(--scrim);
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: var(--radius);
+  --radius-xl: 0.75rem;
+  --radius-2xl: 0.875rem;
+
+  /* Type scale (DESIGN.md › Typography). */
+  --text-question: 1.75rem;
+  --text-question--line-height: 1.25;
+  --text-question--letter-spacing: -0.01em;
+  --text-heading: 1.5rem;
+  --text-heading--line-height: 1.25;
+  --text-heading--letter-spacing: -0.01em;
+  --text-answer: 1.1875rem;
+  --text-answer--line-height: 1.65;
+  --text-source: 1.0625rem;
+  --text-source--line-height: 1.75;
+  --text-wordmark: 1.375rem;
+  --text-wordmark--line-height: 1.2;
+  --text-wordmark--letter-spacing: -0.01em;
+  --text-ui: 0.9375rem;
+  --text-ui--line-height: 1.55;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.5;
+  --text-cite: 0.75rem;
+  --text-cite--line-height: 1;
+
+  /* Motion (DESIGN.md › Motion). */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --shadow-float: 0 8px 24px rgb(31 30 27 / 0.12);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    @apply font-sans;
+  }
+
+  body {
+    @apply bg-background text-ui text-foreground;
+  }
+
+  /* Visible focus everywhere, for keyboard users only. */
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /*
+   * Reduced motion: nothing moves. Opacity and color still transition so state changes stay
+   * legible; transforms apply instantly, and drawers fade in place instead of sliding.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      transition-property: opacity, color, background-color, border-color !important;
+    }
+
+    [data-slot="sheet-content"] {
+      translate: none !important;
+    }
+  }
 }

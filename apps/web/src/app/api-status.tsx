@@ -8,12 +8,11 @@ export async function ApiStatusMessage() {
   const status = await getApiStatus();
 
   if (status.kind === "connected") {
-    return <p role="status">API connected (version {status.version}).</p>;
+    return <p role="status">Server connected (version {status.version})</p>;
   }
   return (
     <p role="status">
-      API not reachable. {status.reason} Start it with <code>pnpm dev</code> from the repository
-      root.
+      Can&rsquo;t reach the server. It may be starting up; reload the page in a minute.
     </p>
   );
 }

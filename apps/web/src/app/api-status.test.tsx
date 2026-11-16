@@ -19,17 +19,17 @@ describe("ApiStatusMessage", () => {
     status.current = undefined;
   });
 
-  it("says the API is connected and shows its version", async () => {
+  it("says the server is connected and shows its version", async () => {
     status.current = { kind: "connected", version: "0.1.0" };
 
-    expect(await renderMessage()).toContain("API connected (version 0.1.0).");
+    expect(await renderMessage()).toContain("Server connected (version 0.1.0)");
   });
 
-  it("explains how to start the API when it is unreachable", async () => {
+  it("says the server can't be reached and what to do about it", async () => {
     status.current = { kind: "unreachable", reason: "The API didn't respond." };
 
-    const html = await renderMessage();
-    expect(html).toContain("API not reachable.");
-    expect(html).toContain("<code>pnpm dev</code>");
+    expect(await renderMessage()).toContain(
+      "Can’t reach the server. It may be starting up; reload the page in a minute.",
+    );
   });
 });
