@@ -25,33 +25,33 @@ def ensure_user(conn: Connection[DictRow], user: AuthUser) -> None:
     """Create the User and their Personal Collection on first sign-in; afterwards do nothing.
 
     Safe under concurrent first requests: the unique constraint on a Collection's personal
-    owner lets exactly one transaction create the Personal Collection and its Membership.
+    owner lets exactly one transaction create the Personal Collection. The owner Membership is
+    upserted on every call, so a Personal Collection can never be left without its Owner.
     """
     with conn.transaction():
         conn.execute(
             """
             insert into app.users (id, email) values (%(id)s, %(email)s)
             on conflict (id) do update set email = excluded.email
-            where app.users.email is distinct from excluded.email
+            where excluded.email <> '' and app.users.email is distinct from excluded.email
             """,
             {"id": user.id, "email": user.email},
         )
-        created = conn.execute(
+        conn.execute(
             """
             insert into app.collections (name, personal_owner_id) values (%(name)s, %(id)s)
             on conflict (personal_owner_id) do nothing
-            returning id
             """,
             {"name": PERSONAL_COLLECTION_NAME, "id": user.id},
-        ).fetchone()
-        if created is not None:
-            conn.execute(
-                """
-                insert into app.memberships (collection_id, user_id, role)
-                values (%(collection_id)s, %(user_id)s, 'owner')
-                """,
-                {"collection_id": created["id"], "user_id": user.id},
-            )
+        )
+        conn.execute(
+            """
+            insert into app.memberships (collection_id, user_id, role)
+            select id, %(id)s, 'owner' from app.collections where personal_owner_id = %(id)s
+            on conflict (collection_id, user_id) do nothing
+            """,
+            {"id": user.id},
+        )
 
 
 def list_collections(conn: Connection[DictRow], user_id: UUID) -> list[CollectionSummary]:

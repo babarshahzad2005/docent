@@ -24,7 +24,21 @@ def run_migrations_online() -> None:
         connect_args={"prepare_threshold": None},
     )
     with engine.connect() as connection:
-        context.configure(connection=connection, version_table_schema="public")
+        # The version table lives in the private schema too: `public` is reachable through
+        # Supabase's Data API (ADR 0009). Databases migrated before this moved are moved once.
+        connection.exec_driver_sql("create schema if not exists app")
+        connection.exec_driver_sql(
+            """
+            do $$ begin
+              if to_regclass('public.alembic_version') is not null
+                 and to_regclass('app.alembic_version') is null then
+                alter table public.alembic_version set schema app;
+              end if;
+            end $$;
+            """
+        )
+        connection.commit()
+        context.configure(connection=connection, version_table_schema="app")
         with context.begin_transaction():
             context.run_migrations()
 

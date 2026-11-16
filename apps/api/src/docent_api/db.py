@@ -26,6 +26,8 @@ def get_pool() -> ConnectionPool[Connection[DictRow]]:
         max_size=5,
         open=True,
         configure=_configure,
+        # Serverless instances sleep between requests; drop connections that died meanwhile.
+        check=ConnectionPool.check_connection,
         kwargs={"row_factory": dict_row},
         connection_class=Connection[DictRow],
     )

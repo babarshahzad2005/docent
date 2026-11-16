@@ -22,8 +22,8 @@ def database_url() -> str:
     if not TEST_DATABASE_URL:
         pytest.skip("TEST_DATABASE_URL is not set")
     with psycopg.connect(TEST_DATABASE_URL, autocommit=True) as conn:
-        conn.execute("drop schema if exists app cascade")
-        conn.execute("drop table if exists public.alembic_version")
+        conn.execute("drop schema if exists app cascade")  # includes app.alembic_version
+        conn.execute("drop table if exists public.alembic_version")  # the earlier location
     upgrade(TEST_DATABASE_URL)
     return TEST_DATABASE_URL
 

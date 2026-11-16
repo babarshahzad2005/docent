@@ -18,7 +18,9 @@ export default function LibraryPage() {
 
 async function Library() {
   const me = await getMe();
-  if (!me) redirect("/sign-in");
+  // The API didn't accept the session: ask for a fresh sign-in (the error flag stops the
+  // proxy from sending a still-signed-in browser straight back here).
+  if (!me) redirect("/sign-in?error=session");
 
   const personal = me.collections.find((collection) => collection.is_personal);
 

@@ -23,11 +23,15 @@ export async function proxy(request: NextRequest) {
     const supabase = createServerClient(env.url, env.publishableKey, {
       cookies: {
         getAll: () => request.cookies.getAll(),
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           for (const { name, value } of cookiesToSet) request.cookies.set(name, value);
           response = NextResponse.next({ request });
           for (const { name, value, options } of cookiesToSet) {
             response.cookies.set(name, value, options);
+          }
+          // A response carrying a session must never be cached and served to someone else.
+          for (const [key, value] of Object.entries(headers ?? {})) {
+            response.headers.set(key, value);
           }
         },
       },
@@ -45,7 +49,9 @@ export async function proxy(request: NextRequest) {
     return withCookies(NextResponse.redirect(signIn), response);
   }
 
-  if (signedIn && pathname === "/sign-in") {
+  // A signed-in visitor doesn't need the sign-in page — unless the API rejected their session,
+  // in which case the Library sent them here with ?error and bouncing back would loop forever.
+  if (signedIn && pathname === "/sign-in" && !request.nextUrl.searchParams.has("error")) {
     const library = request.nextUrl.clone();
     library.pathname = "/";
     library.search = "";
@@ -58,6 +64,10 @@ export async function proxy(request: NextRequest) {
 /** Carry refreshed session cookies over to a redirect. */
 function withCookies(redirect: NextResponse, from: NextResponse) {
   for (const cookie of from.cookies.getAll()) redirect.cookies.set(cookie);
+  for (const header of ["cache-control", "expires", "pragma"]) {
+    const value = from.headers.get(header);
+    if (value) redirect.headers.set(header, value);
+  }
   return redirect;
 }
 

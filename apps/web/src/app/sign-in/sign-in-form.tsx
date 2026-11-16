@@ -13,14 +13,17 @@ type State =
   | { kind: "sent"; email: string }
   | { kind: "error"; message: string };
 
-const LINK_ERROR =
-  "That sign-in link didn't work. It may have expired or already been used. Request a new one below.";
+const ERRORS: Record<string, string> = {
+  link: "That sign-in link didn't work. It may have expired or already been used. Request a new one below.",
+  session: "Your session couldn't be confirmed. Sign in again to continue.",
+};
 
 export function SignInForm() {
   const searchParams = useSearchParams();
   const next = safeNext(searchParams.get("next"));
+  const error = searchParams.get("error");
   const [state, setState] = useState<State>(
-    searchParams.get("error") ? { kind: "error", message: LINK_ERROR } : { kind: "idle" },
+    error ? { kind: "error", message: ERRORS[error] ?? ERRORS.link } : { kind: "idle" },
   );
 
   function callbackUrl() {

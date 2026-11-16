@@ -25,7 +25,7 @@ export default function SignInPage() {
           </Suspense>
         </div>
         <p className="px-2 text-meta text-muted-foreground">
-          By signing in you agree to how Docent handles your data, described in the{" "}
+          What Docent stores and why is described in the{" "}
           <Link href="/privacy" className="underline underline-offset-2">
             privacy notice
           </Link>

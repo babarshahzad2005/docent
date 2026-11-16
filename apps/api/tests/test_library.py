@@ -62,6 +62,26 @@ def test_simultaneous_first_requests_create_one_personal_collection(
     assert count(conn, "memberships", user) == 1
 
 
+def test_a_missing_owner_membership_is_restored(conn: Connection[DictRow], user: AuthUser) -> None:
+    ensure_user(conn, user)
+    conn.execute("delete from app.memberships where user_id = %s", (user.id,))
+    conn.commit()
+
+    ensure_user(conn, user)
+
+    assert [c.role for c in list_collections(conn, user.id)] == ["owner"]
+
+
+def test_a_token_without_email_keeps_the_stored_email(
+    conn: Connection[DictRow], user: AuthUser
+) -> None:
+    ensure_user(conn, user)
+    ensure_user(conn, AuthUser(id=user.id, email=""))
+
+    row = conn.execute("select email from app.users where id = %s", (user.id,)).fetchone()
+    assert row is not None and row["email"] == "reader@example.com"
+
+
 def test_a_changed_email_is_updated(conn: Connection[DictRow], user: AuthUser) -> None:
     ensure_user(conn, user)
     ensure_user(conn, AuthUser(id=user.id, email="new@example.com"))
