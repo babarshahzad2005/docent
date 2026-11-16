@@ -2,7 +2,7 @@
 
 Stateless API and background workers over one Postgres, object storage, and Redis. Model calls sit behind a provider interface.
 
-> **v1 deployment note:** on the $0 budget, the API and workers run as one service with a Postgres job queue and no Redis ([ADR 0005](./adr/0005-single-backend-service-postgres-queue.md)); Postgres, auth, and object storage come from Supabase ([ADR 0006](./adr/0006-supabase-for-database-auth-storage.md)). The diagram below is the target shape the code is structured for.
+> **v1 deployment note:** on the $0 budget, the API runs on Vercel's Python runtime and background work runs as short scheduled batches over a Postgres job queue, with no Redis ([ADR 0008](./adr/0008-api-on-vercel-functions.md)); Postgres, auth, and object storage come from Supabase ([ADR 0006](./adr/0006-supabase-for-database-auth-storage.md)). The diagram below is the target shape the code is structured for.
 
 ## Overview
 
