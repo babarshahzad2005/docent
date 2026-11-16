@@ -72,7 +72,7 @@ Configuration variables are listed in [.env.example](.env.example).
 | Command | Does |
 |---|---|
 | `pnpm lint` / `pnpm typecheck` / `pnpm test` | Checks for the web app and client |
-| `uv --directory apps/api run pytest` | API tests (also `ruff check .` and `mypy`) |
+| `uv --directory apps/api run pytest` | API tests (CI also runs `ruff format --check .`, `ruff check .`, and `mypy`) |
 | `pnpm gen:client` | Regenerate the API client after changing an API route or model |
 
 ## License

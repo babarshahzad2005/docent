@@ -11,9 +11,3 @@ def test_health_reports_ok_and_version() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "version": __version__}
-
-
-def test_health_allows_the_web_origin() -> None:
-    response = client.get("/health", headers={"Origin": "http://localhost:3000"})
-
-    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"

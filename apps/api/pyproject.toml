@@ -6,6 +6,7 @@ authors = [{ name = "M. Babar Shahzad" }]
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.163.1",
+    "pydantic>=2.14.3",
     "uvicorn[standard]>=0.54.0",
 ]
 
