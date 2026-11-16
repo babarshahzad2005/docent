@@ -589,7 +589,9 @@ def test_a_document_that_makes_progress_is_never_given_up_on(
     conn: Connection[DictRow], store: FakeStore, user: AuthUser
 ) -> None:
     document_id = upload(conn, store, user, "policy.md", POLICY)
-    conn.execute("update app.documents set claims = %s where id = %s", (MAX_CLAIMS - 1, document_id))
+    conn.execute(
+        "update app.documents set claims = %s where id = %s", (MAX_CLAIMS - 1, document_id)
+    )
     conn.commit()
     embedder = FakeEmbedder()
     embedder.limits = [600.0]
