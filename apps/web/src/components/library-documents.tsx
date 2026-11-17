@@ -13,7 +13,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 
-const ACCEPT = ".md,.markdown,.txt,text/markdown,text/plain";
+const ACCEPT = [
+  ".pdf",
+  ".docx",
+  ".md",
+  ".markdown",
+  ".txt",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/markdown",
+  "text/plain",
+].join(",");
 const POLL_MS = 2000;
 
 type Status = DocumentSummary["status"];
@@ -119,7 +129,7 @@ export function LibraryDocuments({
         const { error } = await supabase.storage
           .from(target.bucket)
           .uploadToSignedUrl(target.path, target.token, file, {
-            contentType: file.type || "text/plain",
+            contentType: file.type || "application/octet-stream",
           });
         if (error) {
           // The server marks the unfinished Document as failed later; hide it here.
@@ -184,8 +194,8 @@ export function LibraryDocuments({
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-4 py-12 text-center">
         <h1 className="font-serif text-question font-medium text-balance">Your library is empty</h1>
         <p className="text-muted-foreground text-pretty">
-          Docent answers questions only from documents you add. Upload Markdown or plain text
-          files to your {collection.name} collection to get started.
+          Docent answers questions only from documents you add. Upload PDFs, Word documents,
+          Markdown, or plain text to your {collection.name} collection to get started.
         </p>
         <div className="mt-2">{picker}</div>
         {messages}

@@ -3,7 +3,8 @@
 Chunks follow the Document's structure. Each one stays inside a single section and carries the
 headings above it, so a passage like "Up to 10 days carry over" keeps the context "Leave policy
 > Carry-over" that makes it findable and understandable on its own. Paragraphs are packed
-together up to a target size and split only when a single paragraph is too long.
+together up to a target size and split only when a single paragraph is too long. Chunks from
+paged Documents (PDFs) never span a page break, so every chunk can name its page.
 """
 
 import hashlib
@@ -24,6 +25,7 @@ class Chunk:
     ordinal: int
     heading_path: tuple[str, ...]
     content: str
+    page: int | None = None
 
     @property
     def text_for_embedding(self) -> str:
@@ -38,9 +40,51 @@ class Chunk:
 
 
 @dataclass(frozen=True)
+class Block:
+    """One paragraph (or heading, or table row) from a parsed Document, in reading order."""
+
+    text: str
+    heading_level: int | None = None  # 1 for a top-level heading; None for body text
+    page: int | None = None
+
+
+@dataclass(frozen=True)
 class _Section:
     heading_path: tuple[str, ...]
     text: str
+    page: int | None = None
+
+
+def chunk_blocks(blocks: list[Block]) -> list[Chunk]:
+    """Chunks of a parsed Document (PDF or Word), following its headings and pages."""
+    sections: list[_Section] = []
+    path: list[tuple[int, str]] = []
+    paragraphs: list[str] = []
+    page: int | None = None
+
+    def flush() -> None:
+        if paragraphs:
+            sections.append(
+                _Section(tuple(title for _, title in path), "\n\n".join(paragraphs), page)
+            )
+            paragraphs.clear()
+
+    for block in blocks:
+        text = block.text.strip()
+        if not text:
+            continue
+        if block.heading_level is not None:
+            flush()
+            while path and path[-1][0] >= block.heading_level:
+                path.pop()
+            path.append((block.heading_level, text))
+            continue
+        if block.page != page:
+            flush()
+            page = block.page
+        paragraphs.append(text)
+    flush()
+    return _pack(sections)
 
 
 def chunk_markdown(text: str) -> list[Chunk]:
@@ -95,7 +139,7 @@ def _pack(sections: list[_Section]) -> list[Chunk]:
     chunks: list[Chunk] = []
     for section in sections:
         for content in _pack_paragraphs(_pieces(section.text)):
-            chunks.append(Chunk(len(chunks), section.heading_path, content))
+            chunks.append(Chunk(len(chunks), section.heading_path, content, section.page))
     return chunks
 
 

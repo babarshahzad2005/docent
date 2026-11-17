@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Iterator, Sequence
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import psycopg
@@ -165,8 +166,8 @@ def test_starting_an_upload_creates_an_uploading_document(
 @pytest.mark.parametrize(
     ("name", "size", "message"),
     [
-        ("report.pdf", 100, "Markdown (.md) and plain text (.txt)"),
-        ("notes", 100, "Markdown (.md) and plain text (.txt)"),
+        ("slides.pptx", 100, "PDF, Word (.docx), Markdown (.md), and plain text (.txt)"),
+        ("notes", 100, "PDF, Word (.docx), Markdown (.md), and plain text (.txt)"),
         ("big.txt", 20 * 1024 * 1024 + 1, "larger than 20 MB"),
         ("empty.txt", 0, "empty"),
         ("../../", 10, "needs a name"),
@@ -329,6 +330,52 @@ def test_non_utf8_text_is_still_read(
     run_batch(conn, store, FakeEmbedder(), seconds=240)
 
     assert chunks(conn, document_id)[0]["content"] == "Café menu"
+
+
+EXTRACTION_FILES = Path(__file__).parent / "extraction" / "files"
+
+
+def test_a_pdf_becomes_indexed_with_page_numbers(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    data = (EXTRACTION_FILES / "fit-note-checklist.pdf").read_bytes()
+    document_id = upload(conn, store, user, "fit-note.pdf", data)
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert status(conn, document_id) == ("indexed", None)
+    rows = conn.execute(
+        "select page, heading_path, content from app.chunks where document_id = %s",
+        (document_id,),
+    ).fetchall()
+    conn.commit()
+    assert rows and all(row["page"] == 1 for row in rows)
+    assert rows[0]["heading_path"] == ["Fit Note: Checklist for Employers"]
+
+
+def test_a_word_document_becomes_indexed_with_headings(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    data = (EXTRACTION_FILES / "staffing-guidance.docx").read_bytes()
+    document_id = upload(conn, store, user, "staffing.docx", data)
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert status(conn, document_id) == ("indexed", None)
+    first = chunks(conn, document_id)[0]
+    assert first["heading_path"] == ["Introduction", "About this guidance"]
+
+
+def test_a_file_that_isnt_really_a_pdf_fails_with_a_reason(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "fake.pdf", b"just some text, not a PDF")
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    status_, reason = status(conn, document_id)
+    assert status_ == "failed"
+    assert reason is not None and "PDF couldn't be opened" in reason
 
 
 def test_a_short_rate_limit_is_waited_out(
@@ -512,7 +559,7 @@ def test_a_refused_upload_explains_why(
 ) -> None:
     response = client.post(
         "/documents",
-        json={"collection_id": str(personal(conn, user)), "name": "a.pdf", "size_bytes": 9},
+        json={"collection_id": str(personal(conn, user)), "name": "a.pptx", "size_bytes": 9},
     )
 
     assert response.status_code == 400
