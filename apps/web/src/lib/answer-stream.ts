@@ -13,7 +13,7 @@ export type AnswerEvent =
   | { event: "start"; conversation_id: string; message_id: string; sources: Source[] }
   | { event: "delta"; text: string }
   | { event: "done"; message_id: string; outcome: "answered" | "declined"; cited: number[] }
-  | { event: "error"; message: string; partial: boolean };
+  | { event: "error"; message: string; partial: boolean; cited: number[] };
 
 /** Parses server-sent events from a byte stream, yielding each as it completes. */
 export async function* readAnswerEvents(
@@ -53,13 +53,22 @@ function parseEvent(block: string): AnswerEvent | null {
 
 export type Segment = { text: string } | { citation: number };
 
+/**
+ * A Citation marker: `[n]`, or `\u3010n\u3011` (CJK brackets), which models sometimes write
+ * instead. The API rewrites saved answers to `[n]`; text still streaming is read either way.
+ */
+export const CITATION = /[[\u3010](\d{1,2})[\]\u3011]/g;
+
+/** The answer's words without its Citation markers, for reading aloud. */
+export function withoutCitations(answer: string): string {
+  return answer.replace(CITATION, "");
+}
+
 /** An answer's text with its `[n]` markers split out, keeping only numbers that exist. */
 export function segments(answer: string, available: Set<number>): Segment[] {
   const parts: Segment[] = [];
   let last = 0;
-  // Models sometimes write 【n】 (CJK brackets) instead of [n]; the API rewrites saved
-  // answers, and text still streaming is read either way.
-  for (const match of answer.matchAll(/[[【](\d{1,2})[\]】]/g)) {
+  for (const match of answer.matchAll(CITATION)) {
     const number = Number(match[1]);
     if (!available.has(number)) continue;
     if (match.index > last) parts.push({ text: answer.slice(last, match.index) });

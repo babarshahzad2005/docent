@@ -4,7 +4,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { AskBox } from "@/components/ask-box";
 import { Button } from "@/components/ui/button";
-import { readAnswerEvents, segments, type Source } from "@/lib/answer-stream";
+import {
+  readAnswerEvents,
+  segments,
+  type Source,
+  withoutCitations,
+} from "@/lib/answer-stream";
 
 export type Turn = {
   question: string;
@@ -39,7 +44,12 @@ export function Conversation({
   const update = (change: (turn: Turn) => Turn) =>
     setTurns((current) => [...current.slice(0, -1), change(current[current.length - 1])]);
 
+  const asking = useRef(false);
+
   async function ask(question: string) {
+    // One answer at a time: a second stream would write into the same turn.
+    if (asking.current) return;
+    asking.current = true;
     setTurns((current) => [
       ...current,
       { question, answer: "", sources: [], cited: [], status: "streaming" },
@@ -66,7 +76,8 @@ export function Conversation({
           if (conversationId.current === null) {
             conversationId.current = event.conversation_id;
             // The Conversation now exists: give it its own address without reloading.
-            window.history.replaceState(null, "", `/conversations/${event.conversation_id}`);
+            // (Pushed, so Back returns to the Library.)
+            window.history.pushState(null, "", `/conversations/${event.conversation_id}`);
           }
           update((turn) => ({ ...turn, sources: event.sources, messageId: event.message_id }));
         } else if (event.event === "delta") {
@@ -74,7 +85,7 @@ export function Conversation({
           update((turn) => ({ ...turn, answer: turn.answer + event.text }));
         } else if (event.event === "done") {
           // Announced once, when complete, never token by token (DESIGN.md › Accessibility).
-          setAnnouncement(answerSoFar.current.replace(/[[【]\d+[\]】]/g, ""));
+          setAnnouncement(withoutCitations(answerSoFar.current));
           update((turn) => ({
             ...turn,
             status: event.outcome === "declined" ? "declined" : "complete",
@@ -85,15 +96,28 @@ export function Conversation({
             ...turn,
             status: event.partial ? "interrupted" : "failed",
             error: event.message,
+            cited: event.cited,
           }));
         }
       }
+      // A stream that ended without done or error was cut off on the way.
+      update((turn) =>
+        turn.status !== "streaming"
+          ? turn
+          : {
+              ...turn,
+              status: turn.answer ? "interrupted" : "failed",
+              error: "The answer was cut off. Ask again to get the whole answer.",
+            },
+      );
     } catch {
       update((turn) => ({
         ...turn,
         status: turn.answer ? "interrupted" : "failed",
         error: "The connection dropped. Check your connection and ask again.",
       }));
+    } finally {
+      asking.current = false;
     }
   }
 
@@ -108,7 +132,13 @@ export function Conversation({
   return (
     <div className="mx-auto flex w-full max-w-[40rem] flex-1 flex-col gap-10 px-4 py-8">
       {turns.map((turn, index) => (
-        <TurnView key={index} turn={turn} first={index === 0} onRetry={() => void ask(turn.question)} />
+        <TurnView
+          key={index}
+          turn={turn}
+          first={index === 0}
+          canRetry={!streaming}
+          onRetry={() => void ask(turn.question)}
+        />
       ))}
       <p aria-live="polite" className="sr-only">
         {announcement}
@@ -125,11 +155,30 @@ export function Conversation({
   );
 }
 
-function TurnView({ turn, first, onRetry }: { turn: Turn; first: boolean; onRetry: () => void }) {
+function TurnView({
+  turn,
+  first,
+  canRetry,
+  onRetry,
+}: {
+  turn: Turn;
+  first: boolean;
+  canRetry: boolean;
+  onRetry: () => void;
+}) {
   const Heading = first ? "h1" : "h2";
   const available = new Set(turn.sources.map((source) => source.number));
   const cited = turn.sources.filter((source) => turn.cited.includes(source.number));
   const anchor = (n: number) => `source-${turn.messageId ?? "new"}-${n}`;
+  const byNumber = new Map(turn.sources.map((source) => [source.number, source]));
+  // DESIGN.md: the accessible name says which source, not just the number.
+  const label = (n: number) => {
+    const source = byNumber.get(n);
+    if (!source) return `Source ${n}`;
+    return [`Source ${n}`, source.document_name, source.page !== null ? `page ${source.page}` : null]
+      .filter(Boolean)
+      .join(", ");
+  };
 
   return (
     <section className="flex flex-col gap-4">
@@ -148,8 +197,8 @@ function TurnView({ turn, first, onRetry }: { turn: Turn; first: boolean; onRetr
             <a
               key={i}
               href={`#${anchor(part.citation)}`}
-              aria-label={`Source ${part.citation}`}
-              className="mx-0.5 inline-flex min-w-5 -translate-y-1 items-center justify-center rounded-sm bg-mark px-1 font-sans text-cite font-semibold text-mark-text no-underline"
+              aria-label={label(part.citation)}
+              className="mx-0.5 inline-flex min-w-5 -translate-y-1 items-center justify-center rounded-sm border-b-2 border-mark-edge bg-mark px-1 font-sans text-cite font-semibold text-mark-text no-underline"
             >
               {part.citation}
             </a>
@@ -162,7 +211,7 @@ function TurnView({ turn, first, onRetry }: { turn: Turn; first: boolean; onRetr
       {turn.error && (
         <div role="alert" className="flex flex-wrap items-center gap-3 text-destructive">
           <p>{turn.error}</p>
-          <Button variant="outline" size="sm" onClick={onRetry}>
+          <Button variant="outline" size="sm" disabled={!canRetry} onClick={onRetry}>
             Ask again
           </Button>
         </div>
@@ -171,7 +220,7 @@ function TurnView({ turn, first, onRetry }: { turn: Turn; first: boolean; onRetr
         <ol aria-label="Sources" className="flex flex-col gap-2 border-t border-border pt-4">
           {cited.map((source) => (
             <li key={source.number} id={anchor(source.number)} className="flex gap-3 text-meta">
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm bg-mark px-1 text-cite font-semibold text-mark-text">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm border-b-2 border-mark-edge bg-mark px-1 text-cite font-semibold text-mark-text">
                 {source.number}
               </span>
               <span className="flex flex-col">

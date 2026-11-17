@@ -80,27 +80,38 @@ def retrieve(
     params = {"user_id": user_id, "scope": list(scope), "k": CANDIDATES, "question": question}
     vector_ids: list[UUID] = []
     if question_vector is not None:
-        vector_ids = [
-            row["id"]
-            for row in conn.execute(
-                f"""
-                select c.id {_READABLE} and c.embedding is not null
-                order by c.embedding operator(extensions.<=>) %(vector)s::extensions.vector
-                limit %(k)s
-                """,
-                {**params, "vector": _vector_literal(question_vector)},
-            ).fetchall()
-        ]
+        with conn.transaction():
+            # The vector index finds nearest neighbours first and filters by permission after;
+            # an iterative scan keeps looking until enough readable passages are found, so a
+            # User with a small share of all passages still gets a full set.
+            conn.execute("set local hnsw.iterative_scan = relaxed_order")
+            vector_ids = [
+                row["id"]
+                for row in conn.execute(
+                    f"""
+                    with nearest as materialized (
+                        select c.id,
+                               c.embedding operator(extensions.<=>) %(vector)s::extensions.vector
+                                   as distance
+                        {_READABLE} and c.embedding is not null
+                        order by distance
+                        limit %(k)s
+                    )
+                    select id from nearest order by distance
+                    """,
+                    {**params, "vector": _vector_literal(question_vector)},
+                ).fetchall()
+            ]
     keyword_ids = [
         row["id"]
         for row in conn.execute(
             f"""
             with q as (
                 -- Any of the question's words, not all of them: questions are phrased loosely.
-                select to_tsquery(
-                    'english',
-                    replace(plainto_tsquery('english', %(question)s)::text, ' & ', ' | ')
-                ) as query
+                -- The words are stemmed once, as the passages were, and joined unchanged
+                -- ('simple' leaves them as they are); stop-words alone give no query.
+                select to_tsquery('simple', string_agg(quote_literal(lexeme), ' | ')) as query
+                from unnest(tsvector_to_array(to_tsvector('english', %(question)s))) lexeme
             )
             select c.id {_READABLE} and c.search @@ (select query from q)
             order by ts_rank_cd(c.search, (select query from q)) desc

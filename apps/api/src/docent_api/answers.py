@@ -14,6 +14,7 @@ other answers streaming from the same server.
 """
 
 import asyncio
+import json
 import logging
 import re
 import time
@@ -96,6 +97,7 @@ class Completed:
 class Failed:
     message: str
     partial: bool
+    cited: list[int] = field(default_factory=list)  # Citations in the partial answer
     event: str = "error"
 
 
@@ -104,18 +106,30 @@ AnswerEvent = Started | Delta | Completed | Failed
 
 def to_sse(event: AnswerEvent) -> str:
     """One server-sent event: `event: start` and its JSON data."""
-    import json
-
     data = {key: value for key, value in asdict(event).items() if key != "event"}
     return f"event: {event.event}\ndata: {json.dumps(data)}\n\n"
 
 
+_FENCE = '"""'
+_FENCE_STANDIN = "\u201c\u201c\u201c"
+
+
 def build_prompt(question: str, passages: Sequence[Passage]) -> str:
+    """The passages as numbered, quoted data, then the question.
+
+    A Document can't close its quotes or break its source line, so it can't pose as another
+    passage or as the question.
+    """
     quoted = "\n\n".join(
-        f'[{number}] Source: {passage.source}\n"""\n{passage.content}\n"""'
+        f"[{number}] Source: {_one_line(passage.source)}\n{_FENCE}\n"
+        f"{passage.content.replace(_FENCE, _FENCE_STANDIN)}\n{_FENCE}"
         for number, passage in enumerate(passages, start=1)
     )
     return f"Passages:\n\n{quoted}\n\nQuestion: {question}"
+
+
+def _one_line(text: str) -> str:
+    return " ".join(text.split()).replace(_FENCE, _FENCE_STANDIN)
 
 
 def normalize_citations(answer: str) -> str:
@@ -158,13 +172,18 @@ async def start_turn(
 async def answer(
     turn: Turn, embedder: Embedder, generator: Generator
 ) -> AsyncIterator[AnswerEvent]:
-    """Answer the turn's question, yielding a start event, text deltas, then done (or error)."""
+    """Answer the turn's question, yielding a start event, text deltas, then done (or error).
+
+    Every stream ends with done or error, whatever goes wrong, and the turn is saved.
+    """
     question = turn.question
     start = time.perf_counter()
     status, outcome, usage = "failed", "failed", None
+    started = False
     try:
         vector = await _embed_question(embedder, question)
         turn.passages = await asyncio.to_thread(_retrieve, turn, vector)
+        started = True
         yield Started(
             conversation_id=str(turn.conversation_id),
             message_id=str(turn.message_id),
@@ -189,15 +208,7 @@ async def answer(
                         usage = event.usage
             except ProviderError as error:
                 logger.warning("answer failed for message %s: %s", turn.message_id, error)
-                status = "interrupted" if turn.answer else "failed"
-                yield Failed(
-                    message=(
-                        "The answer was cut off. Ask again to get the whole answer."
-                        if turn.answer
-                        else "Docent couldn’t answer right now. Try again in a minute."
-                    ),
-                    partial=bool(turn.answer),
-                )
+                yield _failure(turn)
                 return
             turn.answer = normalize_citations(turn.answer)
             declined = turn.answer.strip().startswith(DECLINE)
@@ -207,15 +218,41 @@ async def answer(
             outcome=outcome,
             cited=cited_numbers(turn.answer, len(turn.passages)),
         )
+    except Exception:
+        # Anything else (a database error, say): the reader still gets an ending.
+        logger.exception("answering message %s failed", turn.message_id)
+        status = "failed"
+        if not started:
+            yield Started(str(turn.conversation_id), str(turn.message_id), [])
+        yield _failure(turn)
     finally:
         # Runs on success, on failure, and when the reader goes away mid-answer.
         if status == "failed" and turn.answer:
             status = "interrupted"
         await asyncio.shield(
             asyncio.to_thread(
-                _finish, turn, status, outcome, usage, (time.perf_counter() - start) * 1000
+                _finish,
+                turn,
+                status,
+                outcome,
+                usage,
+                (time.perf_counter() - start) * 1000,
+                generator.name,
             )
         )
+
+
+def _failure(turn: Turn) -> Failed:
+    turn.answer = normalize_citations(turn.answer)
+    return Failed(
+        message=(
+            "The answer was cut off. Ask again to get the whole answer."
+            if turn.answer
+            else "Docent couldn\u2019t answer right now. Try again in a minute."
+        ),
+        partial=bool(turn.answer),
+        cited=cited_numbers(turn.answer, len(turn.passages)),
+    )
 
 
 async def _embed_question(embedder: Embedder, question: str) -> list[float] | None:
@@ -280,7 +317,15 @@ def _retrieve(turn: Turn, vector: list[float] | None) -> list[Passage]:
         return retrieve(conn, turn.user_id, turn.scope, turn.question, vector)
 
 
-def _finish(turn: Turn, status: str, outcome: str, usage: Usage | None, latency_ms: float) -> None:
+def _finish(
+    turn: Turn,
+    status: str,
+    outcome: str,
+    usage: Usage | None,
+    latency_ms: float,
+    generator_name: str,
+) -> None:
+    turn.answer = normalize_citations(turn.answer)
     with get_pool().connection() as conn:
         conn.execute(
             "update app.messages set content = %s, status = %s where id = %s",
@@ -306,7 +351,8 @@ def _finish(turn: Turn, status: str, outcome: str, usage: Usage | None, latency_
                 "prompt": turn.prompt,
                 "answer": turn.answer,
                 "outcome": outcome if status == "complete" else status,
-                "model": f"{usage.provider}:{usage.model}" if usage else None,
+                # Without usage (the answer failed), the model asked is still worth knowing.
+                "model": f"{usage.provider}:{usage.model}" if usage else generator_name,
                 "version": usage.model_version if usage else None,
                 "fell_back_from": usage.fell_back_from if usage else None,
                 "latency": round(latency_ms),
@@ -333,14 +379,15 @@ def _save_citations(conn: Connection[DictRow], turn: Turn) -> None:
                 (
                     turn.message_id,
                     number,
-                    turn.passages[number - 1].chunk_id,
-                    turn.passages[number - 1].document_id,
-                    turn.passages[number - 1].document_name,
-                    list(turn.passages[number - 1].heading_path),
-                    turn.passages[number - 1].page,
-                    turn.passages[number - 1].content,
+                    passage.chunk_id,
+                    passage.document_id,
+                    passage.document_name,
+                    list(passage.heading_path),
+                    passage.page,
+                    passage.content,
                 )
                 for number in numbers
+                for passage in [turn.passages[number - 1]]
             ],
         )
 

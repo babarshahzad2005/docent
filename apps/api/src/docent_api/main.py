@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection
 from psycopg.rows import DictRow
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from docent_api import __version__
 from docent_api.answers import (
@@ -91,6 +91,15 @@ class StartedUpload(BaseModel):
 
 class Question(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("question")
+    @classmethod
+    def _not_blank(cls, question: str) -> str:
+        question = question.strip()
+        if not question:
+            raise ValueError("Ask a question.")
+        return question
+
     conversation_id: UUID | None = None
     """Continue this Conversation; a new one starts when omitted."""
     scope: list[UUID] | None = None

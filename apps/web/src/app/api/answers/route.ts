@@ -7,6 +7,14 @@ import { apiAsUser } from "@/lib/api";
  * signed-in User's session and relays the server-sent events as they arrive.
  */
 export async function POST(request: Request): Promise<Response> {
+  // Only this site's own pages may ask: another site can't post questions as the User.
+  const origin = request.headers.get("origin");
+  if (origin !== null && origin !== new URL(request.url).origin) {
+    return Response.json({ detail: "Not allowed." }, { status: 403 });
+  }
+  if (!request.headers.get("content-type")?.startsWith("application/json")) {
+    return Response.json({ detail: "Send the question as JSON." }, { status: 415 });
+  }
   const caller = await apiAsUser();
   if (!caller) {
     return Response.json({ detail: "Your session has expired. Sign in again." }, { status: 401 });
