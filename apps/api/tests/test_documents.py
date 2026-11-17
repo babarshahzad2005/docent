@@ -20,10 +20,12 @@ from docent_api.documents import (
     NotAllowed,
     NotRetryable,
     UploadRejected,
+    delete_document,
     finish_upload,
     list_documents,
     retry_document,
     start_upload,
+    storage_used,
 )
 from docent_api.ingestion import (
     MAX_ATTEMPTS,
@@ -42,7 +44,7 @@ from docent_api.providers.base import (
     Usage,
 )
 from docent_api.scheduler import set_trigger_token
-from docent_api.storage import FileMissing, SignedUpload, get_file_store
+from docent_api.storage import FileMissing, SignedUpload, StorageError, get_file_store
 
 POLICY = b"# Leave\n\n## Carry-over\n\nUp to 10 days.\n\n## Footer\n\nCompany confidential.\n"
 
@@ -737,6 +739,110 @@ def test_the_retry_endpoint_queues_or_explains(
     refused = client.post(f"/documents/{blank}/retry")
     assert refused.status_code == 409
     assert "won't help" in refused.json()["detail"]
+
+
+# --- Delete -------------------------------------------------------------------------------
+
+
+def count_rows(conn: Connection[DictRow], table: str, document_id: UUID) -> int:
+    column = "id" if table == "documents" else "document_id"
+    row = conn.execute(
+        f"select count(*) as n from app.{table} where {column} = %s", (document_id,)
+    ).fetchone()
+    conn.commit()
+    assert row is not None
+    return int(row["n"])
+
+
+def test_deleting_removes_the_file_chunks_and_vectors_together(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    kept = upload(conn, store, user, "other.txt", b"Keep me.")
+    assert count_rows(conn, "chunks", document_id) == 2
+    used = storage_used(conn, user.id)
+
+    delete_document(conn, store, user.id, document_id)
+    conn.commit()
+
+    assert count_rows(conn, "documents", document_id) == 0
+    assert count_rows(conn, "chunks", document_id) == 0
+    assert not [path for path in store.files if str(document_id) in path]
+    assert storage_used(conn, user.id) == used - len(POLICY)
+    assert [d.id for d in list_documents(conn, user.id)] == [kept]
+
+
+def test_if_storage_refuses_nothing_is_deleted(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    def refuse(paths: Sequence[str]) -> None:
+        raise StorageError("storage is down")
+
+    monkeypatch.setattr(store, "delete", refuse)
+    with pytest.raises(StorageError):
+        delete_document(conn, store, user.id, document_id)
+    conn.rollback()
+
+    assert count_rows(conn, "documents", document_id) == 1
+    assert count_rows(conn, "chunks", document_id) == 2
+    assert len(store.files) == 1
+
+
+def test_only_editors_can_delete(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    stranger = AuthUser(id=uuid4(), email="stranger@example.com")
+    viewer = AuthUser(id=uuid4(), email="viewer@example.com")
+    ensure_user(conn, stranger)
+    ensure_user(conn, viewer)
+    conn.execute(
+        "insert into app.memberships (collection_id, user_id, role) values (%s, %s, 'viewer')",
+        (personal(conn, user), viewer.id),
+    )
+    conn.commit()
+
+    with pytest.raises(DocumentNotFound):
+        delete_document(conn, store, stranger.id, document_id)
+    with pytest.raises(NotAllowed):
+        delete_document(conn, store, viewer.id, document_id)
+    conn.rollback()
+    assert count_rows(conn, "documents", document_id) == 1
+
+
+def test_deleting_mid_batch_leaves_nothing_behind(
+    database_url: str, conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+
+    class DeletingEmbedder(FakeEmbedder):
+        """Simulates the User deleting the Document while its batch is embedding."""
+
+        async def embed(self, texts: Sequence[str], purpose: Purpose) -> Embeddings:
+            with psycopg.connect(database_url, row_factory=dict_row) as other:
+                delete_document(other, store, user.id, document_id)
+            return await super().embed(texts, purpose)
+
+    result = run_batch(conn, store, DeletingEmbedder(), seconds=240)
+
+    assert result.failed == 0
+    assert count_rows(conn, "documents", document_id) == 0
+    assert count_rows(conn, "chunks", document_id) == 0
+    assert store.files == {}
+
+
+def test_the_delete_endpoint_is_repeatable(
+    client: TestClient, conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+
+    assert client.delete(f"/documents/{document_id}").status_code == 204
+    assert client.delete(f"/documents/{document_id}").status_code == 204
+    assert client.get("/documents").json() == []
 
 
 # --- Scheduler ----------------------------------------------------------------------------

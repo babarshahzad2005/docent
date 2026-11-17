@@ -155,6 +155,35 @@ def retry_document(conn: Connection[DictRow], user_id: UUID, document_id: UUID) 
     )
 
 
+def delete_document(
+    conn: Connection[DictRow], store: FileStore, user_id: UUID, document_id: UUID
+) -> None:
+    """Delete the Document with its original file, chunks, and vectors, all or nothing.
+
+    The row (and, by cascade, its chunks and their vectors) is deleted and the file removed
+    from storage inside one transaction: if storage refuses, the transaction rolls back and
+    the Document stays whole, so a deleted Document can never leave a file behind. A batch
+    working on the Document at the time stops at its next step (ingestion.py).
+    """
+    _editable(conn, user_id, document_id)
+    with conn.transaction():
+        row = conn.execute(
+            "delete from app.documents where id = %s returning storage_path", (document_id,)
+        ).fetchone()
+        if row is None:
+            return  # deleted meanwhile by another request
+        store.delete([row["storage_path"]])
+
+
+def storage_used(conn: Connection[DictRow], user_id: UUID) -> int:
+    """Bytes of original files the User has uploaded, counted against their allowance."""
+    row = conn.execute(
+        "select coalesce(sum(size_bytes), 0) as used from app.documents where uploaded_by = %s",
+        (user_id,),
+    ).fetchone()
+    return int(row["used"]) if row else 0
+
+
 def _editable(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -> DictRow:
     row = conn.execute(
         f"""

@@ -12,6 +12,7 @@ type Result<T> = { ok: true; value: T } | { ok: false; message: string };
 
 const SIGNED_OUT = "Your session has expired. Sign in again.";
 const UNREACHABLE = "Can't reach the server. Try again in a minute.";
+const CANT_CHANGE = "You can't change documents in this collection.";
 
 /** Every Document in the User's Collections, for refreshing statuses. */
 export async function listDocuments(): Promise<Result<DocumentSummary[]>> {
@@ -51,6 +52,19 @@ export async function finishUpload(documentId: string): Promise<Result<DocumentS
   if (!data) return { ok: false, message: problem(response.status) };
   processInBackground(caller);
   return { ok: true, value: data };
+}
+
+/** Delete a Document with its file, passages, and vectors. */
+export async function deleteDocument(documentId: string): Promise<Result<null>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { error, response } = await caller.api.DELETE("/documents/{document_id}", {
+    headers: caller.headers,
+    params: { path: { document_id: documentId } },
+  });
+  if (response.ok) return { ok: true, value: null };
+  if (response.status === 403) return { ok: false, message: CANT_CHANGE };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
 }
 
 /** Queue a failed Document again and start processing it. */

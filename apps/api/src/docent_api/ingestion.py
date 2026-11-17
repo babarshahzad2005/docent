@@ -77,7 +77,7 @@ _KEEPS_FAILING = (
     "it again."
 )
 
-Outcome = Literal["indexed", "failed", "paused", "retrying"]
+Outcome = Literal["indexed", "failed", "paused", "retrying", "deleted"]
 
 
 @dataclass(frozen=True)
@@ -261,6 +261,8 @@ class _DocumentWorker:
             self._release(pause.retry_in)
             return "paused"
         except Exception as error:  # anything else: count it, so it can't loop forever
+            if not self._still_exists():
+                return "deleted"  # removed by its User mid-batch; nothing left to do
             return self._retry_later(error)
         _finish(self.conn, self.id, "indexed", None)
         return "indexed"
@@ -397,6 +399,10 @@ class _DocumentWorker:
             },
         )
         return "retrying"
+
+    def _still_exists(self) -> bool:
+        row = self.conn.execute("select 1 from app.documents where id = %s", (self.id,)).fetchone()
+        return row is not None
 
     def _set_status(self, status: str) -> None:
         self.conn.execute(

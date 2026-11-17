@@ -391,6 +391,48 @@
         ]
       }
     },
+    "/documents/{document_id}": {
+      "delete": {
+        "description": "Delete a Document with its file, passages, and vectors. Repeating the call is harmless.",
+        "operationId": "deleteDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/documents/{document_id}/retry": {
       "post": {
         "description": "Queue a failed Document again, when retrying could help.",
