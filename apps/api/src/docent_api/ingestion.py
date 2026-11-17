@@ -15,6 +15,7 @@ without finishing (say, one that kills its batch) is marked failed after MAX_CLA
 """
 
 import asyncio
+import hashlib
 import logging
 import time
 from collections.abc import Callable
@@ -27,7 +28,14 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 
 from docent_api.chunking import Chunk, chunk_blocks, chunk_markdown, chunk_plain_text
-from docent_api.documents import FILE_TYPES, MAX_FILE_BYTES, remove_files
+from docent_api.documents import (
+    FILE_TYPES,
+    MAX_FILE_BYTES,
+    MAX_USER_BYTES,
+    megabytes,
+    remove_files,
+    storage_used,
+)
 from docent_api.extraction import UnreadableDocument, extract_docx, extract_pdf
 from docent_api.providers.base import Embedder, Purpose, RateLimited
 from docent_api.storage import FileMissing, FileStore
@@ -293,11 +301,25 @@ class _DocumentWorker:
             data = self.store.download(self.document["storage_path"])
         except FileMissing as error:
             raise _Unprocessable(_UPLOAD_UNFINISHED) from error
-        self.conn.execute(
-            "update app.documents set size_bytes = %s where id = %s", (len(data), self.id)
-        )
+        # Trust the stored file, not what the browser said about it.
+        row = self.conn.execute(
+            """
+            update app.documents set size_bytes = %s, content_hash = %s where id = %s
+            returning uploaded_by
+            """,
+            (len(data), hashlib.sha256(data).hexdigest(), self.id),
+        ).fetchone()
         if len(data) > MAX_FILE_BYTES:
-            raise _Unprocessable("This document is larger than 20 MB, the limit per document.")
+            raise _Unprocessable(
+                f"This document is {megabytes(len(data))}, over the 20 MB limit per file. "
+                "Split it into smaller files and upload those."
+            )
+        used = storage_used(self.conn, row["uploaded_by"]) if row and row["uploaded_by"] else 0
+        if used > MAX_USER_BYTES:
+            raise _Unprocessable(
+                f"Your documents now use {megabytes(used)}, over your 100 MB. Delete documents "
+                "you no longer need, then upload this one again."
+            )
         file_type = FILE_TYPES.get(PurePosixPath(self.document["name"]).suffix.lower())
         if file_type is None:
             raise _Unprocessable("Docent can't read this type of document.")

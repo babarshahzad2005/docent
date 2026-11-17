@@ -196,6 +196,11 @@
       },
       "NewDocument": {
         "properties": {
+          "allow_duplicate": {
+            "default": false,
+            "title": "Allow Duplicate",
+            "type": "boolean"
+          },
           "collection_id": {
             "format": "uuid",
             "title": "Collection Id",
@@ -204,6 +209,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
           },
           "size_bytes": {
             "title": "Size Bytes",
@@ -368,6 +384,9 @@
           },
           "400": {
             "description": "The file breaks an upload rule"
+          },
+          "409": {
+            "description": "The Collection already has a Document with this content"
           },
           "422": {
             "content": {

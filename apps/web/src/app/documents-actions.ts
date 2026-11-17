@@ -21,20 +21,38 @@ export async function listDocuments(): Promise<Result<DocumentSummary[]>> {
   return data ? { ok: true, value: data } : { ok: false, message: problem(response.status) };
 }
 
-/** Create the Document and get where to upload its file. */
+/**
+ * Create the Document and get where to upload its file. `duplicate` is set when the Collection
+ * already has a Document with the same content, so the User can choose to keep both.
+ */
 export async function startUpload(
   collectionId: string,
   name: string,
   sizeBytes: number,
-): Promise<Result<{ document: DocumentSummary; upload: UploadTarget }>> {
+  sha256: string,
+  allowDuplicate = false,
+): Promise<
+  | { ok: true; value: { document: DocumentSummary; upload: UploadTarget } }
+  | { ok: false; message: string; duplicate: boolean }
+> {
   const caller = await apiAsUser();
-  if (!caller) return { ok: false, message: SIGNED_OUT };
+  if (!caller) return { ok: false, message: SIGNED_OUT, duplicate: false };
   const { data, error, response } = await caller.api.POST("/documents", {
     headers: caller.headers,
-    body: { collection_id: collectionId, name, size_bytes: sizeBytes },
+    body: {
+      collection_id: collectionId,
+      name,
+      size_bytes: sizeBytes,
+      sha256,
+      allow_duplicate: allowDuplicate,
+    },
   });
   if (data) return { ok: true, value: data };
-  return { ok: false, message: detail(error) ?? problem(response.status) };
+  return {
+    ok: false,
+    message: detail(error) ?? problem(response.status),
+    duplicate: response.status === 409,
+  };
 }
 
 /**

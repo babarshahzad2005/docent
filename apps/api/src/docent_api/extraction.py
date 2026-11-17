@@ -48,6 +48,27 @@ _BOLD_AT_BODY_SIZE = -1.0  # key in the level map for bold headings at body size
 _LETTER = re.compile(r"[^\W\d_]")
 
 
+_PASSWORD_PDF = (
+    "This PDF is password-protected. Save a copy without the password (in most PDF readers, "
+    "print it to PDF) and upload that."
+)
+_DAMAGED_PDF = (
+    "This PDF is damaged or incomplete, so it can't be read. Check that it opens on your "
+    "computer, save a fresh copy, and upload that."
+)
+_SCANNED_PDF = (
+    "This PDF is made of pictures of pages (a scan or photos), so it has no text Docent can "
+    "read. Upload a version with selectable text, or run it through text recognition (OCR) "
+    "first."
+)
+_OLD_OR_LOCKED_WORD = (
+    "This is an old-format Word file (.doc) or a password-protected one. Open it in Word, "
+    "remove any password, and save it as .docx."
+)
+_FPDF_ERR_PASSWORD = 4
+_COMPOUND_FILE = bytes.fromhex("D0CF11E0A1B11AE1")  # .doc and encrypted .docx start with this
+
+
 class UnreadableDocument(Exception):
     """The file can't be read as it is; the message tells the User what to do."""
 
@@ -88,19 +109,28 @@ def extract_pdf(data: bytes) -> list[Block]:
     try:
         document = pypdfium2.PdfDocument(data)
     except pypdfium2.PdfiumError as error:
-        raise UnreadableDocument(
-            "This PDF couldn't be opened. Check that it opens on your computer and isn't "
-            "password-protected."
-        ) from error
+        locked = getattr(error, "err_code", None) == _FPDF_ERR_PASSWORD
+        raise UnreadableDocument(_PASSWORD_PDF if locked else _DAMAGED_PDF) from error
     try:
         if len(document) > MAX_PAGES:
             raise UnreadableDocument(
                 f"This PDF has {len(document)} pages; the limit is {MAX_PAGES} per document. "
                 "Split it into smaller files and upload those."
             )
-        pages = [_page_lines(document[index], index + 1) for index in range(len(document))]
+        pages: list[list[_Line]] = []
+        pictures = 0
+        for index in range(len(document)):
+            page = document[index]
+            try:
+                pages.append(_page_lines(page, index + 1))
+                if not pages[-1]:
+                    pictures += _picture_count(page)
+            finally:
+                page.close()
     finally:
         document.close()
+    if pictures and not any(pages):
+        raise UnreadableDocument(_SCANNED_PDF)
     pages = _without_running_headers(pages)
     lines = [line for page in pages for line in page]
     body_size = _body_size(lines)
@@ -147,7 +177,10 @@ def _page_lines(page: pypdfium2.PdfPage, number: int) -> list[_Line]:
     finally:
         if textpage is not None:
             textpage.close()
-        page.close()
+
+
+def _picture_count(page: pypdfium2.PdfPage) -> int:
+    return sum(1 for _ in page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=2))
 
 
 class _Fonts:
@@ -359,6 +392,8 @@ def extract_docx(data: bytes) -> list[Block]:
 
 
 def _check_unpacked_size(data: bytes) -> None:
+    if data.startswith(_COMPOUND_FILE):
+        raise UnreadableDocument(_OLD_OR_LOCKED_WORD)
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             unpacked = sum(info.file_size for info in archive.infolist())

@@ -267,12 +267,19 @@ export interface components {
         /** NewDocument */
         NewDocument: {
             /**
+             * Allow Duplicate
+             * @default false
+             */
+            allow_duplicate: boolean;
+            /**
              * Collection Id
              * Format: uuid
              */
             collection_id: string;
             /** Name */
             name: string;
+            /** Sha256 */
+            sha256?: string | null;
             /** Size Bytes */
             size_bytes: number;
         };
@@ -359,6 +366,13 @@ export interface operations {
             };
             /** @description The file breaks an upload rule */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The Collection already has a Document with this content */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

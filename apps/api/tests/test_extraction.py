@@ -94,8 +94,31 @@ def test_a_300_page_pdf_is_read_well_inside_a_batch() -> None:
 
 
 def test_a_broken_pdf_is_unreadable() -> None:
-    with pytest.raises(UnreadableDocument, match="couldn't be opened"):
+    with pytest.raises(UnreadableDocument, match="damaged or incomplete"):
         extract_pdf(b"%PDF-1.7 this is not really a PDF")
+
+
+BAD = FILES / "bad"
+
+
+@pytest.mark.parametrize(
+    ("name", "reason"),
+    [
+        ("password.pdf", "This PDF is password-protected."),
+        ("damaged.pdf", "This PDF is damaged or incomplete"),
+        ("scanned.pdf", "This PDF is made of pictures of pages"),
+    ],
+)
+def test_each_kind_of_bad_pdf_has_its_own_reason(name: str, reason: str) -> None:
+    with pytest.raises(UnreadableDocument) as raised:
+        extract_pdf((BAD / name).read_bytes())
+
+    assert str(raised.value).startswith(reason)
+
+
+def test_old_or_locked_word_files_have_their_own_reason() -> None:
+    with pytest.raises(UnreadableDocument, match="old-format Word file"):
+        extract_docx((BAD / "old-word.doc").read_bytes())
 
 
 # --- Word ---------------------------------------------------------------------------------

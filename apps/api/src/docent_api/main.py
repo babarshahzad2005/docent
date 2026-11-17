@@ -15,6 +15,7 @@ from docent_api.db import get_connection
 from docent_api.documents import (
     DocumentNotFound,
     DocumentSummary,
+    DuplicateDocument,
     NotAllowed,
     NotRetryable,
     UploadRejected,
@@ -59,6 +60,10 @@ class NewDocument(BaseModel):
     collection_id: UUID
     name: str
     size_bytes: int
+    sha256: str | None = None
+    """The file's SHA-256 in lowercase hex, to notice the same file uploaded twice."""
+    allow_duplicate: bool = False
+    """Keep both when the Collection already has a Document with the same content."""
 
 
 class UploadTarget(BaseModel):
@@ -112,16 +117,28 @@ def documents(user: User, conn: Db) -> list[DocumentSummary]:
     operation_id="startUpload",
     tags=["documents"],
     status_code=status.HTTP_201_CREATED,
-    responses={400: {"description": "The file breaks an upload rule"}},
+    responses={
+        400: {"description": "The file breaks an upload rule"},
+        409: {"description": "The Collection already has a Document with this content"},
+    },
 )
 def new_document(body: NewDocument, user: User, conn: Db, files: Files) -> StartedUpload:
     """Add a Document: returns where to upload its file. Call `finishUpload` afterwards."""
     try:
         document, upload = start_upload(
-            conn, files, user.id, body.collection_id, body.name, body.size_bytes
+            conn,
+            files,
+            user.id,
+            body.collection_id,
+            body.name,
+            body.size_bytes,
+            sha256=body.sha256,
+            allow_duplicate=body.allow_duplicate,
         )
     except UploadRejected as rejected:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(rejected)) from None
+    except DuplicateDocument as duplicate:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(duplicate)) from None
     except NotAllowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_EDIT) from None
     except StorageError:

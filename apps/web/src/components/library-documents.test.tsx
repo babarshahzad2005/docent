@@ -39,6 +39,83 @@ function aDocument(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
 beforeEach(() => vi.resetAllMocks());
 afterEach(cleanup);
 
+describe("Uploading", () => {
+  function picker(container: HTMLElement): HTMLInputElement {
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no file input");
+    return input;
+  }
+
+  it("refuses files that break a rule before sending anything", async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    const { container } = render(<LibraryDocuments collection={PERSONAL} initialDocuments={[]} />);
+
+    await user.upload(picker(container), new File(["x"], "slides.pptx"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("slides.pptx can’t be added");
+    expect(actions.startUpload).not.toHaveBeenCalled();
+  });
+
+  it("lets the User keep both when the same file is already in the Collection", async () => {
+    const upload = vi.fn().mockResolvedValue({ error: null });
+    const { createClient } = await import("@/lib/supabase/client");
+    vi.mocked(createClient).mockReturnValue({
+      storage: { from: () => ({ uploadToSignedUrl: upload }) },
+    } as never);
+    actions.startUpload
+      .mockResolvedValueOnce({
+        ok: false,
+        duplicate: true,
+        message: "policy.md is already in your Personal collection as policy.md.",
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: {
+          document: aDocument({ id: "d9", name: "policy.md", status: "uploading" }),
+          upload: { bucket: "documents", path: "c1/d9.md", token: "t" },
+        },
+      });
+    actions.finishUpload.mockResolvedValue({
+      ok: true,
+      value: aDocument({ id: "d9", name: "policy.md", status: "queued" }),
+    });
+    actions.listDocuments.mockResolvedValue({ ok: true, value: [] });
+    const user = userEvent.setup();
+    const { container } = render(<LibraryDocuments collection={PERSONAL} initialDocuments={[]} />);
+
+    await user.upload(picker(container), new File(["# Leave"], "policy.md"));
+    expect(
+      (await screen.findByRole("status")).textContent,
+    ).toBe("policy.md is already in your Personal collection as policy.md.");
+    const [, , , fingerprint, allowed] = actions.startUpload.mock.calls[0];
+    expect(fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(allowed).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Upload anyway" }));
+
+    await waitFor(() => expect(actions.finishUpload).toHaveBeenCalledWith("d9"));
+    expect(actions.startUpload.mock.calls[1][4]).toBe(true);
+    expect(upload).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "Upload anyway" })).toBeNull();
+  });
+
+  it("skips a duplicate when asked", async () => {
+    actions.startUpload.mockResolvedValue({
+      ok: false,
+      duplicate: true,
+      message: "policy.md is already in your Personal collection as policy.md.",
+    });
+    const user = userEvent.setup();
+    const { container } = render(<LibraryDocuments collection={PERSONAL} initialDocuments={[]} />);
+
+    await user.upload(picker(container), new File(["# Leave"], "policy.md"));
+    await user.click(await screen.findByRole("button", { name: "Skip" }));
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(actions.startUpload).toHaveBeenCalledOnce();
+  });
+});
+
 describe("Deleting a Document", () => {
   it("asks first, naming the Document, and removes it once confirmed", async () => {
     actions.deleteDocument.mockResolvedValue({ ok: true, value: null });
