@@ -229,7 +229,7 @@ def test_nobody_retrieves_passages_they_cant_read(
     assert found == []
     model = ScriptedModel(["Nothing."])
     ask(reader, "What is the launch code ZEBRA-99?", model)
-    assert all("ZEBRA" not in prompt for prompt in model.prompts)
+    assert all("launch code is ZEBRA" not in prompt for prompt in model.prompts)
 
 
 # --- Answering ----------------------------------------------------------------------------

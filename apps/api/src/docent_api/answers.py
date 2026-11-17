@@ -378,7 +378,7 @@ def load_conversation(
     messages = conn.execute(
         """
         select id, role, content, status, created_at from app.messages
-        where conversation_id = %s order by created_at, role desc
+        where conversation_id = %s order by created_at, role  -- the question before its answer
         """,
         (conversation_id,),
     ).fetchall()
