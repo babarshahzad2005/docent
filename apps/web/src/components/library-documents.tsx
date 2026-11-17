@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { precheck, sha256 } from "@/lib/upload-checks";
 
 const ACCEPT = [
   ".pdf",
@@ -65,6 +66,8 @@ export function LibraryDocuments({
   const [refreshes, setRefreshes] = useState(0);
   const canEdit = collection.role !== "viewer";
   const [errors, setErrors] = useState<string[]>([]);
+  // Files the Collection already has: the User chooses to keep both or skip.
+  const [duplicates, setDuplicates] = useState<{ file: File; message: string }[]>([]);
   const [announcement, setAnnouncement] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -125,39 +128,59 @@ export function LibraryDocuments({
 
   async function upload(files: File[]) {
     setErrors([]);
+    setDuplicates([]);
+    for (const file of files) await uploadOne(file, false);
+  }
+
+  async function uploadOne(file: File, allowDuplicate: boolean) {
     const fail = (message: string) => setErrors((current) => [...current, message]);
+    const refused = precheck(file);
+    if (refused) {
+      fail(refused);
+      return;
+    }
     const supabase = createClient();
-    for (const file of files) {
-      try {
-        const started = await startUpload(collection.id, file.name, file.size);
-        if (!started.ok) {
+    try {
+      const started = await startUpload(
+        collection.id,
+        file.name,
+        file.size,
+        await sha256(file),
+        allowDuplicate,
+      );
+      if (!started.ok) {
+        if (started.duplicate) {
+          setDuplicates((current) => [...current, { file, message: started.message }]);
+          setAnnouncement(started.message);
+        } else {
           fail(started.message);
-          continue;
         }
-        const { document, upload: target } = started.value;
-        setDocuments((current) => [document, ...current]);
-        const { error } = await supabase.storage
-          .from(target.bucket)
-          .uploadToSignedUrl(target.path, target.token, file, {
-            contentType: file.type || "application/octet-stream",
-          });
-        if (error) {
-          // The server marks the unfinished Document as failed later; hide it here.
-          setDocuments((current) => current.filter((d) => d.id !== document.id));
-          fail(`${file.name} couldn't be uploaded (${error.message}). Upload it again.`);
-          continue;
-        }
-        const finished = await finishUpload(document.id);
-        if (!finished.ok) {
-          fail(finished.message);
-          continue;
-        }
-        setDocuments((current) =>
-          current.map((d) => (d.id === document.id ? finished.value : d)),
-        );
-      } catch {
-        fail(`${file.name} couldn't be uploaded. Check your connection and upload it again.`);
+        return;
       }
+      const { document, upload: target } = started.value;
+      setDocuments((current) => [document, ...current]);
+      const { error } = await supabase.storage
+        .from(target.bucket)
+        .uploadToSignedUrl(target.path, target.token, file, {
+          contentType: file.type || "application/octet-stream",
+        });
+      if (error) {
+        // Cancel the half-made Document, so it neither counts nor blocks uploading again.
+        setDocuments((current) => current.filter((d) => d.id !== document.id));
+        void deleteDocument(document.id).catch(() => undefined);
+        fail(`${file.name} couldn't be uploaded (${error.message}). Upload it again.`);
+        return;
+      }
+      const finished = await finishUpload(document.id);
+      if (!finished.ok) {
+        fail(finished.message);
+        return;
+      }
+      setDocuments((current) =>
+        current.map((d) => (d.id === document.id ? finished.value : d)),
+      );
+    } catch {
+      fail(`${file.name} couldn't be uploaded. Check your connection and upload it again.`);
     }
   }
 
@@ -189,6 +212,39 @@ export function LibraryDocuments({
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
+      {duplicates.length > 0 && (
+        <ul aria-label="Already in this collection" className="flex flex-col gap-3">
+          {duplicates.map(({ file, message }) => {
+            // The choice's own buttons disappear with it; continue from the upload button.
+            const settle = () => {
+              setDuplicates((current) => current.filter((d) => d.file !== file));
+              button.current?.focus();
+            };
+            return (
+              <li
+                key={`${file.name}-${file.lastModified}-${file.size}`}
+                className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3"
+              >
+                <p>{message}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      settle();
+                      void uploadOne(file, true);
+                    }}
+                  >
+                    Upload anyway
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={settle}>
+                    Skip
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {errors.length > 0 && (
         <ul role="alert" className="flex flex-col gap-1 text-destructive">
           {errors.map((message, index) => (

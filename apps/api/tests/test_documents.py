@@ -17,6 +17,7 @@ from docent_api.db import get_connection
 from docent_api.documents import (
     MAX_FILE_BYTES,
     DocumentNotFound,
+    DuplicateDocument,
     NotAllowed,
     NotRetryable,
     UploadRejected,
@@ -169,7 +170,7 @@ def test_starting_an_upload_creates_an_uploading_document(
     [
         ("slides.pptx", 100, "PDF, Word (.docx), Markdown (.md), and plain text (.txt)"),
         ("notes", 100, "PDF, Word (.docx), Markdown (.md), and plain text (.txt)"),
-        ("big.txt", 20 * 1024 * 1024 + 1, "larger than 20 MB"),
+        ("big.txt", 20 * 1024 * 1024 + 1, "over the 20 MB limit per file"),
         ("empty.txt", 0, "empty"),
         ("../../", 10, "needs a name"),
     ],
@@ -389,7 +390,7 @@ def test_a_file_that_isnt_really_a_pdf_fails_with_a_reason(
 
     status_, reason = status(conn, document_id)
     assert status_ == "failed"
-    assert reason is not None and "PDF couldn't be opened" in reason
+    assert reason is not None and "damaged or incomplete" in reason
 
 
 def test_a_short_rate_limit_is_waited_out(
@@ -513,10 +514,9 @@ def test_the_real_file_size_is_checked_not_the_claimed_one(
 
     run_batch(conn, store, FakeEmbedder(), seconds=240)
 
-    assert status(conn, document.id) == (
-        "failed",
-        "This document is larger than 20 MB, the limit per document.",
-    )
+    status_, reason = status(conn, document.id)
+    assert status_ == "failed"
+    assert reason is not None and "over the 20 MB limit per file" in reason
 
 
 def test_only_one_batch_runs_at_a_time(
@@ -556,7 +556,12 @@ def test_the_upload_endpoints_add_a_document(
 ) -> None:
     started = client.post(
         "/documents",
-        json={"collection_id": str(personal(conn, user)), "name": "a.md", "size_bytes": 9},
+        json={
+            "collection_id": str(personal(conn, user)),
+            "name": "a.md",
+            "size_bytes": 9,
+            "sha256": "a" * 64,
+        },
     )
     assert started.status_code == 201
     document = started.json()["document"]
@@ -573,7 +578,12 @@ def test_a_refused_upload_explains_why(
 ) -> None:
     response = client.post(
         "/documents",
-        json={"collection_id": str(personal(conn, user)), "name": "a.pptx", "size_bytes": 9},
+        json={
+            "collection_id": str(personal(conn, user)),
+            "name": "a.pptx",
+            "size_bytes": 9,
+            "sha256": "a" * 64,
+        },
     )
 
     assert response.status_code == 400
@@ -582,6 +592,241 @@ def test_a_refused_upload_explains_why(
 
 def test_an_unknown_document_is_not_found(client: TestClient) -> None:
     assert client.post(f"/documents/{uuid4()}/uploaded").status_code == 404
+
+
+# --- Bad files and limits -----------------------------------------------------------------
+
+BAD_FILES = EXTRACTION_FILES / "bad"
+
+
+def test_bad_files_fail_alone_with_their_own_reasons(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    locked = upload(conn, store, user, "locked.pdf", (BAD_FILES / "password.pdf").read_bytes())
+    scan = upload(conn, store, user, "scan.pdf", (BAD_FILES / "scanned.pdf").read_bytes())
+    broken = upload(conn, store, user, "broken.pdf", (BAD_FILES / "damaged.pdf").read_bytes())
+    good = upload(conn, store, user, "good.md", POLICY)
+
+    result = run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert (result.indexed, result.failed) == (1, 3)
+    assert status(conn, good) == ("indexed", None)
+    reasons = [status(conn, d)[1] or "" for d in (locked, scan, broken)]
+    assert reasons[0].startswith("This PDF is password-protected.")
+    assert reasons[1].startswith("This PDF is made of pictures of pages")
+    assert reasons[2].startswith("This PDF is damaged or incomplete")
+    assert not any(
+        d.can_retry for d in list_documents(conn, user.id) if d.id in (locked, scan, broken)
+    )
+
+
+def fill_storage(conn: Connection[DictRow], user: AuthUser, size_bytes: int) -> None:
+    conn.execute(
+        """
+        insert into app.documents (collection_id, uploaded_by, name, size_bytes, storage_path,
+                                   status)
+        values (%s, %s, 'existing.pdf', %s, %s, 'indexed')
+        """,
+        (personal(conn, user), user.id, size_bytes, f"x/{uuid4()}.pdf"),
+    )
+    conn.commit()
+
+
+def test_uploads_over_the_100_mb_allowance_are_refused(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    fill_storage(conn, user, 96 * 1024 * 1024)
+
+    with pytest.raises(UploadRejected) as refused:
+        start_upload(conn, store, user.id, personal(conn, user), "big.pdf", 5 * 1024 * 1024)
+
+    assert str(refused.value) == (
+        "Your documents use 96.0\u00a0MB of your 100 MB. big.pdf (5.0\u00a0MB) would go over "
+        "the limit: delete documents you no longer need to make room."
+    )
+    start_upload(conn, store, user.id, personal(conn, user), "small.pdf", 4 * 1024 * 1024)
+
+
+def test_the_allowance_is_checked_again_with_the_real_file_size(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    fill_storage(conn, user, 99 * 1024 * 1024)
+    document, target = start_upload(conn, store, user.id, personal(conn, user), "a.txt", 10)
+    store.files[target.path] = b"x" * (2 * 1024 * 1024)  # the browser understated its size
+    finish_upload(conn, user.id, document.id)
+    conn.commit()
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    status_, reason = status(conn, document.id)
+    assert status_ == "failed"
+    assert reason is not None and "over your 100 MB" in reason
+
+
+def sha256(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()
+
+
+def test_the_same_file_twice_in_a_collection_is_flagged(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    collection = personal(conn, user)
+    first, target = start_upload(
+        conn, store, user.id, collection, "policy.md", len(POLICY), sha256=sha256(POLICY)
+    )
+    store.files[target.path] = POLICY
+    conn.commit()
+
+    with pytest.raises(DuplicateDocument) as flagged:
+        start_upload(
+            conn, store, user.id, collection, "policy copy.md", len(POLICY), sha256=sha256(POLICY)
+        )
+    assert str(flagged.value) == (
+        "policy copy.md is already in the Personal collection as policy.md. Upload it anyway "
+        "to keep both."
+    )
+
+    second, _ = start_upload(
+        conn,
+        store,
+        user.id,
+        collection,
+        "policy copy.md",
+        len(POLICY),
+        sha256=sha256(POLICY),
+        allow_duplicate=True,
+    )
+    assert second.id != first.id
+
+
+def test_the_stored_files_fingerprint_replaces_the_browsers(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    collection = personal(conn, user)
+    document, target = start_upload(
+        conn, store, user.id, collection, "a.md", len(POLICY), sha256="0" * 64
+    )
+    store.files[target.path] = POLICY
+    finish_upload(conn, user.id, document.id)
+    conn.commit()
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    with pytest.raises(DuplicateDocument):
+        start_upload(conn, store, user.id, collection, "b.md", len(POLICY), sha256=sha256(POLICY))
+
+
+def test_a_malformed_fingerprint_is_refused(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    with pytest.raises(UploadRejected, match="couldn\u2019t be checked"):
+        start_upload(conn, store, user.id, personal(conn, user), "a.md", 5, sha256="nope")
+
+
+def test_a_file_that_can_never_be_read_is_removed_and_stops_counting(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    scan = upload(conn, store, user, "scan.pdf", (BAD_FILES / "scanned.pdf").read_bytes())
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert status(conn, scan)[0] == "failed"
+    assert store.files == {}
+    assert used_bytes(conn, user) == 0
+    assert pending_removals(conn) == []
+
+
+def test_a_failed_attempt_doesnt_block_uploading_the_file_again(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    data = (BAD_FILES / "scanned.pdf").read_bytes()
+    document, target = start_upload(
+        conn, store, user.id, personal(conn, user), "scan.pdf", len(data), sha256=sha256(data)
+    )
+    store.files[target.path] = data
+    finish_upload(conn, user.id, document.id)
+    conn.commit()
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    start_upload(  # not flagged: the earlier attempt failed
+        conn, store, user.id, personal(conn, user), "scan.pdf", len(data), sha256=sha256(data)
+    )
+
+
+def test_unfinished_uploads_stop_counting_and_their_files_go_later(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    stale, target = start_upload(conn, store, user.id, personal(conn, user), "a.txt", 10**6)
+    conn.execute(
+        "update app.documents set created_at = now() - interval '90 minutes' where id = %s",
+        (stale.id,),
+    )
+    conn.commit()
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert used_bytes(conn, user) == 0
+    assert [(r["path"], r["later"]) for r in pending_removals(conn)] == [(target.path, True)]
+
+
+def test_uploads_racing_for_the_last_space_dont_both_fail(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    fill_storage(conn, user, 70 * 1024 * 1024)
+    collection = personal(conn, user)
+    big = b"x" * (20 * 1024 * 1024)
+    first, first_target = start_upload(conn, store, user.id, collection, "one.txt", 1)
+    second, second_target = start_upload(conn, store, user.id, collection, "two.txt", 1)
+    store.files[first_target.path] = big  # both browsers understated, so both passed the check
+    store.files[second_target.path] = big
+    finish_upload(conn, user.id, first.id)
+    finish_upload(conn, user.id, second.id)
+    conn.commit()
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    statuses = sorted(status(conn, d)[0] for d in (first.id, second.id))
+    assert statuses == ["failed", "indexed"]
+
+
+def test_a_pdf_over_300_pages_fails_with_the_limit_named(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    import io
+
+    import pypdfium2
+
+    document = pypdfium2.PdfDocument.new()
+    for _ in range(301):
+        document.new_page(612, 792)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    long_one = upload(conn, store, user, "long.pdf", buffer.getvalue())
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    reason = status(conn, long_one)[1] or ""
+    assert "301 pages; the limit is 300 per document" in reason
+
+
+def test_the_upload_endpoint_reports_duplicates_with_409(
+    client: TestClient, conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    body = {
+        "collection_id": str(personal(conn, user)),
+        "name": "a.md",
+        "size_bytes": len(POLICY),
+        "sha256": sha256(POLICY),
+    }
+    assert client.post("/documents", json=body).status_code == 201
+
+    again = client.post("/documents", json=body)
+    kept = client.post("/documents", json={**body, "allow_duplicate": True})
+
+    assert again.status_code == 409
+    assert "Upload it anyway to keep both" in again.json()["detail"]
+    assert kept.status_code == 201
 
 
 # --- Retry and backoff --------------------------------------------------------------------

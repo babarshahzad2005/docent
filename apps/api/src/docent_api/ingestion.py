@@ -15,6 +15,7 @@ without finishing (say, one that kills its batch) is marked failed after MAX_CLA
 """
 
 import asyncio
+import hashlib
 import logging
 import time
 from collections.abc import Callable
@@ -27,7 +28,15 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 
 from docent_api.chunking import Chunk, chunk_blocks, chunk_markdown, chunk_plain_text
-from docent_api.documents import FILE_TYPES, MAX_FILE_BYTES, remove_files
+from docent_api.documents import (
+    FILE_TYPES,
+    MAX_FILE_BYTES,
+    MAX_USER_BYTES,
+    UPLOAD_LINK_HOURS,
+    megabytes,
+    remove_files,
+    storage_used,
+)
 from docent_api.extraction import UnreadableDocument, extract_docx, extract_pdf
 from docent_api.providers.base import Embedder, Purpose, RateLimited
 from docent_api.storage import FileMissing, FileStore
@@ -165,6 +174,7 @@ def _run(
         if document["claims"] > MAX_CLAIMS:
             # Picked up again and again without progress: something about it breaks batches.
             _finish(conn, document["id"], "failed", _KEEPS_FAILING)
+            _discard_file(conn, store, document["id"], document["storage_path"])
             failed += 1
             continue
         outcome = _DocumentWorker(conn, store, embedder, document, budget).run()
@@ -203,15 +213,44 @@ def _remaining(conn: Connection[DictRow]) -> int:
 
 
 def _fail_unfinished_uploads(conn: Connection[DictRow]) -> None:
-    """A browser that never reported its upload finished (closed tab, failed upload)."""
-    conn.execute(
-        f"""
-        update app.documents
-        set status = 'failed', failure_reason = %(reason)s, updated_at = now()
-        where {STALE_UPLOAD_SQL}
-        """,
-        {"reason": _UPLOAD_UNFINISHED},
-    )
+    """A browser that never reported its upload finished (closed tab, lost connection).
+
+    Whatever arrived is removed once the upload link has expired, and stops counting against
+    the User's allowance now.
+    """
+    with conn.transaction():
+        rows = conn.execute(
+            f"""
+            update app.documents
+            set status = 'failed', failure_reason = %(reason)s, size_bytes = 0,
+                updated_at = now()
+            where {STALE_UPLOAD_SQL}
+            returning storage_path, created_at
+            """,
+            {"reason": _UPLOAD_UNFINISHED},
+        ).fetchall()
+        for row in rows:
+            conn.execute(
+                """
+                insert into app.storage_deletions (path, delete_after)
+                values (%s, %s + make_interval(hours => %s))
+                on conflict (path) do nothing
+                """,
+                (row["storage_path"], row["created_at"], UPLOAD_LINK_HOURS),
+            )
+
+
+def _discard_file(
+    conn: Connection[DictRow], store: FileStore, document_id: UUID, path: str
+) -> None:
+    """Remove a failed Document's file; it keeps its row and reason, and counts as 0 bytes."""
+    with conn.transaction():
+        conn.execute("update app.documents set size_bytes = 0 where id = %s", (document_id,))
+        conn.execute(
+            "insert into app.storage_deletions (path) values (%s) on conflict (path) do nothing",
+            (path,),
+        )
+    remove_files(conn, store, [path])
 
 
 def _remove_deleted_files(conn: Connection[DictRow], store: FileStore) -> None:
@@ -275,6 +314,8 @@ class _DocumentWorker:
             if not self._still_exists():
                 return "deleted"  # its file went with it, mid-batch
             _finish(self.conn, self.id, "failed", str(problem))
+            # It can never be indexed as it is, so keeping the file only uses up the allowance.
+            _discard_file(self.conn, self.store, self.id, self.document["storage_path"])
             return "failed"
         except _Paused as pause:
             self._release(pause.retry_in)
@@ -293,11 +334,25 @@ class _DocumentWorker:
             data = self.store.download(self.document["storage_path"])
         except FileMissing as error:
             raise _Unprocessable(_UPLOAD_UNFINISHED) from error
-        self.conn.execute(
-            "update app.documents set size_bytes = %s where id = %s", (len(data), self.id)
-        )
+        # Trust the stored file, not what the browser said about it.
+        row = self.conn.execute(
+            """
+            update app.documents set size_bytes = %s, content_hash = %s where id = %s
+            returning uploaded_by
+            """,
+            (len(data), hashlib.sha256(data).hexdigest(), self.id),
+        ).fetchone()
         if len(data) > MAX_FILE_BYTES:
-            raise _Unprocessable("This document is larger than 20 MB, the limit per document.")
+            raise _Unprocessable(
+                f"This document is {megabytes(len(data))}, over the 20 MB limit per file. "
+                "Split it into smaller files and upload those."
+            )
+        used = storage_used(self.conn, row["uploaded_by"]) if row and row["uploaded_by"] else 0
+        if used > MAX_USER_BYTES:
+            raise _Unprocessable(
+                f"Your documents now use {megabytes(used)}, over your 100 MB. Delete documents "
+                "you no longer need, then upload this one again."
+            )
         file_type = FILE_TYPES.get(PurePosixPath(self.document["name"]).suffix.lower())
         if file_type is None:
             raise _Unprocessable("Docent can't read this type of document.")
