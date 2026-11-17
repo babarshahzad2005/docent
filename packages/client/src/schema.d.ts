@@ -279,7 +279,7 @@ export interface components {
             /** Name */
             name: string;
             /** Sha256 */
-            sha256?: string | null;
+            sha256: string;
             /** Size Bytes */
             size_bytes: number;
         };

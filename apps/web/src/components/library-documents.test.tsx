@@ -84,9 +84,10 @@ describe("Uploading", () => {
     const { container } = render(<LibraryDocuments collection={PERSONAL} initialDocuments={[]} />);
 
     await user.upload(picker(container), new File(["# Leave"], "policy.md"));
-    expect(
-      (await screen.findByRole("status")).textContent,
-    ).toBe("policy.md is already in your Personal collection as policy.md.");
+    const question = await screen.findByRole("list", { name: "Already in this collection" });
+    expect(question.textContent).toContain(
+      "policy.md is already in your Personal collection as policy.md.",
+    );
     const [, , , fingerprint, allowed] = actions.startUpload.mock.calls[0];
     expect(fingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(allowed).toBe(false);
@@ -111,8 +112,38 @@ describe("Uploading", () => {
     await user.upload(picker(container), new File(["# Leave"], "policy.md"));
     await user.click(await screen.findByRole("button", { name: "Skip" }));
 
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("list", { name: "Already in this collection" })).toBeNull();
     expect(actions.startUpload).toHaveBeenCalledOnce();
+    expect(document.activeElement?.textContent).toContain("Upload documents");
+  });
+
+  it("cancels the half-made Document when the file can't be sent", async () => {
+    const { createClient } = await import("@/lib/supabase/client");
+    vi.mocked(createClient).mockReturnValue({
+      storage: {
+        from: () => ({
+          uploadToSignedUrl: vi.fn().mockResolvedValue({ error: { message: "network down" } }),
+        }),
+      },
+    } as never);
+    actions.startUpload.mockResolvedValue({
+      ok: true,
+      value: {
+        document: aDocument({ id: "d7", name: "policy.md", status: "uploading" }),
+        upload: { bucket: "documents", path: "c1/d7.md", token: "t" },
+      },
+    });
+    actions.deleteDocument.mockResolvedValue({ ok: true, value: null });
+    const user = userEvent.setup();
+    const { container } = render(<LibraryDocuments collection={PERSONAL} initialDocuments={[]} />);
+
+    await user.upload(picker(container), new File(["# Leave"], "policy.md"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "policy.md couldn't be uploaded (network down)",
+    );
+    expect(actions.deleteDocument).toHaveBeenCalledWith("d7");
+    expect(actions.finishUpload).not.toHaveBeenCalled();
   });
 });
 

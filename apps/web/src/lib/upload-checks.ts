@@ -22,7 +22,8 @@ export function precheck(file: Pick<File, "name" | "size">): string | null {
 
 /** "8.2 MB", with a non-breaking space (DESIGN.md › Typography). */
 export function megabytes(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  // Rounded up, as the API does, so a file just over a limit never reads as exactly the limit.
+  return `${(Math.ceil((bytes / (1024 * 1024)) * 10) / 10).toFixed(1)} MB`;
 }
 
 /** The file's SHA-256 in lowercase hex: its fingerprint, to notice the same file uploaded twice. */

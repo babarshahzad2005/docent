@@ -53,7 +53,7 @@ _PASSWORD_PDF = (
     "print it to PDF) and upload that."
 )
 _DAMAGED_PDF = (
-    "This PDF is damaged or incomplete, so it can't be read. Check that it opens on your "
+    "This PDF is damaged or incomplete, so it can\u2019t be read. Check that it opens on your "
     "computer, save a fresh copy, and upload that."
 )
 _SCANNED_PDF = (
@@ -66,6 +66,8 @@ _OLD_OR_LOCKED_WORD = (
     "remove any password, and save it as .docx."
 )
 _FPDF_ERR_PASSWORD = 4
+_FEW_CHARACTERS = 40  # a page with less text than this is "only a picture" if it has one
+_MAX_WORD_PAGES = MAX_PAGES
 _COMPOUND_FILE = bytes.fromhex("D0CF11E0A1B11AE1")  # .doc and encrypted .docx start with this
 
 
@@ -123,13 +125,14 @@ def extract_pdf(data: bytes) -> list[Block]:
             page = document[index]
             try:
                 pages.append(_page_lines(page, index + 1))
-                if not pages[-1]:
+                if sum(len(line.text) for line in pages[-1]) < _FEW_CHARACTERS:
                     pictures += _picture_count(page)
             finally:
                 page.close()
     finally:
         document.close()
-    if pictures and not any(pages):
+    if pictures * 2 >= len(pages):
+        # Half or more of the pages are only pictures: a scan, perhaps with a stamped line.
         raise UnreadableDocument(_SCANNED_PDF)
     pages = _without_running_headers(pages)
     lines = [line for page in pages for line in page]
@@ -180,7 +183,9 @@ def _page_lines(page: pypdfium2.PdfPage, number: int) -> list[_Line]:
 
 
 def _picture_count(page: pypdfium2.PdfPage) -> int:
-    return sum(1 for _ in page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=2))
+    """1 if the page has a picture on it, else 0."""
+    images = page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=8)
+    return 1 if any(True for _ in images) else 0
 
 
 class _Fonts:
@@ -384,11 +389,22 @@ def extract_docx(data: bytes) -> list[Block]:
         document = open_docx(io.BytesIO(data))
     except Exception as error:  # python-docx raises several unrelated types for bad files
         raise UnreadableDocument(
-            "This Word document couldn't be opened. Check that it opens in Word and is saved "
+            "This Word document couldn’t be opened. Check that it opens in Word and is saved "
             "as .docx."
         ) from error
     body = document.element.body
     return list(_docx_blocks(body, document._body))
+
+
+def _word_page_count(data: bytes) -> int | None:
+    """The page count Word saved in the file's properties, if it saved one."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            properties = archive.read("docProps/app.xml").decode("utf-8", "replace")
+    except (KeyError, zipfile.BadZipFile):
+        return None
+    match = re.search(r"<Pages>(\d+)</Pages>", properties)
+    return int(match.group(1)) if match else None
 
 
 def _check_unpacked_size(data: bytes) -> None:
@@ -399,9 +415,15 @@ def _check_unpacked_size(data: bytes) -> None:
             unpacked = sum(info.file_size for info in archive.infolist())
     except zipfile.BadZipFile as error:
         raise UnreadableDocument(
-            "This Word document couldn't be opened. Check that it opens in Word and is saved "
+            "This Word document couldn’t be opened. Check that it opens in Word and is saved "
             "as .docx."
         ) from error
+    pages = _word_page_count(data)
+    if pages is not None and pages > _MAX_WORD_PAGES:
+        raise UnreadableDocument(
+            f"This Word document has {pages} pages; the limit is {_MAX_WORD_PAGES} per document. "
+            "Split it into smaller files and upload those."
+        )
     if unpacked > MAX_UNPACKED_BYTES:
         raise UnreadableDocument(
             "This Word document is too large to read once unpacked. Save it without embedded "

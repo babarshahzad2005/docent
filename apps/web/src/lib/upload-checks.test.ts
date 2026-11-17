@@ -19,7 +19,7 @@ describe("precheck", () => {
 
   it("refuses files over 20 MB, naming the limit and the fix", () => {
     expect(precheck({ name: "big.pdf", size: MAX_FILE_BYTES + 1 })).toBe(
-      "big.pdf is 20.0 MB, over the 20 MB limit per file. Split it into smaller files and upload those.",
+      "big.pdf is 20.1 MB, over the 20 MB limit per file. Split it into smaller files and upload those.",
     );
     expect(precheck({ name: "edge.pdf", size: MAX_FILE_BYTES })).toBeNull();
   });
@@ -30,8 +30,8 @@ describe("precheck", () => {
 });
 
 describe("megabytes", () => {
-  it("rounds to one decimal with a non-breaking space", () => {
-    expect(megabytes(8.24 * 1024 * 1024)).toBe("8.2 MB");
+  it("rounds up to one decimal, with a non-breaking space", () => {
+    expect(megabytes(8.21 * 1024 * 1024)).toBe("8.3 MB");
   });
 });
 

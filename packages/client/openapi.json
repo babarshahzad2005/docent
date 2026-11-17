@@ -211,15 +211,8 @@
             "type": "string"
           },
           "sha256": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sha256"
+            "title": "Sha256",
+            "type": "string"
           },
           "size_bytes": {
             "title": "Size Bytes",
@@ -229,7 +222,8 @@
         "required": [
           "collection_id",
           "name",
-          "size_bytes"
+          "size_bytes",
+          "sha256"
         ],
         "title": "NewDocument",
         "type": "object"

@@ -60,8 +60,8 @@ class NewDocument(BaseModel):
     collection_id: UUID
     name: str
     size_bytes: int
-    sha256: str | None = None
-    """The file's SHA-256 in lowercase hex, to notice the same file uploaded twice."""
+    sha256: str
+    """The file's SHA-256 in hex, to notice the same file uploaded twice."""
     allow_duplicate: bool = False
     """Keep both when the Collection already has a Document with the same content."""
 

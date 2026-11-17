@@ -151,6 +151,7 @@ export function LibraryDocuments({
       if (!started.ok) {
         if (started.duplicate) {
           setDuplicates((current) => [...current, { file, message: started.message }]);
+          setAnnouncement(started.message);
         } else {
           fail(started.message);
         }
@@ -164,8 +165,9 @@ export function LibraryDocuments({
           contentType: file.type || "application/octet-stream",
         });
       if (error) {
-        // The server marks the unfinished Document as failed later; hide it here.
+        // Cancel the half-made Document, so it neither counts nor blocks uploading again.
         setDocuments((current) => current.filter((d) => d.id !== document.id));
+        void deleteDocument(document.id).catch(() => undefined);
         fail(`${file.name} couldn't be uploaded (${error.message}). Upload it again.`);
         return;
       }
@@ -213,13 +215,17 @@ export function LibraryDocuments({
       {duplicates.length > 0 && (
         <ul aria-label="Already in this collection" className="flex flex-col gap-3">
           {duplicates.map(({ file, message }) => {
-            const settle = () => setDuplicates((current) => current.filter((d) => d.file !== file));
+            // The choice's own buttons disappear with it; continue from the upload button.
+            const settle = () => {
+              setDuplicates((current) => current.filter((d) => d.file !== file));
+              button.current?.focus();
+            };
             return (
               <li
                 key={`${file.name}-${file.lastModified}-${file.size}`}
                 className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3"
               >
-                <p role="status">{message}</p>
+                <p>{message}</p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"

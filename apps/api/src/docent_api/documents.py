@@ -5,6 +5,7 @@ Adding a Document takes two steps, because the file goes straight from the brows
 the Document to ingestion once the browser reports the file is stored.
 """
 
+import math
 import re
 from datetime import date, datetime
 from pathlib import PurePosixPath
@@ -54,9 +55,6 @@ class UploadRejected(Exception):
 class DuplicateDocument(Exception):
     """The Collection already has a Document with exactly this content."""
 
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-
 
 class NotAllowed(Exception):
     """The User can't add or change Documents in this Collection."""
@@ -105,7 +103,8 @@ def start_upload(
     """Create the Document as `uploading` and return where the browser should send the file.
 
     Every limit is checked here, on the server, before anything is stored: the file type, 20 MB
-    per file, and 100 MB per User. If `sha256` (the file's fingerprint, from the browser) matches
+    per file, and 100 MB per User. If `sha256` (the file's fingerprint; the API requires it from
+    browsers, see main.py) matches
     a Document already in the Collection, the upload is refused as a duplicate unless the User
     chose to keep both (`allow_duplicate`). Ingestion checks the stored file again (ingestion.py),
     so a browser that misreports the size or fingerprint gains nothing.
@@ -114,8 +113,8 @@ def start_upload(
     extension = PurePosixPath(name).suffix.lower()
     if extension not in FILE_TYPES:
         raise UploadRejected(
-            f"{name} can't be added: Docent reads PDF, Word (.docx), Markdown (.md), and plain "
-            "text (.txt) files."
+            f"{name} can\u2019t be added: Docent reads PDF, Word (.docx), Markdown (.md), and "
+            "plain text (.txt) files."
         )
     if size_bytes > MAX_FILE_BYTES:
         raise UploadRejected(
@@ -124,8 +123,10 @@ def start_upload(
         )
     if size_bytes <= 0:
         raise UploadRejected(f"{name} is empty.")
+    if sha256 is not None:
+        sha256 = sha256.lower()
     if sha256 is not None and not _SHA256.fullmatch(sha256):
-        raise UploadRejected(f"{name} couldn't be checked. Reload the page and try again.")
+        raise UploadRejected(f"{name} couldn\u2019t be checked. Reload the page and try again.")
 
     _require_editor(conn, user_id, collection_id)
     used = storage_used(conn, user_id)
@@ -136,18 +137,19 @@ def start_upload(
             "need to make room."
         )
     if sha256 is not None and not allow_duplicate:
+        # Failed attempts don't count: their file is gone or unusable (ingestion.py).
         existing = conn.execute(
             """
             select d.name, c.name as collection from app.documents d
             join app.collections c on c.id = d.collection_id
-            where d.collection_id = %s and d.content_hash = %s
+            where d.collection_id = %s and d.content_hash = %s and d.status <> 'failed'
             order by d.created_at limit 1
             """,
             (collection_id, sha256),
         ).fetchone()
         if existing is not None:
             raise DuplicateDocument(
-                f"{name} is already in your {existing['collection']} collection as "
+                f"{name} is already in the {existing['collection']} collection as "
                 f"{existing['name']}. Upload it anyway to keep both."
             )
 
@@ -178,7 +180,12 @@ def start_upload(
 
 
 def storage_used(conn: Connection[DictRow], user_id: UUID) -> int:
-    """Bytes of original files the User has uploaded, counted against their 100 MB."""
+    """Bytes of original files the User has uploaded, counted against their 100 MB.
+
+    A Document that failed for good has its file removed and counts as 0 (ingestion.py), and a
+    browser whose upload fails cancels its Document, so only stored files use the allowance.
+    Uploads in progress count at their stated size, so parallel uploads can't overshoot it.
+    """
     row = conn.execute(
         "select coalesce(sum(size_bytes), 0) as used from app.documents where uploaded_by = %s",
         (user_id,),
@@ -187,8 +194,11 @@ def storage_used(conn: Connection[DictRow], user_id: UUID) -> int:
 
 
 def megabytes(size_bytes: int) -> str:
-    """A size as people read it: "8.2\u00a0MB" (with a non-breaking space, DESIGN.md)."""
-    return f"{size_bytes / (1024 * 1024):.1f}\u00a0MB"
+    """A size as people read it: "8.2\u00a0MB", with a non-breaking space (DESIGN.md).
+
+    Rounded up, so a file just over a limit never reads as exactly the limit.
+    """
+    return f"{math.ceil(size_bytes / (1024 * 1024) * 10) / 10:.1f}\u00a0MB"
 
 
 def finish_upload(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -> DocumentSummary:

@@ -116,9 +116,56 @@ def test_each_kind_of_bad_pdf_has_its_own_reason(name: str, reason: str) -> None
     assert str(raised.value).startswith(reason)
 
 
-def test_old_or_locked_word_files_have_their_own_reason() -> None:
+@pytest.mark.parametrize("name", ["old.doc renamed.docx", "locked.docx"])
+def test_old_or_locked_word_files_have_their_own_reason(name: str) -> None:
+    # An old .doc renamed to .docx and a password-protected .docx are both Compound Files.
     with pytest.raises(UnreadableDocument, match="old-format Word file"):
         extract_docx((BAD / "old-word.doc").read_bytes())
+
+
+def pdf_of(*sources: tuple[Path, int]) -> bytes:
+    """A PDF made of the given (file, page index) pages, in order."""
+    document = pypdfium2.PdfDocument.new()
+    for path, index in sources:
+        document.import_pages(pypdfium2.PdfDocument(path), [index])
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def test_a_mostly_scanned_pdf_counts_as_scanned() -> None:
+    scan, text = BAD / "scanned.pdf", FILES / "fit-note-checklist.pdf"
+
+    with pytest.raises(UnreadableDocument, match="made of pictures of pages"):
+        extract_pdf(pdf_of((scan, 0), (scan, 0), (text, 0)))
+    assert extract_pdf(pdf_of((text, 0), (text, 0), (scan, 0)))  # mostly text: read it
+
+
+def test_a_pdf_with_no_text_and_no_pictures_is_not_called_a_scan() -> None:
+    document = pypdfium2.PdfDocument.new()
+    document.new_page(612, 792)
+    buffer = io.BytesIO()
+    document.save(buffer)
+
+    assert extract_pdf(buffer.getvalue()) == []  # ingestion reports "No text was found"
+
+
+def test_word_documents_over_the_page_limit_are_refused() -> None:
+    import zipfile
+
+    source = (FILES / "staffing-guidance.docx").read_bytes()
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(source)) as old, zipfile.ZipFile(out, "w") as new:
+        for item in old.infolist():
+            data = old.read(item.filename)
+            if item.filename == "docProps/app.xml":
+                data = re.sub(rb"<Pages>\d+</Pages>", b"<Pages>301</Pages>", data)
+                if b"<Pages>" not in data:
+                    data = data.replace(b"</Properties>", b"<Pages>301</Pages></Properties>")
+            new.writestr(item, data)
+
+    with pytest.raises(UnreadableDocument, match="301 pages; the limit is 300"):
+        extract_docx(out.getvalue())
 
 
 # --- Word ---------------------------------------------------------------------------------
@@ -152,7 +199,7 @@ def test_word_lists_and_merged_cells() -> None:
 
 
 def test_a_broken_word_document_is_unreadable() -> None:
-    with pytest.raises(UnreadableDocument, match="Word document couldn't be opened"):
+    with pytest.raises(UnreadableDocument, match="Word document couldn\u2019t be opened"):
         extract_docx(b"PK this is not a real docx")
 
 
