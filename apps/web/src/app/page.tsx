@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { listDocuments } from "@/app/documents-actions";
 import { AppShell } from "@/components/app-shell";
 import { LibraryDocuments } from "@/components/library-documents";
+import { LibraryHome } from "@/components/library-home";
 import { getMe } from "@/lib/me";
 
 export default function LibraryPage() {
@@ -27,5 +28,9 @@ async function Library() {
   const documents = await listDocuments();
   if (!documents.ok) throw new Error(documents.message);
 
-  return <LibraryDocuments collection={personal} initialDocuments={documents.value} />;
+  return (
+    <LibraryHome>
+      <LibraryDocuments collection={personal} initialDocuments={documents.value} />
+    </LibraryHome>
+  );
 }

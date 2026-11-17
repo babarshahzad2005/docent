@@ -369,8 +369,8 @@ class _DocumentWorker:
                     """
                     insert into app.chunks
                         (document_id, collection_id, ordinal, heading_path, page, content,
-                         content_hash)
-                    values (%s, %s, %s, %s, %s, %s, %s)
+                         content_hash, search)
+                    values (%s, %s, %s, %s, %s, %s, %s, to_tsvector('english', %s))
                     """,
                     [
                         (
@@ -381,6 +381,7 @@ class _DocumentWorker:
                             c.page,
                             c.content,
                             c.content_hash,
+                            c.text_for_embedding,
                         )
                         for c in chunks
                     ],

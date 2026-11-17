@@ -1,6 +1,62 @@
 {
   "components": {
     "schemas": {
+      "CitationOut": {
+        "properties": {
+          "document_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "document_name": {
+            "title": "Document Name",
+            "type": "string"
+          },
+          "heading_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Heading Path",
+            "type": "array"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "passage": {
+            "title": "Passage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "document_id",
+          "document_name",
+          "heading_path",
+          "page",
+          "passage"
+        ],
+        "title": "CitationOut",
+        "type": "object"
+      },
       "CollectionSummary": {
         "properties": {
           "id": {
@@ -33,6 +89,39 @@
           "role"
         ],
         "title": "CollectionSummary",
+        "type": "object"
+      },
+      "ConversationOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "messages"
+        ],
+        "title": "ConversationOut",
         "type": "object"
       },
       "DocumentSummary": {
@@ -194,6 +283,59 @@
         "title": "Me",
         "type": "object"
       },
+      "MessageOut": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationOut"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "streaming",
+              "complete",
+              "interrupted",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "status",
+          "created_at",
+          "citations"
+        ],
+        "title": "MessageOut",
+        "type": "object"
+      },
       "NewDocument": {
         "properties": {
           "allow_duplicate": {
@@ -226,6 +368,48 @@
           "sha256"
         ],
         "title": "NewDocument",
+        "type": "object"
+      },
+      "Question": {
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "Question",
         "type": "object"
       },
       "StartedUpload": {
@@ -322,6 +506,101 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/answers": {
+      "post": {
+        "description": "Answer a question from the User's Documents, streamed, citing passages as [n].",
+        "operationId": "askQuestion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Question"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Server-sent events, in order:\n\n- `start`: `{conversation_id, message_id, sources: [{number, document_id, document_name,\n  heading_path, page}]}`, the passages the answer may cite, numbered as in `[n]`\n- `delta`: `{text}`, the next piece of the answer\n- `done`: `{message_id, outcome: \"answered\" | \"declined\", cited: [n, ...]}`\n- `error`: `{message, partial}`, the answer stopped; `partial` if some text was sent\n"
+          },
+          "404": {
+            "description": "No such Conversation"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ask",
+        "tags": [
+          "answers"
+        ]
+      }
+    },
+    "/conversations/{conversation_id}": {
+      "get": {
+        "description": "A saved Conversation with its answers and their Citations.",
+        "operationId": "getConversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Conversation",
+        "tags": [
+          "answers"
+        ]
+      }
+    },
     "/documents": {
       "get": {
         "description": "Every Document in the signed-in User's Collections, newest first.",

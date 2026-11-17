@@ -33,7 +33,8 @@ def conn(database_url: str) -> Iterator[Connection[DictRow]]:
     with psycopg.connect(database_url, row_factory=dict_row) as connection:
         yield connection
         connection.execute(
-            "truncate app.chunks, app.documents, app.memberships, app.collections, app.users, "
+            "truncate app.answer_logs, app.citations, app.messages, app.conversations, "
+            "app.chunks, app.documents, app.memberships, app.collections, app.users, "
             "app.storage_deletions"
         )
         connection.execute("update app.ingestion_lease set held_until = '-infinity'")
