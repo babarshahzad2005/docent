@@ -36,6 +36,7 @@ const ACCEPT = [
   "text/plain",
 ].join(",");
 const POLL_MS = 2000;
+const PARALLEL_UPLOADS = 3;
 
 type Status = DocumentSummary["status"];
 
@@ -66,6 +67,8 @@ export function LibraryDocuments({
   const [refreshes, setRefreshes] = useState(0);
   const canEdit = collection.role !== "viewer";
   const [errors, setErrors] = useState<string[]>([]);
+  // Files are being dragged over the Library: show where to drop them.
+  const [dragging, setDragging] = useState(false);
   // Files the Collection already has: the User chooses to keep both or skip.
   const [duplicates, setDuplicates] = useState<{ file: File; message: string }[]>([]);
   const [announcement, setAnnouncement] = useState("");
@@ -129,7 +132,12 @@ export function LibraryDocuments({
   async function upload(files: File[]) {
     setErrors([]);
     setDuplicates([]);
-    for (const file of files) await uploadOne(file, false);
+    // A few files at a time: each one's transfer to storage is the slow part.
+    const queue = [...files];
+    const sendNext = async () => {
+      for (let file = queue.shift(); file; file = queue.shift()) await uploadOne(file, false);
+    };
+    await Promise.all(Array.from({ length: Math.min(PARALLEL_UPLOADS, queue.length) }, sendNext));
   }
 
   async function uploadOne(file: File, allowDuplicate: boolean) {
@@ -255,13 +263,58 @@ export function LibraryDocuments({
     </>
   );
 
+  // Dropping files anywhere on the Library uploads them; the button does the same by keyboard.
+  const dropZone = canEdit
+    ? {
+        onDragEnter: (event: React.DragEvent) => {
+          if (hasFiles(event)) setDragging(true);
+        },
+        onDragOver: (event: React.DragEvent) => {
+          if (!hasFiles(event)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        },
+        onDragLeave: (event: React.DragEvent) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+        },
+        onDrop: (event: React.DragEvent) => {
+          if (!hasFiles(event)) return;
+          event.preventDefault();
+          setDragging(false);
+          const files = Array.from(event.dataTransfer.files);
+          if (files.length > 0) void upload(files);
+        },
+      }
+    : {};
+
+  const dropHint = dragging && (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-brand bg-brand-subtle/90 text-brand-subtle-text transition-opacity duration-150"
+    >
+      Drop files to add them to your {collection.name} collection
+    </div>
+  );
+
+  const remaining = documents.filter((d) => !isSettled(d.status)).length;
+  const progress = remaining > 0 && (
+    <p className="text-muted-foreground tabular-nums">
+      {remaining} of {documents.length} indexing…
+    </p>
+  );
+
   if (documents.length === 0) {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-4 py-12 text-center">
+      <div
+        {...dropZone}
+        className="relative mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-4 py-12 text-center"
+      >
+        {dropHint}
         <h1 className="font-serif text-question font-medium text-balance">Your library is empty</h1>
         <p className="text-muted-foreground text-pretty">
           Docent answers questions only from documents you add. Upload PDFs, Word documents,
-          Markdown, or plain text to your {collection.name} collection to get started.
+          Markdown, or plain text to your {collection.name} collection to get started. You can
+          choose several at once, or drop them here.
         </p>
         <div className="mt-2">{picker}</div>
         {messages}
@@ -270,7 +323,11 @@ export function LibraryDocuments({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6">
+    <div
+      {...dropZone}
+      className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6"
+    >
+      {dropHint}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="font-serif text-question font-medium">Library</h1>
@@ -279,6 +336,7 @@ export function LibraryDocuments({
         {picker}
       </div>
       {messages}
+      {progress}
       <ul aria-label="Documents" className="flex flex-col border-t border-border">
         {documents.map((document) => (
           <DocumentRow
@@ -467,6 +525,10 @@ function DeleteDocument({
       </AlertDialogContent>
     </AlertDialog>
   );
+}
+
+function hasFiles(event: React.DragEvent): boolean {
+  return Array.from(event.dataTransfer.types).includes("Files");
 }
 
 function formatSize(bytes: number): string {

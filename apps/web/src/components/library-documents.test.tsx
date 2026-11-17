@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
@@ -144,6 +144,106 @@ describe("Uploading", () => {
     );
     expect(actions.deleteDocument).toHaveBeenCalledWith("d7");
     expect(actions.finishUpload).not.toHaveBeenCalled();
+  });
+});
+
+describe("Many Documents at once", () => {
+  function mockStorage() {
+    return import("@/lib/supabase/client").then(({ createClient }) =>
+      vi.mocked(createClient).mockReturnValue({
+        storage: {
+          from: () => ({ uploadToSignedUrl: vi.fn().mockResolvedValue({ error: null }) }),
+        },
+      } as never),
+    );
+  }
+
+  function acceptUploads() {
+    let n = 0;
+    actions.startUpload.mockImplementation(async (_c: string, name: string) => {
+      n += 1;
+      return {
+        ok: true,
+        value: {
+          document: aDocument({ id: `u${n}`, name, status: "uploading" }),
+          upload: { bucket: "documents", path: `c1/u${n}`, token: "t" },
+        },
+      };
+    });
+    actions.finishUpload.mockImplementation(async (id: string) => ({
+      ok: true,
+      value: aDocument({ id, name: id, status: "queued" }),
+    }));
+    actions.listDocuments.mockResolvedValue({ ok: true, value: [] });
+  }
+
+  it("shows how many are still being indexed, and hides it when all are done", () => {
+    render(
+      <LibraryDocuments
+        collection={PERSONAL}
+        initialDocuments={[
+          aDocument({ id: "a", status: "embedding" }),
+          aDocument({ id: "b", status: "queued", name: "b.md" }),
+          aDocument({ id: "c", name: "c.md" }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("2 of 3 indexing…")).toBeTruthy();
+
+    cleanup();
+    render(<LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />);
+    expect(screen.queryByText(/indexing…/)).toBeNull();
+  });
+
+  it("uploads every file chosen at once, each as its own Document", async () => {
+    await mockStorage();
+    acceptUploads();
+    const user = userEvent.setup();
+    const { container } = render(<LibraryDocuments collection={PERSONAL} initialDocuments={[]} />);
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no file input");
+
+    const files = Array.from({ length: 7 }, (_, i) => new File([`text ${i}`], `note-${i}.md`));
+    await user.upload(input, files);
+
+    await waitFor(() => expect(actions.finishUpload).toHaveBeenCalledTimes(7));
+    expect(new Set(actions.startUpload.mock.calls.map((call) => call[1]))).toEqual(
+      new Set(files.map((f) => f.name)),
+    );
+    expect(await screen.findByRole("list", { name: "Documents" })).toBeTruthy();
+  });
+
+  it("uploads files dropped onto the Library", async () => {
+    await mockStorage();
+    acceptUploads();
+    render(<LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />);
+    const zone = screen.getByRole("heading", { name: "Library" }).closest("div")
+      ?.parentElement as HTMLElement;
+    const files = [new File(["a"], "a.md"), new File(["b"], "b.txt")];
+    const dataTransfer = { files, types: ["Files"], dropEffect: "none" };
+
+    fireEvent.dragEnter(zone, { dataTransfer });
+    expect(screen.getByText(/Drop files to add them/)).toBeTruthy();
+    fireEvent.drop(zone, { dataTransfer });
+
+    await waitFor(() => expect(actions.finishUpload).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/Drop files to add them/)).toBeNull();
+  });
+
+  it("doesn't take drops from Viewers", () => {
+    render(
+      <LibraryDocuments
+        collection={{ ...PERSONAL, role: "viewer" }}
+        initialDocuments={[aDocument()]}
+      />,
+    );
+    const zone = screen.getByRole("heading", { name: "Library" }).closest("div")
+      ?.parentElement as HTMLElement;
+
+    fireEvent.dragEnter(zone, { dataTransfer: { files: [], types: ["Files"] } });
+
+    expect(screen.queryByText(/Drop files to add them/)).toBeNull();
   });
 });
 
