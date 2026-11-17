@@ -15,7 +15,8 @@ const buttonVariants = cva(
         destructive: "bg-destructive text-white hover:bg-destructive/90",
       },
       size: {
-        sm: "h-8 px-3 text-meta",
+        // Touch screens get 44px targets (DESIGN.md › Accessibility).
+        sm: "h-8 px-3 text-meta pointer-coarse:h-11",
         default: "h-10 px-4 text-ui",
         lg: "h-11 px-4 text-ui",
         icon: "size-8",

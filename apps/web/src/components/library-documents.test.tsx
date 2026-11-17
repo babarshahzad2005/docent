@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
@@ -147,6 +147,134 @@ describe("Uploading", () => {
   });
 });
 
+describe("Many Documents at once", () => {
+  function mockStorage() {
+    return import("@/lib/supabase/client").then(({ createClient }) =>
+      vi.mocked(createClient).mockReturnValue({
+        storage: {
+          from: () => ({ uploadToSignedUrl: vi.fn().mockResolvedValue({ error: null }) }),
+        },
+      } as never),
+    );
+  }
+
+  function acceptUploads() {
+    let n = 0;
+    actions.startUpload.mockImplementation(async (_c: string, name: string) => {
+      n += 1;
+      return {
+        ok: true,
+        value: {
+          document: aDocument({ id: `u${n}`, name, status: "uploading" }),
+          upload: { bucket: "documents", path: `c1/u${n}`, token: "t" },
+        },
+      };
+    });
+    actions.finishUpload.mockImplementation(async (id: string) => ({
+      ok: true,
+      value: aDocument({ id, name: id, status: "queued" }),
+    }));
+    actions.listDocuments.mockResolvedValue({ ok: true, value: [] });
+  }
+
+  it("shows how many are still being indexed, and hides it when all are done", () => {
+    render(
+      <LibraryDocuments
+        collection={PERSONAL}
+        initialDocuments={[
+          aDocument({ id: "a", status: "embedding" }),
+          aDocument({ id: "b", status: "queued", name: "b.md" }),
+          aDocument({ id: "c", name: "c.md" }),
+          // Left "uploading" by a closed tab: not work in progress here, and deletable.
+          aDocument({ id: "d", status: "uploading", name: "abandoned.md" }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("2 documents indexing…")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete abandoned.md" })).toBeTruthy();
+
+    cleanup();
+    render(<LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />);
+    expect(screen.queryByText(/indexing…/)).toBeNull();
+  });
+
+  it("uploads every file chosen at once, each as its own Document", async () => {
+    await mockStorage();
+    acceptUploads();
+    const user = userEvent.setup();
+    const { container } = render(<LibraryDocuments collection={PERSONAL} initialDocuments={[]} />);
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no file input");
+
+    const files = Array.from({ length: 7 }, (_, i) => new File([`text ${i}`], `note-${i}.md`));
+    await user.upload(input, files);
+
+    await waitFor(() => expect(actions.finishUpload).toHaveBeenCalledTimes(7));
+    expect(new Set(actions.startUpload.mock.calls.map((call) => call[1]))).toEqual(
+      new Set(files.map((f) => f.name)),
+    );
+    expect(await screen.findByRole("list", { name: "Documents" })).toBeTruthy();
+  });
+
+  function files(...names: string[]) {
+    const list = names.map((name) => new File([name], name));
+    return { files: list, types: ["Files"], dropEffect: "none" };
+  }
+
+  it("uploads files dropped anywhere on the page, and keeps the page", async () => {
+    await mockStorage();
+    acceptUploads();
+    render(<LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />);
+    const dataTransfer = files("a.md", "b.txt");
+
+    fireEvent.dragEnter(window, { dataTransfer });
+    expect(screen.getByText(/Drop files to add them/)).toBeTruthy();
+    const over = new Event("dragover", { cancelable: true });
+    Object.assign(over, { dataTransfer });
+    window.dispatchEvent(over);
+    expect(over.defaultPrevented).toBe(true); // the browser won't open the file instead
+    fireEvent.drop(window, { dataTransfer });
+
+    await waitFor(() => expect(actions.finishUpload).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/Drop files to add them/)).toBeNull();
+  });
+
+  it("keeps an earlier batch's messages when another batch starts", async () => {
+    await mockStorage();
+    acceptUploads();
+    let release: () => void = () => undefined;
+    actions.finishUpload.mockImplementationOnce(
+      (id: string) =>
+        new Promise((resolve) => {
+          release = () => resolve({ ok: true, value: aDocument({ id, status: "queued" }) });
+        }),
+    );
+    render(<LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />);
+
+    fireEvent.drop(window, { dataTransfer: files("slow.md", "slides.pptx") });
+    expect((await screen.findByRole("alert")).textContent).toContain("slides.pptx can’t be added");
+    fireEvent.drop(window, { dataTransfer: files("next.md") });
+
+    await waitFor(() => expect(actions.startUpload).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("alert").textContent).toContain("slides.pptx can’t be added");
+    release();
+  });
+
+  it("doesn't take drops from Viewers", () => {
+    render(
+      <LibraryDocuments
+        collection={{ ...PERSONAL, role: "viewer" }}
+        initialDocuments={[aDocument()]}
+      />,
+    );
+
+    fireEvent.dragEnter(window, { dataTransfer: files("a.md") });
+
+    expect(screen.queryByText(/Drop files to add them/)).toBeNull();
+  });
+});
+
 describe("Deleting a Document", () => {
   it("asks first, naming the Document, and removes it once confirmed", async () => {
     actions.deleteDocument.mockResolvedValue({ ok: true, value: null });
@@ -201,15 +329,27 @@ describe("Deleting a Document", () => {
     expect(screen.getByText("policy.pdf", { selector: "span" })).toBeTruthy();
   });
 
-  it("waits until a Document's upload has finished", () => {
-    render(
-      <LibraryDocuments
-        collection={PERSONAL}
-        initialDocuments={[aDocument({ status: "uploading" })]}
-      />,
-    );
+  it("waits while this page is still sending the Document's file", async () => {
+    const { createClient } = await import("@/lib/supabase/client");
+    vi.mocked(createClient).mockReturnValue({
+      storage: { from: () => ({ uploadToSignedUrl: () => new Promise(() => undefined) }) },
+    } as never);
+    actions.startUpload.mockResolvedValue({
+      ok: true,
+      value: {
+        document: aDocument({ id: "s1", name: "sending.md", status: "uploading" }),
+        upload: { bucket: "documents", path: "c1/s1.md", token: "t" },
+      },
+    });
+    render(<LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />);
 
-    expect(screen.queryByRole("button", { name: "Delete policy.pdf" })).toBeNull();
+    fireEvent.drop(window, {
+      dataTransfer: { files: [new File(["x"], "sending.md")], types: ["Files"] },
+    });
+
+    expect(await screen.findByText("sending.md")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Delete sending.md" })).toBeNull();
+    expect(screen.getByText("1 document indexing…")).toBeTruthy();
   });
 
   it("isn't offered to Viewers", () => {
