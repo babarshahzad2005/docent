@@ -15,11 +15,13 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 from pydantic import BaseModel
 
-from docent_api.storage import FileStore, SignedUpload
+from docent_api.storage import FileStore, SignedUpload, StorageError
 
 DocumentStatus = Literal["uploading", "queued", "parsing", "embedding", "indexed", "failed"]
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
+# Supabase's signed upload links last two hours; a file can arrive until then.
+UPLOAD_LINK_HOURS = 2
 FILE_TYPES = {
     ".pdf": "pdf",
     ".docx": "docx",
@@ -153,6 +155,56 @@ def retry_document(conn: Connection[DictRow], user_id: UUID, document_id: UUID) 
     return _queue(conn, document_id, "failed", reset_attempts=True) or (
         DocumentSummary.model_validate(row)
     )
+
+
+def delete_document(
+    conn: Connection[DictRow], store: FileStore, user_id: UUID, document_id: UUID
+) -> None:
+    """Delete the Document with its original file, chunks, and vectors.
+
+    The row (and, by cascade, its chunks and their vectors) is deleted and committed first,
+    together with a note of its file in `app.storage_deletions`; only then is the file removed.
+    So a remaining Document never loses its file, and a deleted one never keeps it: if storage
+    can't remove the file now, the note stays and ingestion batches remove it later. A file
+    still being uploaded is noted for removal once its upload link has expired. A batch working
+    on the Document at the time stops at its next step (ingestion.py).
+    """
+    _editable(conn, user_id, document_id)
+    conn.commit()  # end the read above, so the block below is a transaction of its own
+    with conn.transaction():
+        row = conn.execute(
+            "delete from app.documents where id = %s returning storage_path, status",
+            (document_id,),
+        ).fetchone()
+        if row is None:
+            return  # deleted meanwhile by another request
+        uploading = row["status"] == "uploading"
+        conn.execute(
+            """
+            insert into app.storage_deletions (path, delete_after)
+            values (%(path)s, now() + make_interval(hours => %(wait)s))
+            on conflict (path) do nothing
+            """,
+            {"path": row["storage_path"], "wait": UPLOAD_LINK_HOURS if uploading else 0},
+        )
+    if not uploading:
+        remove_files(conn, store, [row["storage_path"]])
+
+
+def remove_files(conn: Connection[DictRow], store: FileStore, paths: list[str]) -> bool:
+    """Remove files noted for deletion; returns False (keeping the notes) if storage fails."""
+    try:
+        store.delete(paths)
+    except StorageError:
+        conn.execute(
+            "update app.storage_deletions set attempts = attempts + 1 where path = any(%s)",
+            (paths,),
+        )
+        conn.commit()
+        return False
+    conn.execute("delete from app.storage_deletions where path = any(%s)", (paths,))
+    conn.commit()
+    return True
 
 
 def _editable(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -> DictRow:

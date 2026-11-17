@@ -18,6 +18,7 @@ from docent_api.documents import (
     NotAllowed,
     NotRetryable,
     UploadRejected,
+    delete_document,
     finish_upload,
     list_documents,
     retry_document,
@@ -143,6 +144,22 @@ def uploaded(document_id: UUID, user: User, conn: Db) -> DocumentSummary:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_FOUND) from None
     except NotAllowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_EDIT) from None
+
+
+@app.delete(
+    "/documents/{document_id}",
+    operation_id="deleteDocument",
+    tags=["documents"],
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete(document_id: UUID, user: User, conn: Db, files: Files) -> None:
+    """Delete a Document with its file, passages, and vectors. Repeating the call is harmless."""
+    try:
+        delete_document(conn, files, user.id, document_id)
+    except DocumentNotFound:
+        return  # already gone
+    except NotAllowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_CHANGE) from None
 
 
 @app.post("/documents/{document_id}/retry", operation_id="retryDocument", tags=["documents"])

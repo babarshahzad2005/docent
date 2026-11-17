@@ -53,6 +53,18 @@ export async function finishUpload(documentId: string): Promise<Result<DocumentS
   return { ok: true, value: data };
 }
 
+/** Delete a Document with its file, passages, and vectors. */
+export async function deleteDocument(documentId: string): Promise<Result<null>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { error, response } = await caller.api.DELETE("/documents/{document_id}", {
+    headers: caller.headers,
+    params: { path: { document_id: documentId } },
+  });
+  if (response.ok) return { ok: true, value: null };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
+}
+
 /** Queue a failed Document again and start processing it. */
 export async function retryDocument(documentId: string): Promise<Result<DocumentSummary>> {
   const caller = await apiAsUser();
