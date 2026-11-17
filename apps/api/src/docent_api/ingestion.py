@@ -26,8 +26,9 @@ from uuid import UUID
 from psycopg import Connection
 from psycopg.rows import DictRow
 
-from docent_api.chunking import Chunk, chunk_markdown, chunk_plain_text
+from docent_api.chunking import Chunk, chunk_blocks, chunk_markdown, chunk_plain_text
 from docent_api.documents import FILE_TYPES, MAX_FILE_BYTES
+from docent_api.extraction import UnreadableDocument, extract_docx, extract_pdf
 from docent_api.providers.base import Embedder, Purpose, RateLimited
 from docent_api.storage import FileMissing, FileStore
 
@@ -55,11 +56,17 @@ WORK_WAITING_SQL = (
     f"exists (select 1 from app.documents where ({CLAIMABLE_SQL}) or ({STALE_UPLOAD_SQL}))"
 )
 
-_CHUNKERS: dict[str, Callable[[str], list[Chunk]]] = {
-    "text": chunk_plain_text,
-    "markdown": chunk_markdown,
+_CHUNKERS: dict[str, Callable[[bytes], list[Chunk]]] = {
+    "text": lambda data: chunk_plain_text(_decode(data)),
+    "markdown": lambda data: chunk_markdown(_decode(data)),
+    "pdf": lambda data: chunk_blocks(extract_pdf(data)),
+    "docx": lambda data: chunk_blocks(extract_docx(data)),
 }
 
+_NO_TEXT = (
+    "No text was found in this document. If it's a scan or a photo of pages, Docent can't "
+    "read it yet: upload a version with selectable text."
+)
 _UPLOAD_UNFINISHED = "The upload didn't finish. Upload the document again."
 _GAVE_UP = (
     "Docent couldn't process this document after several tries. Retry, and if it fails again, "
@@ -272,17 +279,21 @@ class _DocumentWorker:
         file_type = FILE_TYPES.get(PurePosixPath(self.document["name"]).suffix.lower())
         if file_type is None:
             raise _Unprocessable("Docent can't read this type of document.")
-        chunks = _CHUNKERS[file_type](_decode(data))
+        try:
+            chunks = _CHUNKERS[file_type](data)
+        except UnreadableDocument as error:
+            raise _Unprocessable(str(error)) from error
         if not chunks:
-            raise _Unprocessable("No text was found in this document.")
+            raise _Unprocessable(_NO_TEXT)
         with self.conn.transaction():
             self.conn.execute("delete from app.chunks where document_id = %s", (self.id,))
             with self.conn.cursor() as cursor:
                 cursor.executemany(
                     """
                     insert into app.chunks
-                        (document_id, collection_id, ordinal, heading_path, content, content_hash)
-                    values (%s, %s, %s, %s, %s, %s)
+                        (document_id, collection_id, ordinal, heading_path, page, content,
+                         content_hash)
+                    values (%s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -290,6 +301,7 @@ class _DocumentWorker:
                             self.document["collection_id"],
                             c.ordinal,
                             list(c.heading_path),
+                            c.page,
                             c.content,
                             c.content_hash,
                         )

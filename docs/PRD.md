@@ -171,6 +171,7 @@ No fixed deadline; each milestone has a target duration to keep scope honest. Ea
 | 2026-11-16 | Migrations with Alembic, applied in CI to a fresh database and to production during the API's production build only | Previews never touch production data |
 | 2026-11-16 | The User and Personal Collection are created by the API on first authenticated request, not by a database trigger | Portable and testable; safe under concurrent first requests |
 | 2026-11-16 | Answers from Groq `openai/gpt-oss-120b`, falling back to Gemini `gemini-3.5-flash-lite`; embeddings from Gemini `gemini-embedding-001` (1024 dimensions); Voyage kept for reranking. Supersedes the Voyage-for-embeddings decision below | Measured: Voyage allows 3 requests/min without a card, Gemini 100 texts/min; [ADR 0010](./adr/0010-model-choice-by-measured-quota.md) |
+| 2026-11-17 | PDFs read with PDFium (pypdfium2), Word with python-docx; headings rebuilt from layout, running headers dropped, page kept per passage | Only candidate to read two-column pages and tables correctly, ~10x faster; [ADR 0011](./adr/0011-pdf-extraction-with-pdfium.md) |
 | 2026-11-15 | Supabase for database, auth, and file storage | [ADR 0006](./adr/0006-supabase-for-database-auth-storage.md) |
 | 2026-11-15 | Upload limits: 20 MB/file, 300 pages/Document, 100 MB/User | Fits free storage; configurable |
 | 2026-11-15 | Voyage for embeddings and reranking; answer LLM chosen in M0 between Gemini and Groq by measured quota, the other as fallback | Free limits are unpublished or inconsistent; measure, don't assume |

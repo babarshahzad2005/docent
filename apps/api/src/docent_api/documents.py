@@ -20,7 +20,13 @@ from docent_api.storage import FileStore, SignedUpload
 DocumentStatus = Literal["uploading", "queued", "parsing", "embedding", "indexed", "failed"]
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
-FILE_TYPES = {".txt": "text", ".md": "markdown", ".markdown": "markdown"}
+FILE_TYPES = {
+    ".pdf": "pdf",
+    ".docx": "docx",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".txt": "text",
+}
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -88,7 +94,8 @@ def start_upload(
     extension = PurePosixPath(name).suffix.lower()
     if extension not in FILE_TYPES:
         raise UploadRejected(
-            f"{name} can't be added: Docent reads Markdown (.md) and plain text (.txt) files."
+            f"{name} can't be added: Docent reads PDF, Word (.docx), Markdown (.md), and plain "
+            "text (.txt) files."
         )
     if size_bytes > MAX_FILE_BYTES:
         raise UploadRejected(

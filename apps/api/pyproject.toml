@@ -12,6 +12,8 @@ dependencies = [
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.3",
     "pyjwt[crypto]>=2.15.1",
+    "pypdfium2>=5.15.2",
+    "python-docx>=1.2.0",
     "sqlalchemy>=2.1.8",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -47,11 +49,18 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+# Real documents use typographic quotes; they are deliberate in test text and messages.
+allowed-confusables = ["‘", "’"]
 
 [tool.mypy]
 strict = true
 packages = ["docent_api"]
 mypy_path = "src"
+
+[[tool.mypy.overrides]]
+# PDFium's Python bindings ship without type information.
+module = ["pypdfium2", "pypdfium2.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
