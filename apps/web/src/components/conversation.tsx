@@ -74,7 +74,7 @@ export function Conversation({
           update((turn) => ({ ...turn, answer: turn.answer + event.text }));
         } else if (event.event === "done") {
           // Announced once, when complete, never token by token (DESIGN.md › Accessibility).
-          setAnnouncement(answerSoFar.current.replace(/\[\d+\]/g, ""));
+          setAnnouncement(answerSoFar.current.replace(/[[【]\d+[\]】]/g, ""));
           update((turn) => ({
             ...turn,
             status: event.outcome === "declined" ? "declined" : "complete",

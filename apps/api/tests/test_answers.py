@@ -26,8 +26,8 @@ from docent_api.answers import (
     answer,
     build_prompt,
     cited_numbers,
-    normalize_citations,
     load_conversation,
+    normalize_citations,
     start_turn,
 )
 from docent_api.auth import AuthUser, current_user
