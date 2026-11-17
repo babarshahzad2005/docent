@@ -318,7 +318,9 @@ def test_a_file_without_text_fails_alone(
     result = run_batch(conn, store, FakeEmbedder(), seconds=240)
 
     assert (result.indexed, result.failed) == (1, 1)
-    assert status(conn, blank) == ("failed", "No text was found in this document.")
+    status_, reason = status(conn, blank)
+    assert status_ == "failed"
+    assert reason is not None and reason.startswith("No text was found in this document.")
     assert status(conn, good) == ("indexed", None)
 
 
@@ -364,6 +366,17 @@ def test_a_word_document_becomes_indexed_with_headings(
     assert status(conn, document_id) == ("indexed", None)
     first = chunks(conn, document_id)[0]
     assert first["heading_path"] == ["Introduction", "About this guidance"]
+
+
+def test_a_pdf_with_equations_is_stored_without_control_characters(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    data = (EXTRACTION_FILES / "dense-passage-retrieval.pdf").read_bytes()
+    document_id = upload(conn, store, user, "dpr.pdf", data)
+
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert status(conn, document_id) == ("indexed", None)
 
 
 def test_a_file_that_isnt_really_a_pdf_fails_with_a_reason(

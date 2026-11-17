@@ -19,28 +19,37 @@ by row in document order. Word has no fixed pages, so their blocks have no page 
 import ctypes
 import io
 import re
+import zipfile
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from itertools import pairwise
+from typing import Any
 
 import pypdfium2
 import pypdfium2.raw as pdfium_c
 
 from docent_api.chunking import Block
 
+MAX_PAGES = 300  # per Document (PRD, Constraints)
+MAX_UNPACKED_BYTES = 200 * 1024 * 1024  # a .docx is a zip; refuse ones that unpack to more
 HEADING_SIZE_RATIO = 1.15
 MAX_HEADING_CHARS = 150
 MAX_HEADING_LEVELS = 6
 BOLD_WEIGHT = 600
+_EDGE_LINES = 2  # lines at the top and bottom of a page where running headers sit
 _SOFT_HYPHEN = 2  # PDFium's marker for a hyphen it inserted at a line break
+_CARRIAGE_RETURN, _LINE_FEED = 13, 10
+_PAGE_NUMBER = re.compile(
+    r"(page\s+)?\d+(\s*(of|/)\s*\d+)?|[-\u2013\u2014]\s*\d+\s*[-\u2013\u2014]", re.IGNORECASE
+)
 _SENTENCE_END = re.compile("[.!?:;\u2026\u201d\u2019\"')]$")
 _BOLD_AT_BODY_SIZE = -1.0  # key in the level map for bold headings at body size
 _LETTER = re.compile(r"[^\W\d_]")
 
 
 class UnreadableDocument(Exception):
-    """The file can't be opened as the type it claims to be; the message is for the User."""
+    """The file can't be read as it is; the message tells the User what to do."""
 
 
 @dataclass
@@ -84,6 +93,11 @@ def extract_pdf(data: bytes) -> list[Block]:
             "password-protected."
         ) from error
     try:
+        if len(document) > MAX_PAGES:
+            raise UnreadableDocument(
+                f"This PDF has {len(document)} pages; the limit is {MAX_PAGES} per document. "
+                "Split it into smaller files and upload those."
+            )
         pages = [_page_lines(document[index], index + 1) for index in range(len(document))]
     finally:
         document.close()
@@ -95,9 +109,10 @@ def extract_pdf(data: bytes) -> list[Block]:
 
 
 def _page_lines(page: pypdfium2.PdfPage, number: int) -> list[_Line]:
-    textpage = page.get_textpage()
-    fonts = _Fonts(textpage)
+    textpage = None
     try:
+        textpage = page.get_textpage()
+        fonts = _Fonts(textpage)
         lines: list[_Line] = []
         line = _Line(number)
         join_next = False
@@ -106,9 +121,9 @@ def _page_lines(page: pypdfium2.PdfPage, number: int) -> list[_Line]:
             if code == _SOFT_HYPHEN:
                 join_next = True
                 continue
-            if code == 13:
+            if code == _CARRIAGE_RETURN:
                 continue
-            if code == 10:
+            if code == _LINE_FEED:
                 if join_next:
                     join_next = False
                     continue
@@ -130,7 +145,8 @@ def _page_lines(page: pypdfium2.PdfPage, number: int) -> list[_Line]:
         lines.append(line)
         return [line for line in lines if line.text]
     finally:
-        textpage.close()
+        if textpage is not None:
+            textpage.close()
         page.close()
 
 
@@ -139,34 +155,47 @@ class _Fonts:
 
     def __init__(self, textpage: pypdfium2.PdfTextPage) -> None:
         self._raw = textpage.raw
-        self._buffer = ctypes.create_string_buffer(128)
+        self._buffer = ctypes.create_string_buffer(256)
         self._flags = ctypes.c_int()
 
     def is_bold(self, index: int) -> bool:
         if pdfium_c.FPDFText_GetFontWeight(self._raw, index) >= BOLD_WEIGHT:
             return True
-        pdfium_c.FPDFText_GetFontInfo(
+        needed = pdfium_c.FPDFText_GetFontInfo(
             self._raw, index, self._buffer, len(self._buffer), ctypes.byref(self._flags)
         )
+        if needed > len(self._buffer):  # PDFium writes nothing when the name doesn't fit
+            self._buffer = ctypes.create_string_buffer(needed)
+            pdfium_c.FPDFText_GetFontInfo(
+                self._raw, index, self._buffer, len(self._buffer), ctypes.byref(self._flags)
+            )
         name = self._buffer.value.lower()
         return b"bold" in name or b"black" in name or b"heavy" in name
 
 
-def _repeat_key(text: str) -> str:
-    return re.sub(r"\d+", "#", text.lower())
-
-
 def _without_running_headers(pages: list[list[_Line]]) -> list[list[_Line]]:
-    """Drop lines repeated at the top or bottom of most pages, and bare page numbers there."""
-    edge = 2
+    """Drop running headers and footers from the top and bottom lines of each page.
+
+    A running header is a line repeated word for word at a page edge on at least half the
+    pages. Page numbers ("7", "Page 7 of 25", "- 7 -") differ on every page, so they go only
+    when most pages have one at an edge; a lone number there (the end of a table) stays.
+    Lines that merely look alike ("Question 1", "Question 2") are kept.
+    """
+    edge = _EDGE_LINES
     counts: Counter[str] = Counter()
+    numbered = 0
     for lines in pages:
-        counts.update({_repeat_key(line.text) for line in lines[:edge] + lines[-edge:]})
+        edge_lines = lines[:edge] + lines[-edge:]
+        counts.update({line.text.lower() for line in edge_lines})
+        numbered += any(_PAGE_NUMBER.fullmatch(line.text) for line in edge_lines)
     threshold = max(3, len(pages) // 2)
-    repeated = {key for key, count in counts.items() if count >= threshold}
+    repeated = {text for text, count in counts.items() if count >= threshold}
+    drop_numbers = numbered >= threshold
 
     def is_running(line: _Line) -> bool:
-        return _repeat_key(line.text) in repeated or line.text.isdigit()
+        if line.text.lower() in repeated:
+            return True
+        return drop_numbers and _PAGE_NUMBER.fullmatch(line.text) is not None
 
     cleaned = []
     for lines in pages:
@@ -310,11 +339,14 @@ def _ends_paragraph(previous: _Line, line: _Line, margin: float, typical_gap: fl
 
 
 def extract_docx(data: bytes) -> list[Block]:
-    """The text of a Word document as headings, paragraphs, and table rows, in order."""
-    from docx import Document as open_docx
-    from docx.table import Table
-    from docx.text.paragraph import Paragraph
+    """The text of a Word document as headings, paragraphs, and table rows, in order.
 
+    Content controls (common in templates) and nested tables are read too. Text boxes,
+    headers, footers, and footnotes are not: they sit outside the document's main flow.
+    """
+    from docx import Document as open_docx
+
+    _check_unpacked_size(data)
     try:
         document = open_docx(io.BytesIO(data))
     except Exception as error:  # python-docx raises several unrelated types for bad files
@@ -322,16 +354,50 @@ def extract_docx(data: bytes) -> list[Block]:
             "This Word document couldn't be opened. Check that it opens in Word and is saved "
             "as .docx."
         ) from error
-    blocks: list[Block] = []
-    for item in document.iter_inner_content():
-        if isinstance(item, Paragraph):
-            blocks.append(Block(item.text, _docx_heading_level(item)))
-        elif isinstance(item, Table):
-            blocks.extend(Block(row) for row in _table_rows(item))
-    return blocks
+    body = document.element.body
+    return list(_docx_blocks(body, document._body))
 
 
-def _docx_heading_level(paragraph: object) -> int | None:
+def _check_unpacked_size(data: bytes) -> None:
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            unpacked = sum(info.file_size for info in archive.infolist())
+    except zipfile.BadZipFile as error:
+        raise UnreadableDocument(
+            "This Word document couldn't be opened. Check that it opens in Word and is saved "
+            "as .docx."
+        ) from error
+    if unpacked > MAX_UNPACKED_BYTES:
+        raise UnreadableDocument(
+            "This Word document is too large to read once unpacked. Save it without embedded "
+            "media, or split it into smaller files."
+        )
+
+
+def _docx_blocks(element: Any, parent: Any) -> Iterator[Block]:
+    """Blocks in document order, looking inside content controls."""
+    from docx.oxml.ns import qn
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    for child in element.iterchildren():
+        if child.tag == qn("w:p"):
+            paragraph = Paragraph(child, parent)
+            yield Block(paragraph.text, _docx_heading_level(paragraph))
+        elif child.tag == qn("w:tbl"):
+            yield from (Block(row) for row in _table_rows(Table(child, parent)))
+        elif child.tag == qn("w:sdt"):
+            content = child.find(qn("w:sdtContent"))
+            if content is not None:
+                yield from _docx_blocks(content, parent)
+
+
+def _cell_text(cell: Any) -> str:
+    """All of a cell's text, including any table nested inside it."""
+    return " ".join(block.text for block in _docx_blocks(cell._tc, cell) if block.text.strip())
+
+
+def _docx_heading_level(paragraph: Any) -> int | None:
     """Title is level 0 (above every heading); Heading 1 to 9 are levels 1 to 9."""
     style = getattr(paragraph, "style", None)
     while style is not None:
@@ -345,16 +411,16 @@ def _docx_heading_level(paragraph: object) -> int | None:
     return None
 
 
-def _table_rows(table: object) -> Iterator[str]:
+def _table_rows(table: Any) -> Iterator[str]:
     """Each row's cells joined in order; a merged cell appears once."""
-    for row in getattr(table, "rows", []):
+    for row in table.rows:
         cells: list[str] = []
-        seen: set[int] = set()
+        seen: list[Any] = []
         for cell in row.cells:
-            if id(cell._tc) in seen:
+            if any(cell._tc is element for element in seen):
                 continue
-            seen.add(id(cell._tc))
-            text = re.sub(r"\s+", " ", cell.text).strip()
+            seen.append(cell._tc)
+            text = re.sub(r"\s+", " ", _cell_text(cell)).strip()
             if text:
                 cells.append(text)
         if cells:

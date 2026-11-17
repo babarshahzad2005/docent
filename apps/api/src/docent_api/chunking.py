@@ -18,6 +18,9 @@ MAX_CHARS = 1600
 _HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t#]*$")
 _FENCE = re.compile(r"^[ \t]{0,3}(```|~~~)")
 _SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
+# Control characters other than tab and newline: never meaningful text, and Postgres can't
+# store NUL. PDFs produce them for glyphs that have no text equivalent (equations, symbols).
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 @dataclass(frozen=True)
@@ -44,7 +47,7 @@ class Block:
     """One paragraph (or heading, or table row) from a parsed Document, in reading order."""
 
     text: str
-    heading_level: int | None = None  # 1 for a top-level heading; None for body text
+    heading_level: int | None = None  # 0 for a title, 1 for a top-level heading; None for body
     page: int | None = None
 
 
@@ -70,7 +73,7 @@ def chunk_blocks(blocks: list[Block]) -> list[Chunk]:
             paragraphs.clear()
 
     for block in blocks:
-        text = block.text.strip()
+        text = clean_text(block.text).strip()
         if not text:
             continue
         if block.heading_level is not None:
@@ -97,8 +100,18 @@ def chunk_plain_text(text: str) -> list[Chunk]:
     return _pack([_Section((), _normalize(text))])
 
 
+def clean_text(text: str) -> str:
+    """Text safe to store and search: surrogate pairs joined, control characters dropped.
+
+    Some PDF readers return characters outside the Basic Multilingual Plane (say, maths
+    italic letters) as two UTF-16 halves; they are joined here, and a lone half is replaced.
+    """
+    text = text.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+    return _CONTROL.sub("", text)
+
+
 def _normalize(text: str) -> str:
-    return text.replace("\r\n", "\n").replace("\r", "\n").replace("\x00", "")
+    return clean_text(text.replace("\r\n", "\n").replace("\r", "\n"))
 
 
 def _strip_front_matter(text: str) -> str:

@@ -63,6 +63,10 @@ _CHUNKERS: dict[str, Callable[[bytes], list[Chunk]]] = {
     "docx": lambda data: chunk_blocks(extract_docx(data)),
 }
 
+_NO_TEXT = (
+    "No text was found in this document. If it's a scan or a photo of pages, Docent can't "
+    "read it yet: upload a version with selectable text."
+)
 _UPLOAD_UNFINISHED = "The upload didn't finish. Upload the document again."
 _GAVE_UP = (
     "Docent couldn't process this document after several tries. Retry, and if it fails again, "
@@ -280,7 +284,7 @@ class _DocumentWorker:
         except UnreadableDocument as error:
             raise _Unprocessable(str(error)) from error
         if not chunks:
-            raise _Unprocessable("No text was found in this document.")
+            raise _Unprocessable(_NO_TEXT)
         with self.conn.transaction():
             self.conn.execute("delete from app.chunks where document_id = %s", (self.id,))
             with self.conn.cursor() as cursor:

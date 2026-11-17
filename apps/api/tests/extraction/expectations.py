@@ -126,8 +126,9 @@ def passes(check: Check, pages: Sequence[str]) -> bool:
         return normalize(check.text) in page
     position = 0
     for text in check.texts:
-        found = page.find(normalize(text), position)
+        wanted = normalize(text)
+        found = page.find(wanted, position)
         if found < 0:
             return False
-        position = found + len(text)
+        position = found + len(wanted)
     return True

@@ -1,6 +1,6 @@
 # Extraction test files
 
-Real-world documents used to choose and check Docent's PDF and Word extraction (ADR 0011). They are kept unchanged.
+Documents used to choose and check Docent's PDF and Word extraction (ADR 0011). The PDFs are real-world documents, kept unchanged. The Word files are not: openly licensed real-world `.docx` files were scarce, so they were built from the GOV.UK text with Word's built-in styles (real-world ones are to follow, #36).
 
 | File | Source | Licence |
 |---|---|---|

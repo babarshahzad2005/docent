@@ -25,24 +25,35 @@ from expectations import CHECKS, STAFFING, passes  # noqa: E402
 FILES = HERE / "files"
 
 
+def join_hyphens(pages: list[str]) -> list[str]:
+    """The best the other parsers allow: join any word split by a hyphen at a line end.
+
+    They print the hyphen as a plain "-", so this also wrongly joins real hyphenated words
+    broken at a line end ("open-" + "domain" becomes "opendomain"); PDFium marks the inserted
+    ones instead.
+    """
+    return [re.sub(r"(\w)-\r?\n(\w)", r"\1\2", page) for page in pages]
+
+
 def pypdf_pages(data: bytes) -> list[str]:
     import pypdf
 
-    return [page.extract_text() or "" for page in pypdf.PdfReader(io.BytesIO(data)).pages]
+    reader = pypdf.PdfReader(io.BytesIO(data))
+    return join_hyphens([page.extract_text() or "" for page in reader.pages])
 
 
 def pdfplumber_pages(data: bytes) -> list[str]:
     import pdfplumber
 
     with pdfplumber.open(io.BytesIO(data)) as pdf:
-        return [page.extract_text() or "" for page in pdf.pages]
+        return join_hyphens([page.extract_text() or "" for page in pdf.pages])
 
 
 def pdfminer_pages(data: bytes) -> list[str]:
     from pdfminer.high_level import extract_text
 
     pages = extract_text(io.BytesIO(data)).split("\f")
-    return pages[:-1] if pages and not pages[-1].strip() else pages
+    return join_hyphens(pages[:-1] if pages and not pages[-1].strip() else pages)
 
 
 def pypdfium2_pages(data: bytes) -> list[str]:
