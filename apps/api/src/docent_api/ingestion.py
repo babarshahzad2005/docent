@@ -27,7 +27,7 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 
 from docent_api.chunking import Chunk, chunk_blocks, chunk_markdown, chunk_plain_text
-from docent_api.documents import FILE_TYPES, MAX_FILE_BYTES
+from docent_api.documents import FILE_TYPES, MAX_FILE_BYTES, remove_files
 from docent_api.extraction import UnreadableDocument, extract_docx, extract_pdf
 from docent_api.providers.base import Embedder, Purpose, RateLimited
 from docent_api.storage import FileMissing, FileStore
@@ -52,8 +52,10 @@ CLAIMABLE_SQL = "status in ({}) and (locked_until is null or locked_until < now(
 STALE_UPLOAD_SQL = (
     f"status = 'uploading' and created_at < now() - interval '{STALE_UPLOAD_HOURS} hours'"
 )
+FILES_TO_REMOVE_SQL = "delete_after < now()"
 WORK_WAITING_SQL = (
-    f"exists (select 1 from app.documents where ({CLAIMABLE_SQL}) or ({STALE_UPLOAD_SQL}))"
+    f"exists (select 1 from app.documents where ({CLAIMABLE_SQL}) or ({STALE_UPLOAD_SQL})) "
+    f"or exists (select 1 from app.storage_deletions where {FILES_TO_REMOVE_SQL})"
 )
 
 _CHUNKERS: dict[str, Callable[[bytes], list[Chunk]]] = {
@@ -154,6 +156,7 @@ def _run(
     conn: Connection[DictRow], store: FileStore, embedder: Embedder, budget: _Budget
 ) -> BatchResult:
     _fail_unfinished_uploads(conn)
+    _remove_deleted_files(conn, store)
     indexed = failed = 0
     while budget.left() > _EMBED_CALL_ALLOWANCE / 2:
         document = _claim(conn)
@@ -211,15 +214,28 @@ def _fail_unfinished_uploads(conn: Connection[DictRow]) -> None:
     )
 
 
+def _remove_deleted_files(conn: Connection[DictRow], store: FileStore) -> None:
+    """Files of deleted Documents that couldn't be removed at the time (documents.py)."""
+    rows = conn.execute(
+        f"select path from app.storage_deletions where {FILES_TO_REMOVE_SQL} "
+        "order by delete_after limit 100"
+    ).fetchall()
+    if rows:
+        remove_files(conn, store, [row["path"] for row in rows])
+
+
 def _finish(
     conn: Connection[DictRow],
     document_id: UUID,
     status: str,
     reason: str | None,
     retryable: bool = False,
-) -> None:
-    """End ingestion. `retryable` says whether retrying could help (a temporary problem)."""
-    conn.execute(
+) -> bool:
+    """End ingestion. `retryable` says whether retrying could help (a temporary problem).
+
+    Returns False if the Document no longer exists (its User deleted it mid-batch).
+    """
+    updated = conn.execute(
         """
         update app.documents
         set status = %(status)s, failure_reason = %(reason)s,
@@ -228,6 +244,7 @@ def _finish(
         """,
         {"status": status, "reason": reason, "retryable": retryable, "id": document_id},
     )
+    return updated.rowcount > 0
 
 
 class _DocumentWorker:
@@ -255,6 +272,8 @@ class _DocumentWorker:
                 self._parse()
             self._embed()
         except _Unprocessable as problem:
+            if not self._still_exists():
+                return "deleted"  # its file went with it, mid-batch
             _finish(self.conn, self.id, "failed", str(problem))
             return "failed"
         except _Paused as pause:
@@ -264,7 +283,8 @@ class _DocumentWorker:
             if not self._still_exists():
                 return "deleted"  # removed by its User mid-batch; nothing left to do
             return self._retry_later(error)
-        _finish(self.conn, self.id, "indexed", None)
+        if not _finish(self.conn, self.id, "indexed", None):
+            return "deleted"
         return "indexed"
 
     def _parse(self) -> None:

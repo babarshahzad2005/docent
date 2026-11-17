@@ -8,6 +8,7 @@ def test_the_job_calls_the_api_only_when_work_is_waiting() -> None:
     assert "where exists" in command
     assert "status in ('queued', 'parsing', 'embedding')" in command
     assert "vault.decrypted_secrets" in command
+    assert "app.storage_deletions" in command  # files of deleted Documents count as work
 
 
 def test_the_api_url_cant_break_out_of_the_job_sql() -> None:

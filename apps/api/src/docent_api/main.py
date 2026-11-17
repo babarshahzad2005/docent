@@ -160,12 +160,6 @@ def delete(document_id: UUID, user: User, conn: Db, files: Files) -> None:
         return  # already gone
     except NotAllowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_CHANGE) from None
-    except StorageError:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "The document couldn't be deleted because file storage isn't answering. Nothing "
-            "was removed; try again in a minute.",
-        ) from None
 
 
 @app.post("/documents/{document_id}/retry", operation_id="retryDocument", tags=["documents"])

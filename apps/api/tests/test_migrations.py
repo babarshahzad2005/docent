@@ -11,6 +11,7 @@ TABLES = [
     "documents",
     "ingestion_lease",
     "memberships",
+    "storage_deletions",
     "trigger_tokens",
     "users",
 ]

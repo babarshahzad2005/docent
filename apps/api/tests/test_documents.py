@@ -25,7 +25,6 @@ from docent_api.documents import (
     list_documents,
     retry_document,
     start_upload,
-    storage_used,
 )
 from docent_api.ingestion import (
     MAX_ATTEMPTS,
@@ -754,6 +753,24 @@ def count_rows(conn: Connection[DictRow], table: str, document_id: UUID) -> int:
     return int(row["n"])
 
 
+def pending_removals(conn: Connection[DictRow]) -> list[dict[str, object]]:
+    rows = conn.execute(
+        "select path, delete_after > now() as later from app.storage_deletions order by path"
+    ).fetchall()
+    conn.commit()
+    return list(rows)
+
+
+def used_bytes(conn: Connection[DictRow], user: AuthUser) -> int:
+    row = conn.execute(
+        "select coalesce(sum(size_bytes), 0) as n from app.documents where uploaded_by = %s",
+        (user.id,),
+    ).fetchone()
+    conn.commit()
+    assert row is not None
+    return int(row["n"])
+
+
 def test_deleting_removes_the_file_chunks_and_vectors_together(
     conn: Connection[DictRow], store: FakeStore, user: AuthUser
 ) -> None:
@@ -761,35 +778,75 @@ def test_deleting_removes_the_file_chunks_and_vectors_together(
     run_batch(conn, store, FakeEmbedder(), seconds=240)
     kept = upload(conn, store, user, "other.txt", b"Keep me.")
     assert count_rows(conn, "chunks", document_id) == 2
-    used = storage_used(conn, user.id)
+    used = used_bytes(conn, user)
 
     delete_document(conn, store, user.id, document_id)
-    conn.commit()
 
     assert count_rows(conn, "documents", document_id) == 0
     assert count_rows(conn, "chunks", document_id) == 0
     assert not [path for path in store.files if str(document_id) in path]
-    assert storage_used(conn, user.id) == used - len(POLICY)
+    assert pending_removals(conn) == []
+    assert used_bytes(conn, user) == used - len(POLICY)
     assert [d.id for d in list_documents(conn, user.id)] == [kept]
 
 
-def test_if_storage_refuses_nothing_is_deleted(
+def test_the_deletion_is_committed_before_the_file_is_removed(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser, database_url: str
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    seen: list[int] = []
+
+    def remove(paths: Sequence[str]) -> None:
+        # Another connection sees the row gone by the time storage is asked to remove the file.
+        with psycopg.connect(database_url) as other:
+            row = other.execute(
+                "select count(*) from app.documents where id = %s", (document_id,)
+            ).fetchone()
+            seen.append(row[0] if row else -1)
+        FakeStore.delete(store, paths)
+
+    store.delete = remove  # type: ignore[method-assign]
+    delete_document(conn, store, user.id, document_id)
+
+    assert seen == [0]
+
+
+def test_a_file_storage_cant_remove_now_is_removed_by_a_later_batch(
     conn: Connection[DictRow], store: FakeStore, user: AuthUser, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     document_id = upload(conn, store, user, "policy.md", POLICY)
-    run_batch(conn, store, FakeEmbedder(), seconds=240)
 
     def refuse(paths: Sequence[str]) -> None:
         raise StorageError("storage is down")
 
     monkeypatch.setattr(store, "delete", refuse)
-    with pytest.raises(StorageError):
-        delete_document(conn, store, user.id, document_id)
-    conn.rollback()
+    delete_document(conn, store, user.id, document_id)
 
-    assert count_rows(conn, "documents", document_id) == 1
-    assert count_rows(conn, "chunks", document_id) == 2
-    assert len(store.files) == 1
+    assert count_rows(conn, "documents", document_id) == 0  # the Document is gone for the User
+    assert len(store.files) == 1  # its file isn't yet
+    assert [r["later"] for r in pending_removals(conn)] == [False]
+
+    monkeypatch.undo()
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    assert store.files == {}
+    assert pending_removals(conn) == []
+
+
+def test_a_file_still_uploading_is_removed_after_its_link_expires(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document, target = start_upload(conn, store, user.id, personal(conn, user), "a.txt", 5)
+    conn.commit()
+
+    delete_document(conn, store, user.id, document.id)
+    store.files[target.path] = b"late!"  # the browser's upload finishes afterwards
+
+    assert [(r["path"], r["later"]) for r in pending_removals(conn)] == [(target.path, True)]
+    conn.execute("update app.storage_deletions set delete_after = now() - interval '1 second'")
+    conn.commit()
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    assert store.files == {}
 
 
 def test_only_editors_can_delete(
@@ -814,13 +871,13 @@ def test_only_editors_can_delete(
     assert count_rows(conn, "documents", document_id) == 1
 
 
-def test_deleting_mid_batch_leaves_nothing_behind(
+def test_deleting_while_embedding_leaves_nothing_behind(
     database_url: str, conn: Connection[DictRow], store: FakeStore, user: AuthUser
 ) -> None:
     document_id = upload(conn, store, user, "policy.md", POLICY)
 
     class DeletingEmbedder(FakeEmbedder):
-        """Simulates the User deleting the Document while its batch is embedding."""
+        """The User deletes the Document while its batch is embedding."""
 
         async def embed(self, texts: Sequence[str], purpose: Purpose) -> Embeddings:
             with psycopg.connect(database_url, row_factory=dict_row) as other:
@@ -829,10 +886,34 @@ def test_deleting_mid_batch_leaves_nothing_behind(
 
     result = run_batch(conn, store, DeletingEmbedder(), seconds=240)
 
-    assert result.failed == 0
+    assert (result.indexed, result.failed) == (0, 0)
     assert count_rows(conn, "documents", document_id) == 0
     assert count_rows(conn, "chunks", document_id) == 0
     assert store.files == {}
+
+
+def test_deleting_while_parsing_leaves_nothing_behind(
+    database_url: str, conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+
+    class DeletingStore(FakeStore):
+        """The User deletes the Document just after its batch downloaded the file."""
+
+        def download(self, path: str) -> bytes:
+            data = super().download(path)
+            with psycopg.connect(database_url, row_factory=dict_row) as other:
+                delete_document(other, self, user.id, document_id)
+            return data
+
+    deleting = DeletingStore()
+    deleting.files = store.files
+
+    result = run_batch(conn, deleting, FakeEmbedder(), seconds=240)
+
+    assert (result.indexed, result.failed) == (0, 0)  # the chunk insert found no Document
+    assert count_rows(conn, "chunks", document_id) == 0
+    assert deleting.files == {}
 
 
 def test_the_delete_endpoint_is_repeatable(

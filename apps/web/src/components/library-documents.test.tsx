@@ -93,6 +93,17 @@ describe("Deleting a Document", () => {
     expect(screen.getByText("policy.pdf", { selector: "span" })).toBeTruthy();
   });
 
+  it("waits until a Document's upload has finished", () => {
+    render(
+      <LibraryDocuments
+        collection={PERSONAL}
+        initialDocuments={[aDocument({ status: "uploading" })]}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Delete policy.pdf" })).toBeNull();
+  });
+
   it("isn't offered to Viewers", () => {
     render(
       <LibraryDocuments

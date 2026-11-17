@@ -229,16 +229,15 @@ export function LibraryDocuments({
             key={document.id}
             document={document}
             canRetry={canEdit && document.can_retry}
-            canDelete={canEdit}
+            // A file still uploading can't be deleted yet; its upload finishes in moments.
+            canDelete={canEdit && document.status !== "uploading"}
+            afterDelete={button}
             onDelete={async () => {
               try {
                 const deleted = await deleteDocument(document.id);
                 if (!deleted.ok) return deleted.message;
-                setErrors([]);
                 setAnnouncement(`${document.name} was deleted.`);
                 setDocuments((current) => current.filter((d) => d.id !== document.id));
-                // Its row is gone; continue from the upload button.
-                button.current?.focus();
                 return null;
               } catch {
                 return `${document.name} couldn't be deleted. Check your connection and try again.`;
@@ -274,12 +273,15 @@ function DocumentRow({
   document,
   canRetry,
   canDelete,
+  afterDelete,
   onRetry,
   onDelete,
 }: {
   document: DocumentSummary;
   canRetry: boolean;
   canDelete: boolean;
+  /** Where focus goes once the Document (and so its row) is gone. */
+  afterDelete: React.RefObject<HTMLButtonElement | null>;
   /** Resolves to whether the Document was queued again. */
   onRetry: () => Promise<boolean>;
   /** Resolves to null once deleted, or to a message saying why it wasn't. */
@@ -315,7 +317,9 @@ function DocumentRow({
         <span className="text-meta text-muted-foreground tabular-nums">
           {formatSize(document.size_bytes)}
         </span>
-        {canDelete && <DeleteDocument name={document.name} onDelete={onDelete} />}
+        {canDelete && (
+          <DeleteDocument name={document.name} afterDelete={afterDelete} onDelete={onDelete} />
+        )}
       </div>
       {failed && (
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -348,12 +352,15 @@ function DocumentRow({
 /** Delete, after a confirmation that names the Document. */
 function DeleteDocument({
   name,
+  afterDelete,
   onDelete,
 }: {
   name: string;
+  afterDelete: React.RefObject<HTMLButtonElement | null>;
   onDelete: () => Promise<string | null>;
 }) {
   const [open, setOpen] = useState(false);
+  const [deleted, setDeleted] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   return (
@@ -370,11 +377,11 @@ function DeleteDocument({
       >
         Delete
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      {/* On cancel focus returns to the Delete button; once deleted, that button is gone. */}
+      <AlertDialogContent finalFocus={deleted ? afterDelete : undefined}>
         <AlertDialogTitle>Delete {name}?</AlertDialogTitle>
         <AlertDialogDescription>
-          The document and everything Docent made from it are removed for good. Answers that
-          cited it will show the source as removed.
+          The document and everything Docent made from it are removed. This can’t be undone.
         </AlertDialogDescription>
         {problem && (
           <p role="alert" className="text-destructive">
@@ -390,8 +397,12 @@ function DeleteDocument({
               setDeleting(true);
               const failure = await onDelete();
               setDeleting(false);
-              if (failure) setProblem(failure);
-              else setOpen(false);
+              if (failure) {
+                setProblem(failure);
+              } else {
+                setDeleted(true);
+                setOpen(false);
+              }
             }}
           >
             {deleting ? "Deleting…" : "Delete"}
