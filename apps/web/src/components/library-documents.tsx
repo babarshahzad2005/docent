@@ -76,6 +76,10 @@ export function LibraryDocuments({
   const button = useRef<HTMLButtonElement>(null);
   const previous = useRef(new Map(initialDocuments.map((d) => [d.id, d.status])));
   const wasEmpty = useRef(initialDocuments.length === 0);
+  // Documents this page is uploading right now (their status is still "uploading").
+  const [sending, setSending] = useState<Set<string>>(new Set());
+  const busy = useRef(0);
+  const uploadRef = useRef<(files: File[]) => void>(() => undefined);
 
   const processing = documents.some((d) => isProcessing(d.status));
 
@@ -129,9 +133,53 @@ export function LibraryDocuments({
     }
   }, [documents.length]);
 
+  // The whole window takes dropped files, so a drop that misses the list never makes the
+  // browser open the file instead (which would also cut off uploads in progress).
+  useEffect(() => {
+    if (!canEdit) return;
+    let depth = 0; // dragenter/dragleave fire for every element crossed; count to know when out
+    const enter = (event: DragEvent) => {
+      if (!carriesFiles(event)) return;
+      depth += 1;
+      setDragging(true);
+    };
+    const leave = (event: DragEvent) => {
+      if (!carriesFiles(event)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDragging(false);
+    };
+    const over = (event: DragEvent) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    };
+    const drop = (event: DragEvent) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      depth = 0;
+      setDragging(false);
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (files.length > 0) uploadRef.current(files);
+    };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("drop", drop);
+    };
+  }, [canEdit]);
+
   async function upload(files: File[]) {
-    setErrors([]);
-    setDuplicates([]);
+    // A new batch clears old messages only when nothing is still uploading; otherwise an
+    // earlier batch's refusals and duplicate questions would vanish unanswered.
+    if (busy.current === 0) {
+      setErrors([]);
+      setDuplicates([]);
+    }
     // A few files at a time: each one's transfer to storage is the slow part.
     const queue = [...files];
     const sendNext = async () => {
@@ -140,7 +188,18 @@ export function LibraryDocuments({
     await Promise.all(Array.from({ length: Math.min(PARALLEL_UPLOADS, queue.length) }, sendNext));
   }
 
+  uploadRef.current = (files) => void upload(files);
+
   async function uploadOne(file: File, allowDuplicate: boolean) {
+    busy.current += 1;
+    try {
+      await sendOne(file, allowDuplicate);
+    } finally {
+      busy.current -= 1;
+    }
+  }
+
+  async function sendOne(file: File, allowDuplicate: boolean) {
     const fail = (message: string) => setErrors((current) => [...current, message]);
     const refused = precheck(file);
     if (refused) {
@@ -148,6 +207,7 @@ export function LibraryDocuments({
       return;
     }
     const supabase = createClient();
+    let sentId: string | null = null;
     try {
       const started = await startUpload(
         collection.id,
@@ -167,6 +227,8 @@ export function LibraryDocuments({
       }
       const { document, upload: target } = started.value;
       setDocuments((current) => [document, ...current]);
+      sentId = document.id;
+      setSending((current) => new Set(current).add(document.id));
       const { error } = await supabase.storage
         .from(target.bucket)
         .uploadToSignedUrl(target.path, target.token, file, {
@@ -189,6 +251,15 @@ export function LibraryDocuments({
       );
     } catch {
       fail(`${file.name} couldn't be uploaded. Check your connection and upload it again.`);
+    } finally {
+      if (sentId !== null) {
+        const id = sentId;
+        setSending((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+      }
     }
   }
 
@@ -263,50 +334,29 @@ export function LibraryDocuments({
     </>
   );
 
-  // Dropping files anywhere on the Library uploads them; the button does the same by keyboard.
-  const dropZone = canEdit
-    ? {
-        onDragEnter: (event: React.DragEvent) => {
-          if (hasFiles(event)) setDragging(true);
-        },
-        onDragOver: (event: React.DragEvent) => {
-          if (!hasFiles(event)) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "copy";
-        },
-        onDragLeave: (event: React.DragEvent) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
-        },
-        onDrop: (event: React.DragEvent) => {
-          if (!hasFiles(event)) return;
-          event.preventDefault();
-          setDragging(false);
-          const files = Array.from(event.dataTransfer.files);
-          if (files.length > 0) void upload(files);
-        },
-      }
-    : {};
-
   const dropHint = dragging && (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-brand bg-brand-subtle/90 text-brand-subtle-text transition-opacity duration-150"
+      className="pointer-events-none fixed inset-3 z-40 flex items-center justify-center rounded-xl border-2 border-dashed border-brand bg-brand-subtle/90 px-6 text-center text-brand-subtle-text"
     >
       Drop files to add them to your {collection.name} collection
     </div>
   );
 
-  const remaining = documents.filter((d) => !isSettled(d.status)).length;
+  // Real work only: Documents the server is processing, and ones this page is still sending.
+  // An upload abandoned elsewhere stays "uploading" until the server gives up on it.
+  const remaining = documents.filter(
+    (d) => isProcessing(d.status) || (d.status === "uploading" && sending.has(d.id)),
+  ).length;
   const progress = remaining > 0 && (
     <p className="text-muted-foreground tabular-nums">
-      {remaining} of {documents.length} indexing…
+      {remaining} {remaining === 1 ? "document" : "documents"} indexing…
     </p>
   );
 
   if (documents.length === 0) {
     return (
       <div
-        {...dropZone}
         className="relative mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-4 py-12 text-center"
       >
         {dropHint}
@@ -324,7 +374,6 @@ export function LibraryDocuments({
 
   return (
     <div
-      {...dropZone}
       className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6"
     >
       {dropHint}
@@ -343,8 +392,9 @@ export function LibraryDocuments({
             key={document.id}
             document={document}
             canRetry={canEdit && document.can_retry}
-            // A file still uploading can't be deleted yet; its upload finishes in moments.
-            canDelete={canEdit && document.status !== "uploading"}
+            // A file this page is still sending can't be deleted yet; it finishes in moments.
+            // One left "uploading" elsewhere (a closed tab) can.
+            canDelete={canEdit && !sending.has(document.id)}
             afterDelete={button}
             onDelete={async () => {
               try {
@@ -527,8 +577,8 @@ function DeleteDocument({
   );
 }
 
-function hasFiles(event: React.DragEvent): boolean {
-  return Array.from(event.dataTransfer.types).includes("Files");
+function carriesFiles(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
 }
 
 function formatSize(bytes: number): string {
