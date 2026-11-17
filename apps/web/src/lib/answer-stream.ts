@@ -57,7 +57,9 @@ export type Segment = { text: string } | { citation: number };
 export function segments(answer: string, available: Set<number>): Segment[] {
   const parts: Segment[] = [];
   let last = 0;
-  for (const match of answer.matchAll(/\[(\d{1,2})\]/g)) {
+  // Models sometimes write 【n】 (CJK brackets) instead of [n]; the API rewrites saved
+  // answers, and text still streaming is read either way.
+  for (const match of answer.matchAll(/[[【](\d{1,2})[\]】]/g)) {
     const number = Number(match[1]);
     if (!available.has(number)) continue;
     if (match.index > last) parts.push({ text: answer.slice(last, match.index) });

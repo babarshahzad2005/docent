@@ -43,4 +43,12 @@ describe("segments", () => {
       { text: ". See [7] or [x]." },
     ]);
   });
+
+  it("reads citations written in CJK brackets", () => {
+    expect(segments("Fast 【1】.", new Set([1]))).toEqual([
+      { text: "Fast " },
+      { citation: 1 },
+      { text: "." },
+    ]);
+  });
 });

@@ -26,6 +26,7 @@ from docent_api.answers import (
     answer,
     build_prompt,
     cited_numbers,
+    normalize_citations,
     load_conversation,
     start_turn,
 )
@@ -353,6 +354,12 @@ def test_follow_ups_join_the_conversation_and_others_cant(
 
 def test_invented_and_repeated_citation_numbers_are_ignored() -> None:
     assert cited_numbers("A [2]. B [1][2]. C [9]. D [0].", available=3) == [2, 1]
+
+
+def test_citations_in_lenticular_brackets_are_understood_and_rewritten() -> None:
+    # gpt-oss sometimes writes 【1】 instead of [1].
+    assert cited_numbers("Fewer than 1.5 s 【1】.", available=2) == [1]
+    assert normalize_citations("A 【2】 and [1].") == "A [2] and [1]."
 
 
 def test_passages_are_quoted_as_data() -> None:

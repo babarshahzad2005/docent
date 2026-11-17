@@ -53,7 +53,8 @@ A sentence that uses several passages cites each, like [1][3].
 - Answer briefly in plain prose. Short bullet lists starting with "- " are fine; don't use \
 headings, tables, or bold text."""
 
-_CITATION = re.compile(r"\[(\d{1,2})\]")
+# Models sometimes write a citation with CJK lenticular brackets (【11】); accept both.
+_CITATION = re.compile(r"[\[【](\d{1,2})[\]】]")
 
 
 class ConversationNotFound(Exception):
@@ -115,6 +116,11 @@ def build_prompt(question: str, passages: Sequence[Passage]) -> str:
         for number, passage in enumerate(passages, start=1)
     )
     return f"Passages:\n\n{quoted}\n\nQuestion: {question}"
+
+
+def normalize_citations(answer: str) -> str:
+    """Write every citation as [n]."""
+    return _CITATION.sub(lambda match: f"[{match.group(1)}]", answer)
 
 
 def cited_numbers(answer: str, available: int) -> list[int]:
@@ -193,6 +199,7 @@ async def answer(
                     partial=bool(turn.answer),
                 )
                 return
+            turn.answer = normalize_citations(turn.answer)
             declined = turn.answer.strip().startswith(DECLINE)
             status, outcome = "complete", "declined" if declined else "answered"
         yield Completed(
