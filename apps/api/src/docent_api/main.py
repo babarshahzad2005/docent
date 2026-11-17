@@ -1,15 +1,25 @@
 """HTTP entry point for the Docent API."""
 
+from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection
 from psycopg.rows import DictRow
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from docent_api import __version__
+from docent_api.answers import (
+    ConversationNotFound,
+    answer,
+    load_conversation,
+    start_turn,
+    to_sse,
+)
 from docent_api.auth import AuthUser, current_user
 from docent_api.db import get_connection
 from docent_api.documents import (
@@ -27,7 +37,7 @@ from docent_api.documents import (
 )
 from docent_api.ingestion import run_batch
 from docent_api.library import CollectionSummary, ensure_user, list_collections
-from docent_api.providers.registry import embedder
+from docent_api.providers.registry import answer_generator, embedder
 from docent_api.scheduler import is_valid_trigger
 from docent_api.storage import FileStore, StorageError, get_file_store
 
@@ -77,6 +87,39 @@ class UploadTarget(BaseModel):
 class StartedUpload(BaseModel):
     document: DocumentSummary
     upload: UploadTarget
+
+
+class Question(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    conversation_id: UUID | None = None
+    """Continue this Conversation; a new one starts when omitted."""
+    scope: list[UUID] | None = None
+    """The Collections to answer from; all of the User's when omitted."""
+
+
+class CitationOut(BaseModel):
+    number: int
+    document_id: UUID | None
+    document_name: str
+    heading_path: list[str]
+    page: int | None
+    passage: str
+
+
+class MessageOut(BaseModel):
+    id: UUID
+    role: Literal["user", "assistant"]
+    content: str
+    status: Literal["streaming", "complete", "interrupted", "failed"]
+    created_at: datetime
+    citations: list[CitationOut]
+
+
+class ConversationOut(BaseModel):
+    id: UUID
+    title: str
+    created_at: datetime
+    messages: list[MessageOut]
 
 
 class IngestionRun(BaseModel):
@@ -222,3 +265,55 @@ def _run_batch(conn: Connection[DictRow], files: FileStore) -> IngestionRun:
     return IngestionRun(
         indexed=result.indexed, failed=result.failed, remaining=result.remaining, ran=result.ran
     )
+
+
+_SSE_DESCRIPTION = """Server-sent events, in order:
+
+- `start`: `{conversation_id, message_id, sources: [{number, document_id, document_name,
+  heading_path, page}]}`, the passages the answer may cite, numbered as in `[n]`
+- `delta`: `{text}`, the next piece of the answer
+- `done`: `{message_id, outcome: "answered" | "declined", cited: [n, ...]}`
+- `error`: `{message, partial}`, the answer stopped; `partial` if some text was sent
+"""
+
+
+@app.post(
+    "/answers",
+    operation_id="askQuestion",
+    tags=["answers"],
+    response_class=StreamingResponse,
+    responses={
+        200: {"content": {"text/event-stream": {}}, "description": _SSE_DESCRIPTION},
+        404: {"description": "No such Conversation"},
+    },
+)
+async def ask(body: Question, user: User) -> StreamingResponse:
+    """Answer a question from the User's Documents, streamed, citing passages as [n]."""
+    try:
+        turn = await start_turn(user.id, body.question, body.conversation_id, body.scope)
+    except ConversationNotFound:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "That conversation doesn\u2019t exist."
+        ) from None
+
+    async def events() -> AsyncIterator[str]:
+        async for event in answer(turn, embedder(), answer_generator()):
+            yield to_sse(event)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        # Keep proxies from buffering, so each piece reaches the reader as it is written.
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/conversations/{conversation_id}", operation_id="getConversation", tags=["answers"])
+def conversation(conversation_id: UUID, user: User, conn: Db) -> ConversationOut:
+    """A saved Conversation with its answers and their Citations."""
+    try:
+        return ConversationOut.model_validate(load_conversation(conn, user.id, conversation_id))
+    except ConversationNotFound:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "That conversation doesn\u2019t exist."
+        ) from None

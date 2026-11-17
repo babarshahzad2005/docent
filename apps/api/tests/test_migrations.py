@@ -6,11 +6,15 @@ from docent_api.migrate import alembic_config, upgrade
 
 TABLES = [
     "alembic_version",
+    "answer_logs",
     "chunks",
+    "citations",
     "collections",
+    "conversations",
     "documents",
     "ingestion_lease",
     "memberships",
+    "messages",
     "storage_deletions",
     "trigger_tokens",
     "users",
