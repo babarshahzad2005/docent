@@ -77,6 +77,10 @@
             "title": "Id",
             "type": "string"
           },
+          "is_demo": {
+            "title": "Is Demo",
+            "type": "boolean"
+          },
           "is_personal": {
             "title": "Is Personal",
             "type": "boolean"
@@ -99,6 +103,7 @@
           "id",
           "name",
           "is_personal",
+          "is_demo",
           "role"
         ],
         "title": "CollectionSummary",
@@ -182,6 +187,28 @@
             "title": "Size Bytes",
             "type": "integer"
           },
+          "source_credit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Credit"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
           "status": {
             "enum": [
               "uploading",
@@ -208,6 +235,8 @@
           "status",
           "failure_reason",
           "can_retry",
+          "source_url",
+          "source_credit",
           "effective_date",
           "created_at",
           "updated_at"

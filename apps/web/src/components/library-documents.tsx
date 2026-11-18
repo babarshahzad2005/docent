@@ -59,10 +59,15 @@ export function LibraryDocuments({
   collection,
   initialDocuments,
 }: {
-  collection: { id: string; name: string; role: "owner" | "editor" | "viewer" };
+  collection: {
+    id: string;
+    name: string;
+    role: "owner" | "editor" | "viewer";
+    is_demo?: boolean;
+  };
   initialDocuments: DocumentSummary[];
 }) {
-  const [documents, setDocuments] = useState(initialDocuments);
+  const [documents, setDocuments] = useState(() => onlyIn(collection.id, initialDocuments));
   // Bumped to restart status refreshing after it stopped on an error.
   const [refreshes, setRefreshes] = useState(0);
   const canEdit = collection.role !== "viewer";
@@ -96,7 +101,7 @@ export function LibraryDocuments({
           setErrors([`Progress stopped updating: ${result.message}`]);
           return;
         }
-        setDocuments(result.value);
+        setDocuments(onlyIn(collection.id, result.value));
       } catch {
         if (!stopped) setErrors(["Progress stopped updating. Reload the page to check again."]);
         return;
@@ -108,7 +113,7 @@ export function LibraryDocuments({
       stopped = true;
       clearTimeout(timer);
     };
-  }, [processing, refreshes]);
+  }, [processing, refreshes, collection.id]);
 
   // Announce Documents that just finished, once, for screen readers.
   useEffect(() => {
@@ -354,6 +359,39 @@ export function LibraryDocuments({
     </p>
   );
 
+  if (!canEdit) {
+    return (
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="font-serif text-question font-medium">{collection.name}</h1>
+          {collection.is_demo ? (
+            <p className="text-muted-foreground text-pretty">
+              Openly licensed workplace guidance from GOV.UK and the GitLab Handbook, for
+              trying Docent. Ask about anything here; each document below links to where it was
+              published, with its licence.
+            </p>
+          ) : (
+            <p className="text-muted-foreground">You can ask about these documents.</p>
+          )}
+        </div>
+        {progress}
+        <ul aria-label="Documents" className="flex flex-col border-t border-border">
+          {documents.map((document) => (
+            <DocumentRow
+              key={document.id}
+              document={document}
+              canRetry={false}
+              canDelete={false}
+              afterDelete={button}
+              onDelete={async () => null}
+              onRetry={async () => false}
+            />
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
   if (documents.length === 0) {
     return (
       <div
@@ -467,8 +505,20 @@ function DocumentRow({
       className="flex flex-col gap-1 border-b border-border py-3"
     >
       <div className="flex items-baseline justify-between gap-4">
-        <span className="min-w-0 truncate font-medium" title={document.name}>
-          {document.name}
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate font-medium" title={document.name}>
+            {document.name}
+          </span>
+          {document.source_url && (
+            <a
+              href={document.source_url}
+              rel="noreferrer"
+              target="_blank"
+              className="text-meta text-muted-foreground underline underline-offset-2"
+            >
+              {document.source_credit ?? "Source"}
+            </a>
+          )}
         </span>
         <span
           className={`flex shrink-0 items-center gap-1 text-meta tabular-nums transition-colors duration-150 ${tone}`}
@@ -579,6 +629,11 @@ function DeleteDocument({
 
 function carriesFiles(event: DragEvent): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+}
+
+/** The API lists every Collection's Documents; a Library view shows one Collection's. */
+function onlyIn(collectionId: string, documents: DocumentSummary[]): DocumentSummary[] {
+  return documents.filter((document) => document.collection_id === collectionId);
 }
 
 function formatSize(bytes: number): string {

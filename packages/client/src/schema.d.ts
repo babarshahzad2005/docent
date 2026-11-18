@@ -257,6 +257,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Demo */
+            is_demo: boolean;
             /** Is Personal */
             is_personal: boolean;
             /** Name */
@@ -314,6 +316,10 @@ export interface components {
             name: string;
             /** Size Bytes */
             size_bytes: number;
+            /** Source Credit */
+            source_credit: string | null;
+            /** Source Url */
+            source_url: string | null;
             /**
              * Status
              * @enum {string}

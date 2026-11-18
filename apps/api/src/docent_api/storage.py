@@ -43,6 +43,8 @@ class FileStore(Protocol):
 
     def download(self, path: str) -> bytes: ...
 
+    def upload(self, path: str, data: bytes) -> None: ...
+
     def delete(self, paths: Sequence[str]) -> None: ...
 
 
@@ -70,6 +72,20 @@ class SupabaseFileStore:
     def download(self, path: str) -> bytes:
         with self._client() as client:
             return self._send(client, "GET", f"/object/{BUCKET}/{path}").content
+
+    def upload(self, path: str, data: bytes) -> None:
+        """Store a file directly (the server's own uploads, such as the Demo Collection)."""
+        with self._client() as client:
+            try:
+                response = client.post(
+                    f"{self._base}/object/{BUCKET}/{path}",
+                    content=data,
+                    headers={"x-upsert": "true", "content-type": "application/octet-stream"},
+                )
+            except httpx2.HTTPError as error:
+                raise StorageError(f"storage unreachable: {error!r}") from error
+        if response.status_code >= 400:
+            raise StorageError(f"storage answered {response.status_code}: {response.text[:200]}")
 
     def delete(self, paths: Sequence[str]) -> None:
         if not paths:

@@ -18,6 +18,7 @@ class CollectionSummary(BaseModel):
     id: UUID
     name: str
     is_personal: bool
+    is_demo: bool
     role: Role
 
 
@@ -52,17 +53,26 @@ def ensure_user(conn: Connection[DictRow], user: AuthUser) -> None:
             """,
             {"id": user.id},
         )
+        # Every User can ask the Demo Collection, read-only (PRD decision log, 2026-11-18).
+        conn.execute(
+            """
+            insert into app.memberships (collection_id, user_id, role)
+            select id, %(id)s, 'viewer' from app.collections where is_demo
+            on conflict (collection_id, user_id) do nothing
+            """,
+            {"id": user.id},
+        )
 
 
 def list_collections(conn: Connection[DictRow], user_id: UUID) -> list[CollectionSummary]:
     """Every Collection the User is a Member of, Personal Collection first."""
     rows = conn.execute(
         """
-        select c.id, c.name, c.personal_owner_id is not null as is_personal, m.role
+        select c.id, c.name, c.personal_owner_id is not null as is_personal, c.is_demo, m.role
         from app.memberships m
         join app.collections c on c.id = m.collection_id
         where m.user_id = %(user_id)s
-        order by is_personal desc, lower(c.name)
+        order by is_personal desc, c.is_demo, lower(c.name)
         """,
         {"user_id": user_id},
     ).fetchall()

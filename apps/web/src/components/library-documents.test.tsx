@@ -29,6 +29,8 @@ function aDocument(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
     status: "indexed",
     failure_reason: null,
     can_retry: false,
+    source_url: null,
+    source_credit: null,
     effective_date: "2026-11-17",
     created_at: "2026-11-17T10:00:00Z",
     updated_at: "2026-11-17T10:00:00Z",

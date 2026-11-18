@@ -75,6 +75,12 @@ Tables live in a private `app` schema that Supabase's auto-generated Data API ca
 
 Ingestion runs in short batches: one starts right after each upload, and a pg_cron job in the database starts another every minute while Documents are waiting, so processing continues with the browser closed. `docent-setup-scheduler --api-url <deployed API>` creates the job and its token (kept in Supabase Vault; the API stores only a hash); run it once per Supabase project, and again to rotate the token. Without the scheduler (local development), a Document that pauses waits until the next upload starts a batch.
 
+### Demo Collection
+
+Every User can ask the **Demo Collection**: 33 openly licensed workplace guides from [GOV.UK](https://www.gov.uk/) (Open Government Licence v3.0) and the [GitLab Handbook](https://handbook.gitlab.com/) (CC BY-SA 4.0), as Markdown, PDF, and Word. Each is credited with its source and licence in the app, and listed in [`evals/demo/sources.json`](evals/demo/sources.json). Two of them disagree on purpose: the 2019 holiday calculation guidance and the January 2024 reforms. `uv --directory apps/api run docent-demo fetch` downloads the sources again; `docent-demo seed` loads them into a database's Demo Collection.
+
+Contains public sector information licensed under the Open Government Licence v3.0. GitLab Handbook content © GitLab B.V., licensed under CC BY-SA 4.0; converted to Markdown, with images, links, and diagrams removed.
+
 ### File storage
 
 Uploaded files go straight from the browser to a private Supabase Storage bucket, `documents`, using a one-time upload link the API issues after checking the User may add to that Collection. Only the API (with the secret key) can read or delete them. `docent-setup-storage` creates the bucket, or checks its settings (private, 20 MB per file); run it once per Supabase project.

@@ -43,6 +43,9 @@ class DocumentSummary(BaseModel):
     status: DocumentStatus
     failure_reason: str | None
     can_retry: bool
+    source_url: str | None
+    """Where the Document was published, for Documents Docent provides (the Demo Collection)."""
+    source_credit: str | None
     effective_date: date
     created_at: datetime
     updated_at: datetime
@@ -71,6 +74,7 @@ class DocumentNotFound(Exception):
 _SUMMARY_COLUMNS = """
     d.id, d.collection_id, d.name, d.size_bytes, d.status, d.failure_reason,
     d.status = 'failed' and d.failure_retryable as can_retry,
+    d.source_url, d.source_credit,
     d.effective_date, d.created_at, d.updated_at
 """
 
