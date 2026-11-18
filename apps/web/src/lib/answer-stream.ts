@@ -12,10 +12,22 @@ export type Source = {
   passage?: string;
 };
 
+/** A claim removed because its Citations couldn't be checked against their passages. */
+export type RemovedClaim = { text: string; reason: string; original: string };
+
 export type AnswerEvent =
   | { event: "start"; conversation_id: string; message_id: string; sources: Source[] }
   | { event: "delta"; text: string }
-  | { event: "done"; message_id: string; outcome: "answered" | "declined"; cited: number[] }
+  | {
+      event: "done";
+      message_id: string;
+      outcome: "answered" | "declined";
+      cited: number[];
+      /** The answer once its Citations were checked: replaces the streamed text. */
+      answer: string;
+      verified: boolean;
+      removed: RemovedClaim[];
+    }
   | { event: "error"; message: string; partial: boolean; cited: number[] };
 
 /** Parses server-sent events from a byte stream, yielding each as it completes. */

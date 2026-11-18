@@ -48,7 +48,17 @@ describe("Conversation", () => {
           ["start", START],
           ["delta", { text: "Up to 10 days " }],
           ["delta", { text: "carry over 【1】." }],
-          ["done", { message_id: "m1", outcome: "answered", cited: [1] }],
+          [
+            "done",
+            {
+              message_id: "m1",
+              outcome: "answered",
+              cited: [1],
+              answer: "Up to 10 days carry over [1].",
+              verified: true,
+              removed: [],
+            },
+          ],
         ),
       ),
     );
@@ -63,9 +73,47 @@ describe("Conversation", () => {
     await waitFor(() =>
       expect(screen.getByText("Up to 10 days carry over .", { selector: "p" })).toBeTruthy(),
     );
+    expect(screen.getByText("All 1 citation checked against their source.")).toBeTruthy();
     expect(window.location.pathname).toBe("/conversations/c1");
     const results = await axe(container, { rules: { "color-contrast": { enabled: false } } });
     expect(results.violations.map((v) => v.id)).toEqual([]);
+  });
+
+  it("fades out an unsupported claim, then shows what was removed and why", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        sse(
+          ["start", START],
+          ["delta", { text: "Up to 10 days carry over [1]. Unused days are paid out [1]." }],
+          [
+            "done",
+            {
+              message_id: "m1",
+              outcome: "answered",
+              cited: [1],
+              answer: "Up to 10 days carry over [1].",
+              verified: true,
+              removed: [
+                {
+                  text: "Unused days are paid out.",
+                  reason: "its quote isn’t in the cited passage",
+                  original: "Unused days are paid out [1].",
+                },
+              ],
+            },
+          ],
+        ),
+      ),
+    );
+    render(<Conversation conversationId={null} initialTurns={[]} startQuestion="How much?" />);
+
+    await waitFor(() => expect(screen.getByText(/1 claim was removed/)).toBeTruthy());
+    expect(screen.queryByText(/paid out \[|paid out $/)).toBeNull();
+    expect(document.querySelector("[data-fading]")).toBeNull();
+    expect(screen.getByText("1 citation checked against their source. 1 claim was removed because it couldn’t be checked.", { exact: false })).toBeTruthy();
+    await userEvent.click(screen.getByText("What was removed"));
+    expect(screen.getByText("“Unused days are paid out.”")).toBeTruthy();
   });
 
   it("marks an answer cut off without an ending, and lets the User ask again", async () => {

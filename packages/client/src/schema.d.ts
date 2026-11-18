@@ -382,6 +382,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Removed */
+            removed: components["schemas"]["RemovedClaim"][];
             /**
              * Role
              * @enum {string}
@@ -394,6 +396,8 @@ export interface components {
              * @enum {string}
              */
             status: "streaming" | "complete" | "interrupted" | "failed";
+            /** Verified */
+            verified: boolean;
         };
         /** NewDocument */
         NewDocument: {
@@ -447,6 +451,15 @@ export interface components {
             question: string;
             /** Scope */
             scope?: string[] | null;
+        };
+        /** RemovedClaim */
+        RemovedClaim: {
+            /** Original */
+            original: string;
+            /** Reason */
+            reason: string;
+            /** Text */
+            text: string;
         };
         /** StartedUpload */
         StartedUpload: {

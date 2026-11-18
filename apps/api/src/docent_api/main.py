@@ -118,6 +118,12 @@ class CitationOut(BaseModel):
     passage: str
 
 
+class RemovedClaim(BaseModel):
+    text: str
+    reason: str
+    original: str
+
+
 class MessageOut(BaseModel):
     id: UUID
     role: Literal["user", "assistant"]
@@ -125,6 +131,10 @@ class MessageOut(BaseModel):
     status: Literal["streaming", "complete", "interrupted", "failed"]
     scope: list[UUID]
     """The Collections the question was answered from."""
+    verified: bool
+    """The answer's Citations were checked against their passages (ADR 0007)."""
+    removed: list[RemovedClaim]
+    """Claims removed from the answer because their Citations couldn't be verified."""
     created_at: datetime
     citations: list[CitationOut]
 

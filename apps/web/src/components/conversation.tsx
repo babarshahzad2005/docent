@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { CheckIcon } from "lucide-react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 import { AskBox } from "@/components/ask-box";
 import { CITATION_CHIP, type CitedSource, SourceMeta, SourcePane } from "@/components/source-pane";
 import { Button } from "@/components/ui/button";
 import {
   readAnswerEvents,
+  type RemovedClaim,
   segments,
   type Source,
   withoutCitations,
@@ -20,7 +22,15 @@ export type Turn = {
   status: "streaming" | "complete" | "declined" | "interrupted" | "failed";
   messageId?: string;
   error?: string;
+  /** The Citations were checked against their passages (ADR 0007). */
+  verified?: boolean;
+  removed?: RemovedClaim[];
+  /** Removed sentences fading out of the streamed text, before the checked answer replaces it. */
+  fading?: string[];
 };
+
+// DESIGN.md › Motion: an unsupported claim fades out over 150ms, then the line updates.
+const FADE_MS = 150;
 
 /**
  * A Conversation: each question with its streamed answer, Citations, and the sources they
@@ -91,12 +101,24 @@ export function Conversation({
           update((turn) => ({ ...turn, answer: turn.answer + event.text }));
         } else if (event.event === "done") {
           // Announced once, when complete, never token by token (DESIGN.md › Accessibility).
-          setAnnouncement(withoutCitations(answerSoFar.current));
-          update((turn) => ({
+          setAnnouncement(withoutCitations(event.answer || answerSoFar.current));
+          const fading = event.removed.map((claim) => claim.original);
+          const checked = (turn: Turn): Turn => ({
             ...turn,
+            answer: event.answer || turn.answer,
             status: event.outcome === "declined" ? "declined" : "complete",
             cited: event.cited,
-          }));
+            verified: event.verified,
+            removed: event.removed,
+            fading: undefined,
+          });
+          if (fading.length === 0) {
+            update(checked);
+          } else {
+            update((turn) => ({ ...turn, fading }));
+            await new Promise((resolve) => setTimeout(resolve, FADE_MS));
+            update(checked);
+          }
         } else {
           update((turn) => ({
             ...turn,
@@ -213,25 +235,41 @@ function TurnView({
         {turn.status === "streaming" && !turn.answer && (
           <span className="font-sans text-ui text-muted-foreground">Finding passages…</span>
         )}
-        {segments(turn.answer, available).map((part, i) =>
-          "text" in part ? (
-            <span key={i}>{part.text}</span>
-          ) : (
-            <button
-              key={i}
-              type="button"
-              aria-label={label(part.citation)}
-              onClick={open(part.citation)}
-              className={`${CITATION_CHIP} mx-0.5 -translate-y-1 cursor-pointer`}
+        {withFading(turn.answer, turn.fading ?? []).map((piece, p) => {
+          const parts = segments(piece.text, available).map((part, i) =>
+            "text" in part ? (
+              <span key={i}>{part.text}</span>
+            ) : (
+              <button
+                key={i}
+                type="button"
+                aria-label={label(part.citation)}
+                onClick={open(part.citation)}
+                className={`${CITATION_CHIP} mx-0.5 -translate-y-1 cursor-pointer`}
+              >
+                {part.citation}
+              </button>
+            ),
+          );
+          return piece.fading ? (
+            <span
+              key={`fading-${p}`}
+              data-fading
+              className="opacity-0 transition-opacity duration-150 ease-(--ease-out) starting:opacity-100"
             >
-              {part.citation}
-            </button>
-          ),
-        )}
+              {parts}
+            </span>
+          ) : (
+            <Fragment key={p}>{parts}</Fragment>
+          );
+        })}
         {turn.status === "streaming" && turn.answer && (
           <span aria-hidden="true" className="ml-0.5 inline-block h-[1em] w-0.5 translate-y-0.5 bg-foreground" />
         )}
       </div>
+      {turn.verified && turn.status !== "streaming" && (
+        <VerificationLine checked={cited.length} removed={turn.removed ?? []} />
+      )}
       {turn.error && (
         <div role="alert" className="flex flex-wrap items-center gap-3 text-destructive">
           <p>{turn.error}</p>
@@ -260,5 +298,55 @@ function TurnView({
         </ol>
       )}
     </section>
+  );
+}
+
+/** The answer's text with the sentences being removed marked, so they can fade out. */
+function withFading(answer: string, fading: string[]): { text: string; fading: boolean }[] {
+  let pieces = [{ text: answer, fading: false }];
+  for (const sentence of fading) {
+    pieces = pieces.flatMap((piece) => {
+      const at = piece.fading ? -1 : piece.text.indexOf(sentence);
+      if (at === -1) return [piece];
+      return [
+        { text: piece.text.slice(0, at), fading: false },
+        { text: sentence, fading: true },
+        { text: piece.text.slice(at + sentence.length), fading: false },
+      ].filter((p) => p.text);
+    });
+  }
+  return pieces;
+}
+
+/** DESIGN.md › Answer: a check mark and words; says how many claims were removed, and why. */
+function VerificationLine({ checked, removed }: { checked: number; removed: RemovedClaim[] }) {
+  const sources = checked === 1 ? "citation" : "citations";
+  const claims = removed.length === 1 ? "1 claim was" : `${removed.length} claims were`;
+  return (
+    <div className="flex flex-col gap-1 text-meta text-text-secondary">
+      <p className="flex items-center gap-1.5">
+        <CheckIcon aria-hidden="true" className="size-4 shrink-0 text-brand" />
+        {checked > 0 &&
+          (removed.length === 0
+            ? `All ${checked} ${sources} checked against their source.`
+            : `${checked} ${sources} checked against their source.`)}
+        {removed.length > 0 &&
+          ` ${claims} removed because ${removed.length === 1 ? "it" : "they"} couldn’t be checked.`}
+      </p>
+      {removed.length > 0 && (
+        <details className="pl-5.5">
+          <summary className="cursor-pointer text-brand underline-offset-2 [@media(hover:hover)_and_(pointer:fine)]:hover:underline">
+            What was removed
+          </summary>
+          <ul className="mt-1 flex flex-col gap-1">
+            {removed.map((claim, i) => (
+              <li key={i}>
+                <span className="text-foreground">“{claim.text}”</span>: {claim.reason}.
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
   );
 }
