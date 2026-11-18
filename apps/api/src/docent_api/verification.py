@@ -7,8 +7,9 @@ checks each Citation against its passage:
 
 - a Citation is verified when a quote given for its passage occurs in that passage, allowing
   for differences in case, whitespace, punctuation, and quotation marks, and for "…" between
-  quoted parts. Quotes are tried in the order given, then any other quote for the same
-  passage (models often quote each passage once, however often they cite it);
+  quoted parts. Quotes pair with Citations in order; a Citation left without a quote of its
+  own (models often quote a passage once, however often they cite it) may use any quote
+  given for that passage, but a quote that fails is never rescued by another;
 - a quote shorter than three words can't verify anything (it would match almost any passage);
 - a Claim (a sentence, or a list item) keeps its verified Citations and loses the others; a
   Claim left with none is removed, with the reason. Sentences that cite nothing are kept.
@@ -67,7 +68,8 @@ class QuoteFilter:
         start = _quotes_start(self.raw)
         if start is not None:
             self.closed = True
-            visible = self.raw[self.shown : max(start, self.shown)]
+            # The blank lines before the heading belong to it, not to the answer.
+            visible = self.raw[self.shown : max(start, self.shown)].rstrip()
             self.shown = max(start, self.shown)
             return visible
         line_start = self.raw.rfind("\n") + 1
@@ -169,12 +171,16 @@ def verify(answer: str, quotes: Sequence[tuple[int, str]], passages: Sequence[st
         claim = Claim(sentence)
         for match in _CITATION.finditer(sentence):
             number = int(match.group(1))
-            # Its own quote first (in order of use), then any other quote for the passage.
+            # Its own quote (in order of use). Only a Citation left without one, because the
+            # model quoted the passage once for several Citations, may use the others; a quote
+            # that fails is never rescued by another.
             candidates = given.get(number, [])
             first = next_quote.get(number, 0)
             if first < len(candidates):
                 next_quote[number] = first + 1
-            ordered = candidates[first:] + candidates[:first]
+                ordered = [candidates[first]]
+            else:
+                ordered = candidates
             claim.citations.append(_check(number, ordered, passages))
         claims.append(claim)
         if claim.citations and not any(c.verified for c in claim.citations):

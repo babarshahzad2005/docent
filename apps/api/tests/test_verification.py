@@ -240,3 +240,14 @@ def test_a_removed_list_item_leaves_no_gap() -> None:
 )
 def test_numbers_symbols_and_ampersands(quote: str, verified: bool) -> None:
     assert check("SSP [2].", (2, quote)).checked == int(verified)
+
+
+def test_a_failing_quote_is_not_rescued_by_another_quote_for_the_same_passage() -> None:
+    result = check(
+        "You get 28 days [1]. Unused days are paid out [1].",
+        (1, "at least 28 days’ paid annual leave"),
+        (1, "unused days are paid out at the end of the year"),
+    )
+
+    assert result.answer == "You get 28 days [1]."
+    assert result.removed[0].reason == NOT_FOUND
