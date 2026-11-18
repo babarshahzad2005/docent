@@ -153,7 +153,9 @@ def test_a_changed_source_is_replaced_and_a_dropped_one_removed(
     for path in demo.DOCUMENTS.iterdir():
         (documents / path.name).write_bytes(path.read_bytes())
     (documents / "govuk-statutory-sick-pay.md").write_text("# Statutory Sick Pay\n\nChanged.\n")
-    kept = [s for s in SOURCES if s["file"] != "gitlab-benefits.md"]
+    kept = [dict(s) for s in SOURCES if s["file"] != "gitlab-benefits.md"]
+    pdf = next(s for s in kept if s["file"] == "fit-note-checklist.pdf")
+    pdf["effective_date"] = "2023-08-30"  # a detail changed; the file didn't
     listing = tmp_path / "sources.json"
     listing.write_text(json.dumps({"collection": "Demo Collection", "documents": kept}))
     monkeypatch.setattr(demo, "SOURCES", listing)
@@ -161,6 +163,10 @@ def test_a_changed_source_is_replaced_and_a_dropped_one_removed(
     result = seed(conn, store, documents)
 
     assert (result.replaced, result.removed) == (1, 1)
+    dated = conn.execute(
+        "select effective_date from app.documents where name = 'fit-note-checklist.pdf'"
+    ).fetchone()
+    assert dated is not None and str(dated["effective_date"]) == "2023-08-30"
     names = {r["name"] for r in conn.execute("select name from app.documents").fetchall()}
     conn.commit()
     assert "gitlab-benefits.md" not in names and len(names) == len(kept)

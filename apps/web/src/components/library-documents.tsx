@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { CheckIcon, UploadIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -52,12 +53,14 @@ const STATUS_LABELS: Record<Status, string> = {
 /** Statuses the server is still working through, so the Library keeps refreshing. */
 const isProcessing = (status: Status) =>
   status === "queued" || status === "parsing" || status === "embedding";
-const isSettled = (status: Status) => status === "indexed" || status === "failed";
+const isSettled = (status: Status) =>
+  status === "indexed" || status === "failed";
 
 /** The Documents in the Library, with uploading and live status. */
 export function LibraryDocuments({
   collection,
   initialDocuments,
+  demoHref,
 }: {
   collection: {
     id: string;
@@ -66,8 +69,12 @@ export function LibraryDocuments({
     is_demo: boolean;
   };
   initialDocuments: DocumentSummary[];
+  /** Where the Demo Collection is, offered while this Library is empty. */
+  demoHref?: string;
 }) {
-  const [documents, setDocuments] = useState(() => onlyIn(collection.id, initialDocuments));
+  const [documents, setDocuments] = useState(() =>
+    onlyIn(collection.id, initialDocuments),
+  );
   // Bumped to restart status refreshing after it stopped on an error.
   const [refreshes, setRefreshes] = useState(0);
   const canEdit = collection.role !== "viewer";
@@ -75,11 +82,15 @@ export function LibraryDocuments({
   // Files are being dragged over the Library: show where to drop them.
   const [dragging, setDragging] = useState(false);
   // Files the Collection already has: the User chooses to keep both or skip.
-  const [duplicates, setDuplicates] = useState<{ file: File; message: string }[]>([]);
+  const [duplicates, setDuplicates] = useState<
+    { file: File; message: string }[]
+  >([]);
   const [announcement, setAnnouncement] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const button = useRef<HTMLButtonElement>(null);
-  const previous = useRef(new Map(initialDocuments.map((d) => [d.id, d.status])));
+  const previous = useRef(
+    new Map(initialDocuments.map((d) => [d.id, d.status])),
+  );
   const wasEmpty = useRef(initialDocuments.length === 0);
   // Documents this page is uploading right now (their status is still "uploading").
   const [sending, setSending] = useState<Set<string>>(new Set());
@@ -103,7 +114,10 @@ export function LibraryDocuments({
         }
         setDocuments(onlyIn(collection.id, result.value));
       } catch {
-        if (!stopped) setErrors(["Progress stopped updating. Reload the page to check again."]);
+        if (!stopped)
+          setErrors([
+            "Progress stopped updating. Reload the page to check again.",
+          ]);
         return;
       }
       timer = setTimeout(poll, POLL_MS);
@@ -124,7 +138,11 @@ export function LibraryDocuments({
     if (finished.length > 0) {
       setAnnouncement(
         finished
-          .map((d) => (d.status === "indexed" ? `${d.name} is ready.` : `${d.name} failed.`))
+          .map((d) =>
+            d.status === "indexed"
+              ? `${d.name} is ready.`
+              : `${d.name} failed.`,
+          )
           .join(" "),
       );
     }
@@ -188,9 +206,15 @@ export function LibraryDocuments({
     // A few files at a time: each one's transfer to storage is the slow part.
     const queue = [...files];
     const sendNext = async () => {
-      for (let file = queue.shift(); file; file = queue.shift()) await uploadOne(file, false);
+      for (let file = queue.shift(); file; file = queue.shift())
+        await uploadOne(file, false);
     };
-    await Promise.all(Array.from({ length: Math.min(PARALLEL_UPLOADS, queue.length) }, sendNext));
+    await Promise.all(
+      Array.from(
+        { length: Math.min(PARALLEL_UPLOADS, queue.length) },
+        sendNext,
+      ),
+    );
   }
 
   uploadRef.current = (files) => void upload(files);
@@ -205,7 +229,8 @@ export function LibraryDocuments({
   }
 
   async function sendOne(file: File, allowDuplicate: boolean) {
-    const fail = (message: string) => setErrors((current) => [...current, message]);
+    const fail = (message: string) =>
+      setErrors((current) => [...current, message]);
     const refused = precheck(file);
     if (refused) {
       fail(refused);
@@ -223,7 +248,10 @@ export function LibraryDocuments({
       );
       if (!started.ok) {
         if (started.duplicate) {
-          setDuplicates((current) => [...current, { file, message: started.message }]);
+          setDuplicates((current) => [
+            ...current,
+            { file, message: started.message },
+          ]);
           setAnnouncement(started.message);
         } else {
           fail(started.message);
@@ -243,7 +271,9 @@ export function LibraryDocuments({
         // Cancel the half-made Document, so it neither counts nor blocks uploading again.
         setDocuments((current) => current.filter((d) => d.id !== document.id));
         void deleteDocument(document.id).catch(() => undefined);
-        fail(`${file.name} couldn't be uploaded (${error.message}). Upload it again.`);
+        fail(
+          `${file.name} couldn't be uploaded (${error.message}). Upload it again.`,
+        );
         return;
       }
       const finished = await finishUpload(document.id);
@@ -255,7 +285,9 @@ export function LibraryDocuments({
         current.map((d) => (d.id === document.id ? finished.value : d)),
       );
     } catch {
-      fail(`${file.name} couldn't be uploaded. Check your connection and upload it again.`);
+      fail(
+        `${file.name} couldn't be uploaded. Check your connection and upload it again.`,
+      );
     } finally {
       if (sentId !== null) {
         const id = sentId;
@@ -297,11 +329,16 @@ export function LibraryDocuments({
         {announcement}
       </p>
       {duplicates.length > 0 && (
-        <ul aria-label="Already in this collection" className="flex flex-col gap-3">
+        <ul
+          aria-label="Already in this collection"
+          className="flex flex-col gap-3"
+        >
           {duplicates.map(({ file, message }) => {
             // The choice's own buttons disappear with it; continue from the upload button.
             const settle = () => {
-              setDuplicates((current) => current.filter((d) => d.file !== file));
+              setDuplicates((current) =>
+                current.filter((d) => d.file !== file),
+              );
               button.current?.focus();
             };
             return (
@@ -351,7 +388,8 @@ export function LibraryDocuments({
   // Real work only: Documents the server is processing, and ones this page is still sending.
   // An upload abandoned elsewhere stays "uploading" until the server gives up on it.
   const remaining = documents.filter(
-    (d) => isProcessing(d.status) || (d.status === "uploading" && sending.has(d.id)),
+    (d) =>
+      isProcessing(d.status) || (d.status === "uploading" && sending.has(d.id)),
   ).length;
   const progress = remaining > 0 && (
     <p className="text-muted-foreground tabular-nums">
@@ -363,24 +401,33 @@ export function LibraryDocuments({
     return (
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
         <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-question font-medium">{collection.name}</h1>
+          <h1 className="font-serif text-question font-medium">
+            {collection.name}
+          </h1>
           {collection.is_demo ? (
             <p className="text-muted-foreground text-pretty">
-              Openly licensed workplace guidance from GOV.UK and the GitLab Handbook, for
-              trying Docent. Questions asked on this page are answered from these documents
-              only. Each one links to where it was published, with its licence.
+              Openly licensed workplace guidance from GOV.UK and the GitLab
+              Handbook, for trying Docent. Questions asked on this page are
+              answered from these documents only. Each one links to where it was
+              published, with its licence.
             </p>
           ) : (
-            <p className="text-muted-foreground">You can ask about these documents.</p>
+            <p className="text-muted-foreground">
+              You can ask about these documents.
+            </p>
           )}
         </div>
         {progress}
         {documents.length === 0 && (
           <p className="text-muted-foreground">
-            There are no documents here yet. Your own documents are in your Personal Library.
+            There are no documents here yet. Your own documents are in your
+            Personal Library.
           </p>
         )}
-        <ul aria-label="Documents" className="flex flex-col border-t border-border">
+        <ul
+          aria-label="Documents"
+          className="flex flex-col border-t border-border"
+        >
           {documents.map((document) => (
             <DocumentRow
               key={document.id}
@@ -399,37 +446,53 @@ export function LibraryDocuments({
 
   if (documents.length === 0) {
     return (
-      <div
-        className="relative mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-4 py-12 text-center"
-      >
+      <div className="relative mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-4 py-12 text-center">
         {dropHint}
-        <h1 className="font-serif text-question font-medium text-balance">Your library is empty</h1>
+        <h1 className="font-serif text-question font-medium text-balance">
+          Your library is empty
+        </h1>
         <p className="text-muted-foreground text-pretty">
-          Docent answers questions only from documents you add. Upload PDFs, Word documents,
-          Markdown, or plain text to your {collection.name} collection to get started. You can
-          choose several at once, or drop them here.
+          Docent answers questions only from documents you add. Upload PDFs,
+          Word documents, Markdown, or plain text to your {collection.name}{" "}
+          collection to get started. You can choose several at once, or drop
+          them here.
         </p>
         <div className="mt-2">{picker}</div>
+        {demoHref && (
+          <p className="text-muted-foreground text-pretty">
+            Or try Docent first with the{" "}
+            <Link
+              href={demoHref}
+              className="text-brand underline underline-offset-2 [@media(hover:hover)_and_(pointer:fine)]:hover:text-brand-strong"
+            >
+              Demo Collection
+            </Link>
+            : openly licensed workplace guidance you can ask about now.
+          </p>
+        )}
         {messages}
       </div>
     );
   }
 
   return (
-    <div
-      className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6"
-    >
+    <div className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
       {dropHint}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="font-serif text-question font-medium">Library</h1>
-          <p className="text-muted-foreground">Documents in your {collection.name} collection</p>
+          <p className="text-muted-foreground">
+            Documents in your {collection.name} collection
+          </p>
         </div>
         {picker}
       </div>
       {messages}
       {progress}
-      <ul aria-label="Documents" className="flex flex-col border-t border-border">
+      <ul
+        aria-label="Documents"
+        className="flex flex-col border-t border-border"
+      >
         {documents.map((document) => (
           <DocumentRow
             key={document.id}
@@ -444,7 +507,9 @@ export function LibraryDocuments({
                 const deleted = await deleteDocument(document.id);
                 if (!deleted.ok) return deleted.message;
                 setAnnouncement(`${document.name} was deleted.`);
-                setDocuments((current) => current.filter((d) => d.id !== document.id));
+                setDocuments((current) =>
+                  current.filter((d) => d.id !== document.id),
+                );
                 return null;
               } catch {
                 return `${document.name} couldn't be deleted. Check your connection and try again.`;
@@ -460,12 +525,16 @@ export function LibraryDocuments({
                 setErrors([]);
                 setAnnouncement(`${document.name} is being processed again.`);
                 setDocuments((current) =>
-                  current.map((d) => (d.id === document.id ? retried.value : d)),
+                  current.map((d) =>
+                    d.id === document.id ? retried.value : d,
+                  ),
                 );
                 setRefreshes((n) => n + 1);
                 return true;
               } catch {
-                setErrors([`${document.name} couldn't be retried. Check your connection.`]);
+                setErrors([
+                  `${document.name} couldn't be retried. Check your connection.`,
+                ]);
                 return false;
               }
             }}
@@ -520,7 +589,7 @@ function DocumentRow({
                 href={document.source_url}
                 rel="noreferrer"
                 target="_blank"
-                className="text-brand underline underline-offset-2"
+                className="text-brand underline underline-offset-2 [@media(hover:hover)_and_(pointer:fine)]:hover:text-brand-strong"
               >
                 {document.source_credit ?? "Source"}
                 <span className="sr-only"> (opens in a new tab)</span>
@@ -530,7 +599,7 @@ function DocumentRow({
                   href={document.source_licence_url}
                   rel="noreferrer license"
                   target="_blank"
-                  className="text-brand underline underline-offset-2"
+                  className="text-brand underline underline-offset-2 [@media(hover:hover)_and_(pointer:fine)]:hover:text-brand-strong"
                 >
                   Licence
                   <span className="sr-only"> (opens in a new tab)</span>
@@ -542,7 +611,9 @@ function DocumentRow({
         <span
           className={`flex shrink-0 items-center gap-1 text-meta tabular-nums transition-colors duration-150 ${tone}`}
         >
-          {document.status === "indexed" && <CheckIcon aria-hidden="true" className="size-4" />}
+          {document.status === "indexed" && (
+            <CheckIcon aria-hidden="true" className="size-4" />
+          )}
           {STATUS_LABELS[document.status]}
         </span>
       </div>
@@ -551,13 +622,19 @@ function DocumentRow({
           {formatSize(document.size_bytes)}
         </span>
         {canDelete && (
-          <DeleteDocument name={document.name} afterDelete={afterDelete} onDelete={onDelete} />
+          <DeleteDocument
+            name={document.name}
+            afterDelete={afterDelete}
+            onDelete={onDelete}
+          />
         )}
       </div>
       {failed && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           {document.failure_reason && (
-            <p className="text-meta text-destructive">{document.failure_reason}</p>
+            <p className="text-meta text-destructive">
+              {document.failure_reason}
+            </p>
           )}
           {canRetry && (
             <Button
@@ -606,7 +683,9 @@ function DeleteDocument({
       }}
     >
       <AlertDialogTrigger
-        render={<Button variant="ghost" size="sm" aria-label={`Delete ${name}`} />}
+        render={
+          <Button variant="ghost" size="sm" aria-label={`Delete ${name}`} />
+        }
       >
         Delete
       </AlertDialogTrigger>
@@ -614,7 +693,8 @@ function DeleteDocument({
       <AlertDialogContent finalFocus={deleted ? afterDelete : undefined}>
         <AlertDialogTitle>Delete {name}?</AlertDialogTitle>
         <AlertDialogDescription>
-          The document and everything Docent made from it are removed. This can’t be undone.
+          The document and everything Docent made from it are removed. This
+          can’t be undone.
         </AlertDialogDescription>
         {problem && (
           <p role="alert" className="text-destructive">
@@ -651,8 +731,13 @@ function carriesFiles(event: DragEvent): boolean {
 }
 
 /** The API lists every Collection's Documents; a Library view shows one Collection's. */
-function onlyIn(collectionId: string, documents: DocumentSummary[]): DocumentSummary[] {
-  return documents.filter((document) => document.collection_id === collectionId);
+function onlyIn(
+  collectionId: string,
+  documents: DocumentSummary[],
+): DocumentSummary[] {
+  return documents.filter(
+    (document) => document.collection_id === collectionId,
+  );
 }
 
 function formatSize(bytes: number): string {

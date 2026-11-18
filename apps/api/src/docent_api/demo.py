@@ -66,24 +66,33 @@ def fetch_all() -> None:
     names = [source["file"] for source in listing["documents"]]
     if len(names) != len(set(names)):
         raise SystemExit("Two sources share a file name; seeding matches Documents by name.")
+    fetched: dict[str, bytes] = {}
     for source in listing["documents"]:
         source["licence_url"] = LICENCE_URLS[source["licence"]]
-        source["checked_on"] = today
-        target = DOCUMENTS / source["file"]
         kind = source["kind"]
         if kind == "govuk":
-            markdown, updated = govuk_markdown(source)
-            source.setdefault("effective_date", updated)
-            target.write_text(markdown, encoding="utf-8", newline="\n")
+            fetched[source["file"]] = govuk_markdown(source).encode("utf-8")
         elif kind == "gitlab":
             raw = _get(source["raw"]).decode("utf-8")
-            source.setdefault("effective_date", today)
-            target.write_text(handbook_markdown(raw, source), encoding="utf-8", newline="\n")
+            fetched[source["file"]] = handbook_markdown(raw, source).encode("utf-8")
         elif kind == "download":
-            target.write_bytes(_get(source["source"]))
+            fetched[source["file"]] = _get(source["source"])
         elif kind != "local":
             raise SystemExit(f"unknown kind {kind!r} for {source['file']}")
         print(f"  {source['file']}")
+    # Everything downloaded: only now are files and the source list changed.
+    for source in listing["documents"]:
+        data = fetched.get(source["file"])
+        if data is None:
+            continue
+        source["checked_on"] = today
+        target = DOCUMENTS / source["file"]
+        changed = not target.exists() or target.read_bytes() != data
+        if not source.get("pin_effective_date") and (changed or "effective_date" not in source):
+            # Live pages state the rules as they stand: dated when their text last changed.
+            source["effective_date"] = today
+        if changed:
+            target.write_bytes(data)
     SOURCES.write_text(
         json.dumps(listing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
     )
@@ -104,8 +113,8 @@ def _get(url: str, attempts: int = 3) -> bytes:
     raise AssertionError("unreachable")
 
 
-def govuk_markdown(source: dict[str, Any]) -> tuple[str, str]:
-    """A GOV.UK guide or publication as Markdown (from its content API), and its update date."""
+def govuk_markdown(source: dict[str, Any]) -> str:
+    """A GOV.UK guide or publication as Markdown, from its content API."""
     path = source["source"].removeprefix("https://www.gov.uk/")
     page = json.loads(_get(f"https://www.gov.uk/api/content/{path}"))
     details = page.get("details", {})
@@ -118,8 +127,7 @@ def govuk_markdown(source: dict[str, Any]) -> tuple[str, str]:
             sections.append(html_to_markdown(part["body"], shift=1))
     else:
         sections.append(html_to_markdown(details.get("body", ""), shift=0))
-    updated = str(page.get("public_updated_at") or date.today().isoformat())[:10]
-    return _footer("\n\n".join(sections), source), updated
+    return _footer("\n\n".join(sections), source)
 
 
 _FENCE = re.compile(r"(```.*?```)", re.S)
@@ -149,7 +157,7 @@ def handbook_markdown(raw: str, source: dict[str, Any]) -> str:
 
 
 def _clean_handbook_text(text: str) -> str:
-    text = re.sub(r"\{\{[<%][^\n]*?[%>]\}\}", "", text)  # shortcodes, one line at a time
+    text = re.sub(r"\{\{[<%][^{}]*?[%>]\}\}", "", text)  # shortcodes, never past a brace
     text = re.sub(r"[ \t]*\{#[^}\n]+\}", "", text)  # heading anchors, "## Title {#title}"
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)  # images
@@ -228,7 +236,7 @@ class _HtmlToMarkdown(HTMLParser):
                 counter[0] += 1
                 self.prefix = f"{depth}{counter[0]}. "
             self.item_open = True
-        elif tag == "p":
+        elif tag in ("p", "div"):
             self._emit()
         elif tag == "table":
             self._emit()
@@ -249,7 +257,7 @@ class _HtmlToMarkdown(HTMLParser):
             self.cell = None
         elif self.cell is not None:
             return
-        elif re.fullmatch(r"h[1-6]", tag) or tag == "p":
+        elif re.fullmatch(r"h[1-6]", tag) or tag in ("p", "div"):
             self._emit()
             if not self.item_open:
                 self.prefix = ""
@@ -359,6 +367,7 @@ def seed(conn: Connection[DictRow], store: FileStore, documents: Path = DOCUMENT
             raise SystemExit(f"{name}: not a type Docent reads")
         current = existing.pop(name, None)
         if current is not None and current["content_hash"] == digest:
+            _update_details(conn, current["id"], source)
             unchanged += 1
             continue
         if current is not None:
@@ -399,11 +408,31 @@ def _add(
                 "size": len(data),
                 "path": path,
                 "hash": digest,
-                "effective": source.get("effective_date") or date.today().isoformat(),
-                "url": source["source"],
-                "credit": _credit(source),
-                "licence_url": LICENCE_URLS[source["licence"]],
+                **_details(source),
             },
+        )
+
+
+def _details(source: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "effective": source.get("effective_date") or date.today().isoformat(),
+        "url": source["source"],
+        "credit": _credit(source),
+        "licence_url": LICENCE_URLS[source["licence"]],
+    }
+
+
+def _update_details(conn: Connection[DictRow], document_id: UUID, source: dict[str, Any]) -> None:
+    """The same file, but its date, source, or credit may have changed in the source list."""
+    with conn.transaction():
+        conn.execute(
+            """
+            update app.documents
+            set effective_date = %(effective)s, source_url = %(url)s,
+                source_credit = %(credit)s, source_licence_url = %(licence_url)s
+            where id = %(id)s
+            """,
+            {"id": document_id, **_details(source)},
         )
 
 

@@ -49,7 +49,7 @@ With these steps the extractor passes all 13 checks, plus structural checks in `
 
 ## Word documents
 
-Word documents already carry structure. The Title and Heading 1–9 styles (including custom styles based on them) give heading levels. Tables are read row by row, with cells joined by " | ", in document order. Content controls and nested tables are read too. Text boxes, headers, footers and footnotes are not, because they sit outside the document's main flow. A short paragraph that is bold throughout and doesn’t end like a sentence counts as a heading, since many documents made in Word mark headings that way. A `.docx` that would unpack to more than 200 MB is refused.
+Word documents already carry structure. The Title and Heading 1–9 styles (including custom styles based on them) give heading levels. Tables are read row by row, with cells joined by " | ", in document order. Content controls and nested tables are read too. Text boxes, headers, footers and footnotes are not, because they sit outside the document's main flow. In a document with no heading styles at all, a short paragraph that is bold throughout, isn’t a list item, and doesn’t end like a sentence counts as a heading, since many documents made in Word mark headings that way. A `.docx` that would unpack to more than 200 MB is refused.
 
 Three readers were compared with `tests/extraction/compare_docx_readers.py` on the two Word files in the test set, plus one with a content control and a nested table:
 
@@ -61,7 +61,7 @@ Three readers were compared with `tests/extraction/compare_docx_readers.py` on t
 
 mammoth is as capable on these checks. It converts to HTML, though, while python-docx gives direct access to styles (including their inheritance) and to table cells, which is what Docent's rules use.
 
-**Real-world files (#36, November 2026).** Two Word documents made in Word joined the test set: a Ministry of Defence policy template and a Department for Education form template, both from GOV.UK. python-docx read both fully, including the form table and its check boxes. The policy template showed a quirk the built test files missed: its headings are bold Normal paragraphs, with no heading style. Docent now treats a short paragraph that is bold throughout, and doesn't end like a sentence, as a heading (level 1); without that rule, its passages had no section. With the real files added, `compare_docx_readers.py` gives:
+**Real-world files (#36, November 2026).** Two Word documents made in Word joined the test set: a Ministry of Defence policy template and a Department for Education form template, both from GOV.UK. python-docx read both fully, including the form table and its check boxes. The policy template showed a quirk the built test files missed: its headings are bold Normal paragraphs, with no heading style. When a document uses no heading styles, Docent now treats a short paragraph that is bold throughout (not a list item, not ending like a sentence) as a heading, all at level 1; without that rule, its passages had no section. Documents that do use heading styles are read by their styles alone, so bold emphasis there stays text. With the real files added, `compare_docx_readers.py` gives:
 
 | Reader | heading levels | table rows | content controls | nested tables | bold headings | form table |
 | --- | --- | --- | --- | --- | --- | --- |

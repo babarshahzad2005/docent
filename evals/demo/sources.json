@@ -10,7 +10,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2014-11-17"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-statutory-sick-pay.md",
@@ -21,7 +21,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2015-03-09"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-maternity-pay-leave.md",
@@ -32,7 +32,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2015-04-06"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-paternity-pay-leave.md",
@@ -43,7 +43,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2024-11-27"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-flexible-working.md",
@@ -54,7 +54,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2018-12-18"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-national-minimum-wage-rates.md",
@@ -65,7 +65,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2024-10-30"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-employment-contracts-and-conditions.md",
@@ -76,7 +76,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2020-04-06"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-time-off-for-dependants.md",
@@ -87,7 +87,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2016-09-05"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-workplace-pensions.md",
@@ -98,7 +98,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2015-01-26"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-disciplinary-procedures-and-action-at-work.md",
@@ -109,7 +109,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2016-05-13"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-maximum-weekly-working-hours.md",
@@ -120,7 +120,7 @@
       "credit": "GOV.UK, © Crown copyright",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
       "checked_on": "2026-11-18",
-      "effective_date": "2015-03-09"
+      "effective_date": "2026-11-18"
     },
     {
       "file": "govuk-holiday-pay-and-entitlement-reforms-from-1-january-2024.md",
@@ -132,7 +132,8 @@
       "effective_date": "2024-01-01",
       "note": "Changes the 2019 calculation guidance for irregular-hours and part-year workers (conflict case).",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
-      "checked_on": "2026-11-18"
+      "checked_on": "2026-11-18",
+      "pin_effective_date": true
     },
     {
       "file": "gitlab-time-off-types.md",
@@ -324,8 +325,7 @@
       "credit": "Department for Business, Energy & Industrial Strategy, © Crown copyright 2019",
       "effective_date": "2019-11-01",
       "note": "Superseded in part by the January 2024 reforms (conflict case).",
-      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
-      "checked_on": "2026-11-18"
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
     },
     {
       "file": "fit-note-checklist.pdf",
@@ -335,8 +335,7 @@
       "source": "https://assets.publishing.service.gov.uk/media/64ef3bbf13ae15000d6e3093/fit-note-checklist-for-employers.pdf",
       "licence": "Open Government Licence v3.0",
       "credit": "Department for Work and Pensions, © Crown copyright",
-      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
-      "checked_on": "2026-11-18"
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
     },
     {
       "file": "staffing-guidance-for-schools.pdf",
@@ -347,8 +346,7 @@
       "licence": "Open Government Licence v3.0",
       "credit": "Department for Education, © Crown copyright 2025",
       "effective_date": "2025-09-01",
-      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
-      "checked_on": "2026-11-18"
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
     },
     {
       "file": "early-years-employment-reference-template.docx",
@@ -359,7 +357,6 @@
       "credit": "Department for Education, © Crown copyright 2025",
       "effective_date": "2025-08-26",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
-      "checked_on": "2026-11-18",
       "path": "apps/api/tests/extraction/files/early-years-employment-reference-template.docx"
     },
     {
@@ -371,7 +368,6 @@
       "credit": "Ministry of Defence, © Crown copyright",
       "effective_date": "2016-01-18",
       "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
-      "checked_on": "2026-11-18",
       "path": "apps/api/tests/extraction/files/reservist-hr-policy-template.docx"
     }
   ]

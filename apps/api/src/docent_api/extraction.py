@@ -393,7 +393,10 @@ def extract_docx(data: bytes) -> list[Block]:
             "as .docx."
         ) from error
     body = document.element.body
-    return list(_docx_blocks(body, document._body))
+    blocks = list(_docx_blocks(body, document._body))
+    if any(block.heading_level is not None for block in blocks):
+        return blocks  # it uses heading styles; bold text is emphasis
+    return list(_docx_blocks(body, document._body, bold_headings=True))
 
 
 def _word_page_count(data: bytes) -> int | None:
@@ -431,8 +434,10 @@ def _check_unpacked_size(data: bytes) -> None:
         )
 
 
-def _docx_blocks(element: Any, parent: Any) -> Iterator[Block]:
-    """Blocks in document order, looking inside content controls."""
+def _docx_blocks(element: Any, parent: Any, bold_headings: bool = False) -> Iterator[Block]:
+    """Blocks in document order, looking inside content controls. With `bold_headings`, short
+    paragraphs that are bold throughout count as headings (for documents without heading
+    styles)."""
     from docx.oxml.ns import qn
     from docx.table import Table
     from docx.text.paragraph import Paragraph
@@ -441,6 +446,8 @@ def _docx_blocks(element: Any, parent: Any) -> Iterator[Block]:
         if child.tag == qn("w:p"):
             paragraph = Paragraph(child, parent)
             level = _docx_heading_level(paragraph)
+            if level is None and bold_headings and _looks_like_bold_heading(paragraph):
+                level = 1
             # A heading's tabs and line breaks (after its number, say) are layout, not words.
             text = paragraph.text if level is None else " ".join(paragraph.text.split())
             yield Block(text, level)
@@ -449,7 +456,7 @@ def _docx_blocks(element: Any, parent: Any) -> Iterator[Block]:
         elif child.tag == qn("w:sdt"):
             content = child.find(qn("w:sdtContent"))
             if content is not None:
-                yield from _docx_blocks(content, parent)
+                yield from _docx_blocks(content, parent, bold_headings)
 
 
 def _cell_text(cell: Any) -> str:
@@ -468,7 +475,7 @@ def _docx_heading_level(paragraph: Any) -> int | None:
         if match:
             return int(match.group(1))
         style = style.base_style
-    return 1 if _looks_like_bold_heading(paragraph) else None
+    return None
 
 
 def _looks_like_bold_heading(paragraph: Any) -> bool:
@@ -477,12 +484,30 @@ def _looks_like_bold_heading(paragraph: Any) -> bool:
     text = paragraph.text.strip()
     if not text or len(text) > _MAX_BOLD_HEADING or text[-1] in ".!?:;,":
         return False
+    if _is_list_item(paragraph):
+        return False
     style_bold = bool(getattr(getattr(paragraph.style, "font", None), "bold", False))
     runs = [run for run in paragraph.runs if run.text.strip()]
     return bool(runs) and all(run.bold is True or (run.bold is None and style_bold) for run in runs)
 
 
 _MAX_BOLD_HEADING = 100
+
+
+def _is_list_item(paragraph: Any) -> bool:
+    """Numbered or bulleted, by the paragraph itself or by its style (List Bullet, say)."""
+    properties = paragraph._p.pPr
+    if properties is not None and properties.numPr is not None:
+        return True
+    style = getattr(paragraph, "style", None)
+    while style is not None:
+        style_properties = style.element.pPr
+        if style_properties is not None and style_properties.numPr is not None:
+            return True
+        if (style.name or "").lower().startswith("list"):
+            return True
+        style = style.base_style
+    return False
 
 
 def _table_rows(table: Any) -> Iterator[str]:

@@ -351,3 +351,34 @@ def test_bold_text_inside_a_paragraph_does_not_make_it_a_heading() -> None:
     assert levels["Note this paragraph is partly bold"] is None
     assert levels["A whole bold sentence ends with a full stop."] is None
     assert levels["Bold heading"] == 1
+
+
+def test_bold_lines_stay_text_in_documents_that_use_heading_styles() -> None:
+    from docx import Document
+
+    document = Document()
+    document.add_heading("Leave policy", level=1)
+    document.add_heading("Sick leave", level=2)
+    document.add_paragraph().add_run("Managers must read this section").bold = True
+    document.add_paragraph("Tell your manager on the first day.")
+    out = io.BytesIO()
+    document.save(out)
+
+    chunks = chunk_blocks(extract_docx(out.getvalue()))
+
+    assert chunks[0].heading_path == ("Leave policy", "Sick leave")
+    assert "Managers must read this section" in chunks[0].content
+
+
+def test_a_bold_list_item_is_not_a_heading() -> None:
+    from docx import Document
+
+    document = Document()
+    document.add_paragraph().add_run("Introduction").bold = True
+    document.add_paragraph(style="List Bullet").add_run("Bring your passport").bold = True
+    out = io.BytesIO()
+    document.save(out)
+
+    levels = {b.text: b.heading_level for b in extract_docx(out.getvalue())}
+
+    assert levels == {"Introduction": 1, "Bring your passport": None}
