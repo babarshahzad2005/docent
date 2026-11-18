@@ -7,8 +7,8 @@ import { LibraryNav } from "./library-nav";
 import { Wordmark } from "./wordmark";
 
 /**
- * The three-pane frame from DESIGN.md › Layout: Library navigation, the main area,
- * and the source pane. Below 1024px the navigation moves into a drawer.
+ * The frame from DESIGN.md › Layout: Library navigation and the main area. Below 1024px the
+ * navigation moves into a drawer. Conversations add the source pane beside their answers.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -36,15 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </footer>
       </div>
 
-      <SourcePane />
     </div>
   );
 }
 
-/**
- * Shows a cited passage beside the answer. Closed until Citations exist (M2), when it opens
- * inline at 1280px and wider and as a sheet from the right below that (DESIGN.md › Layout).
- */
-function SourcePane() {
-  return <aside aria-label="Source" hidden className="w-105 shrink-0 border-l bg-surface" />;
-}

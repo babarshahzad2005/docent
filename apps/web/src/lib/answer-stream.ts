@@ -2,6 +2,8 @@
 
 export type Source = {
   number: number;
+  /** The passage, while it exists; null once its Document is deleted. */
+  chunk_id?: string | null;
   document_id: string | null;
   document_name: string;
   heading_path: string[];

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { AskBox } from "@/components/ask-box";
+import { type CitedSource, SourcePane } from "@/components/source-pane";
 import { Button } from "@/components/ui/button";
 import {
   readAnswerEvents,
@@ -39,6 +40,8 @@ export function Conversation({
   const conversationId = useRef(initialId);
   const started = useRef(false);
   const answerSoFar = useRef("");
+  const [openSource, setOpenSource] = useState<CitedSource | null>(null);
+  const openedBy = useRef<HTMLElement | null>(null);
   const streaming = turns.some((turn) => turn.status === "streaming");
 
   const update = (change: (turn: Turn) => Turn) =>
@@ -130,27 +133,34 @@ export function Conversation({
   }, []);
 
   return (
-    <div className="mx-auto flex w-full max-w-[40rem] flex-1 flex-col gap-10 px-4 py-8">
-      {turns.map((turn, index) => (
-        <TurnView
-          key={index}
-          turn={turn}
-          first={index === 0}
-          canRetry={!streaming}
-          onRetry={() => void ask(turn.question)}
-        />
-      ))}
-      <p aria-live="polite" className="sr-only">
-        {announcement}
-      </p>
-      <div className="sticky bottom-4 mt-auto">
-        <AskBox
-          label="Ask a follow-up question"
-          placeholder="Ask a follow-up…"
-          disabled={streaming}
-          onAsk={(question) => void ask(question)}
-        />
+    <div className="flex flex-1">
+      <div className="mx-auto flex w-full max-w-[40rem] min-w-0 flex-1 flex-col gap-10 px-4 py-8">
+        {turns.map((turn, index) => (
+          <TurnView
+            key={index}
+            turn={turn}
+            first={index === 0}
+            canRetry={!streaming}
+            onRetry={() => void ask(turn.question)}
+            onOpenSource={(source, opener) => {
+              openedBy.current = opener;
+              setOpenSource(source);
+            }}
+          />
+        ))}
+        <p aria-live="polite" className="sr-only">
+          {announcement}
+        </p>
+        <div className="sticky bottom-4 mt-auto">
+          <AskBox
+            label="Ask a follow-up question"
+            placeholder="Ask a follow-up…"
+            disabled={streaming}
+            onAsk={(question) => void ask(question)}
+          />
+        </div>
       </div>
+      <SourcePane source={openSource} returnTo={openedBy} onClose={() => setOpenSource(null)} />
     </div>
   );
 }
@@ -160,16 +170,17 @@ function TurnView({
   first,
   canRetry,
   onRetry,
+  onOpenSource,
 }: {
   turn: Turn;
   first: boolean;
   canRetry: boolean;
   onRetry: () => void;
+  onOpenSource: (source: CitedSource, opener: HTMLElement) => void;
 }) {
   const Heading = first ? "h1" : "h2";
   const available = new Set(turn.sources.map((source) => source.number));
   const cited = turn.sources.filter((source) => turn.cited.includes(source.number));
-  const anchor = (n: number) => `source-${turn.messageId ?? "new"}-${n}`;
   const byNumber = new Map(turn.sources.map((source) => [source.number, source]));
   // DESIGN.md: the accessible name says which source, not just the number.
   const label = (n: number) => {
@@ -178,6 +189,10 @@ function TurnView({
     return [`Source ${n}`, source.document_name, source.page !== null ? `page ${source.page}` : null]
       .filter(Boolean)
       .join(", ");
+  };
+  const open = (n: number) => (event: React.MouseEvent<HTMLElement>) => {
+    const source = byNumber.get(n);
+    if (source) onOpenSource({ ...source, chunk_id: source.chunk_id ?? null }, event.currentTarget);
   };
 
   return (
@@ -194,14 +209,15 @@ function TurnView({
           "text" in part ? (
             <span key={i}>{part.text}</span>
           ) : (
-            <a
+            <button
               key={i}
-              href={`#${anchor(part.citation)}`}
+              type="button"
               aria-label={label(part.citation)}
-              className="mx-0.5 inline-flex min-w-5 -translate-y-1 items-center justify-center rounded-sm border-b-2 border-mark-edge bg-mark px-1 font-sans text-cite font-semibold text-mark-text no-underline"
+              onClick={open(part.citation)}
+              className="mx-0.5 inline-flex min-w-5 -translate-y-1 cursor-pointer items-center justify-center rounded-sm border-b-2 border-mark-edge bg-mark px-1 font-sans text-cite font-semibold text-mark-text"
             >
               {part.citation}
-            </a>
+            </button>
           ),
         )}
         {turn.status === "streaming" && turn.answer && (
@@ -217,19 +233,25 @@ function TurnView({
         </div>
       )}
       {cited.length > 0 && (
-        <ol aria-label="Sources" className="flex flex-col gap-2 border-t border-border pt-4">
+        <ol aria-label="Sources" className="flex flex-col gap-1 border-t border-border pt-4">
           {cited.map((source) => (
-            <li key={source.number} id={anchor(source.number)} className="flex gap-3 text-meta">
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm border-b-2 border-mark-edge bg-mark px-1 text-cite font-semibold text-mark-text">
-                {source.number}
-              </span>
-              <span className="flex flex-col">
-                <span className="font-medium text-foreground">{source.document_name}</span>
-                <span className="flex flex-wrap gap-x-3 text-muted-foreground">
-                  {source.heading_path.length > 0 && <span>{source.heading_path.join(" › ")}</span>}
-                  {source.page !== null && <span className="tabular-nums">Page&nbsp;{source.page}</span>}
+            <li key={source.number}>
+              <button
+                type="button"
+                onClick={open(source.number)}
+                className="flex w-full cursor-pointer gap-3 rounded-lg px-2 py-2 text-left text-meta hover:bg-muted"
+              >
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm border-b-2 border-mark-edge bg-mark px-1 text-cite font-semibold text-mark-text">
+                  {source.number}
                 </span>
-              </span>
+                <span className="flex flex-col">
+                  <span className="font-medium text-foreground">{source.document_name}</span>
+                  <span className="flex flex-wrap gap-x-3 text-muted-foreground">
+                    {source.heading_path.length > 0 && <span>{source.heading_path.join(" › ")}</span>}
+                    {source.page !== null && <span className="tabular-nums">Page&nbsp;{source.page}</span>}
+                  </span>
+                </span>
+              </button>
             </li>
           ))}
         </ol>
