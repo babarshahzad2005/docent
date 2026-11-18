@@ -697,7 +697,7 @@ A Walk and Talk call is when team members step away from their computers and get
 
 The team members can use Zoom on their mobile device with the audio only function, or call one another from their preferred mobile device. A walk and talk call should be agreed to in advance to ensure that the local weather is compatible for a walk in both locations and that the walk and talk call fits into both team members' schedules. We've created a Slack channel #walk-and-talk-meetings where, if you'd like, you can share pictures from your walking meetings.
 
-#### Release retrospectives and kickoffs {#kickoffs}
+#### Release retrospectives and kickoffs
 
 After GitLab releases a new version every month, we have a
 30-minute call a few days later reflecting on what could have been
@@ -782,7 +782,7 @@ This list offers additional guidance for written communication at GitLab:
 1. Do not use a hyphen when writing the term "open source" except where doing so eliminates ambiguity or clumsiness.
 1. If an email needs a response, write the answer at the top of it.
 1. Use the future version of words, just like we don't write internet with a capital letter anymore. We write frontend and webhook without a hyphen or space.
-1. Our homepage is  (with the `about.` and with `https`).
+1. Our homepage is https://about.gitlab.com/ (with the `about.` and with `https`).
 1. If you use headers, properly format them (`##` in Markdown, "Heading 2" in Google Docs); start at the second header level because header level 1 is for titles. Do not end headers with a colon. Do not use emoji in headers as these cause links to have strange characters.
 1. Do not use acronyms when you can avoid them. Acronyms have the effect of excluding people from the conversation if they are not familiar with a particular term. Example: instead of `MR`, write `merge request (MR)`.
 1. If acronyms are used, expand them at least once in the conversation or document and define them in the document using Kramdown abbreviation syntax. Alternatively, link to the definition.
@@ -1158,11 +1158,11 @@ Reference Google's documentation on Link Sharing to learn more.
 
 1. If you have content in a Google Doc that is later moved to the website or handbook, deprecate the Google Doc.
 1. When referring to a Google Doc or folder on the Google Drive in the handbook, refrain from directly linking it. Instead, indicate the name of the doc. If you link the URL people from outside the organization can request access, creating workload and the potential for mistakes. (In the past, linking a Google Doc has led to inadvertently opening the sharing settings beyond what was intended.) This also helps prevent spam from people outside GitLab requesting access to a doc when clicking its link. To save people time you can also link to the search results page which allows people to quickly get to the doc without anyone being able to request access. If there are multiple documents showing up in the search, you may filter your search link by adding the owner.
-1. If you are having trouble finding a shared Google Doc, make sure you Search &lt;your domain&gt; in Google Drive.
+1. If you are having trouble finding a shared Google Doc, make sure you Search <your domain> in Google Drive.
 1. In our handbook, if you find yourself wondering whether it is better to provide a public link to a Google Doc vs. writing out the content on the website, use the following guideline: Is this document frequently adapted / customized? If yes, then provide a link, making sure that the document can be *commented on* by *anyone* with the link. For instance, this is how we share our employment contracts. If the document is rarely customized, then provide the content directly on the site and deprecate the Google Doc.
 1. If you want to quickly find where a team member's cursor is in a Google Doc, click their icon at the top of the document and the app will jump you to the current location. This works in Sheets and Presentations as well.
 1. You can set the notifications on a Google Doc so you only get emailed when someone tags you directly instead of getting emails for every comment. Click on "notifications" and select "Only yours". By the way, when you create the doc, it defaults to All, but when you are just shared with it, it defaults to Only yours. There is no global default.
-    
+
 1. You can find a template of the GitLab letterhead on the shared Google Drive. Please be sure to make a copy of the document to your Google Drive before customizing the template for your use.
 1. If you want to have the Google Doc be readable to the public, do not change the sharing settings from 'Editable by Everyone at GitLab', publish the document instead.
 1. In all cases, the sharing settings (who a document is shared with, if it is visible to the whole company, etc.) on a Google Doc should be the single source of truth for the confidentiality of the document.
@@ -1325,4 +1325,4 @@ If you would like to improve your skills or expand your knowledge on topics rela
 
 Source: https://handbook.gitlab.com/handbook/communication/
 
-GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

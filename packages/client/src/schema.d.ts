@@ -318,6 +318,8 @@ export interface components {
             size_bytes: number;
             /** Source Credit */
             source_credit: string | null;
+            /** Source Licence Url */
+            source_licence_url: string | null;
             /** Source Url */
             source_url: string | null;
             /**
@@ -385,6 +387,8 @@ export interface components {
              * @enum {string}
              */
             role: "user" | "assistant";
+            /** Scope */
+            scope: string[];
             /**
              * Status
              * @enum {string}

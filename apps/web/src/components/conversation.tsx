@@ -30,10 +30,13 @@ export function Conversation({
   conversationId: initialId,
   initialTurns,
   startQuestion,
+  scope,
 }: {
   conversationId: string | null;
   initialTurns: Turn[];
   startQuestion?: string;
+  /** The Collections to answer from; follow-up questions keep it. Unset: every readable one. */
+  scope?: string[];
 }) {
   const [turns, setTurns] = useState(initialTurns);
   const [announcement, setAnnouncement] = useState("");
@@ -63,7 +66,7 @@ export function Conversation({
       const response = await fetch("/api/answers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, conversation_id: conversationId.current }),
+        body: JSON.stringify({ question, conversation_id: conversationId.current, scope }),
       });
       if (!response.ok || !response.body) {
         const detail = await response.json().catch(() => null);

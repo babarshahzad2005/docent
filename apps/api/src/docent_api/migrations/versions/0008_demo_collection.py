@@ -1,8 +1,9 @@
 """The Demo Collection, and where a Document came from.
 
 `collections.is_demo` marks the one Demo Collection: openly licensed Documents every User can
-ask, read-only (PRD decision log, 2026-11-18). `documents.source_url` and `source_credit` record
-where a Document was published and under what licence, so the app can credit it.
+ask, read-only (PRD decision log, 2026-11-18). `documents.source_url`, `source_credit`, and
+`source_licence_url` record where a Document was published and under what licence, so the app
+can credit it as its licence asks.
 
 Revision ID: 0008
 Revises: 0007
@@ -24,9 +25,11 @@ def upgrade() -> None:
     )
     op.execute("alter table app.documents add column source_url text")
     op.execute("alter table app.documents add column source_credit text")
+    op.execute("alter table app.documents add column source_licence_url text")
 
 
 def downgrade() -> None:
+    op.execute("alter table app.documents drop column source_licence_url")
     op.execute("alter table app.documents drop column source_credit")
     op.execute("alter table app.documents drop column source_url")
     op.execute("drop index app.collections_one_demo_idx")

@@ -36,4 +36,4 @@ This table captures all of the links for different policies that are documented 
 
 Source: https://handbook.gitlab.com/handbook/finance/spending-company-money/
 
-GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

@@ -2,8 +2,6 @@
 
 ## Overview
 
-  
-
 ### Purpose
 
 *Why we exist:* GitLab Talent Development (commonly referred to as "Learning & Development") exists to enhance team member performance, expand capabilities, and further develop skills that make GitLab team members the top talent in the industry. We strive to foster a culture of continuous growth so that GitLab remains a great place to work. Positive impact on team member experience leads to a positive impact on results, which leads to a positive impact on GitLab customers.
@@ -40,22 +38,16 @@ We are a small team, but we've got a big role to play at GitLab!
 
 The Learning & Development team has a number of resources to help team members learn new skills. Click the button(s) below to learn more about each one:
 
-  
-    Transitioning to a Manager Role
-    Growth & Development Fund
-    Career Development & Mobility
-  
+Transitioning to a Manager Role
+Growth & Development Fund
+Career Development & Mobility
 
-  
-    Self Paced Learning
-    Level Up
-    Coaching
-  
+Self Paced Learning
+Level Up
+Coaching
 
-  
-    Elevate Leadership Training
-    Mentorship
-  
+Elevate Leadership Training
+Mentorship
 
 ## Contact Us
 
@@ -165,4 +157,4 @@ Additionally, LevelUp houses an extensive, searchable library of content from va
 
 Source: https://handbook.gitlab.com/handbook/people-group/learning-and-development/
 
-GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

@@ -198,6 +198,17 @@
             ],
             "title": "Source Credit"
           },
+          "source_licence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Licence Url"
+          },
           "source_url": {
             "anyOf": [
               {
@@ -237,6 +248,7 @@
           "can_retry",
           "source_url",
           "source_credit",
+          "source_licence_url",
           "effective_date",
           "created_at",
           "updated_at"
@@ -356,6 +368,14 @@
             "title": "Role",
             "type": "string"
           },
+          "scope": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Scope",
+            "type": "array"
+          },
           "status": {
             "enum": [
               "streaming",
@@ -372,6 +392,7 @@
           "role",
           "content",
           "status",
+          "scope",
           "created_at",
           "citations"
         ],

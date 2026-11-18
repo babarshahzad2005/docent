@@ -128,8 +128,9 @@ In most automatic enrolment schemes, you’ll make contributions based on your t
 
 #### Workplace pension contributions
 
- | The minimum your employer pays | You pay | Total minimum contribution
-From April 2019 | 3% | 5% | 8%
+|  | The minimum your employer pays | You pay | Total minimum contribution |
+| --- | --- | --- | --- |
+| From April 2019 | 3% | 5% | 8% |
 
 These amounts could be higher for you or your employer because of your pension scheme rules. They’re higher for most defined benefit pension schemes.
 
@@ -403,4 +404,4 @@ You and your spouse or partner will have to tell the court the value of each of 
 
 Source: https://www.gov.uk/workplace-pensions
 
-GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). Contains public sector information licensed under the Open Government Licence v3.0. Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

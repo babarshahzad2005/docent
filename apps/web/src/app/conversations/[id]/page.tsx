@@ -36,8 +36,10 @@ async function SavedConversation({ params }: { params: Promise<{ id: string }> }
 
   // Messages alternate: each question, then its answer.
   const turns: Turn[] = [];
+  let scope: string[] | undefined;
   for (const message of data.messages) {
     if (message.role === "user") {
+      scope = message.scope; // follow-ups keep the Scope of the latest question
       turns.push({ question: message.content, answer: "", sources: [], cited: [], status: "complete" });
       continue;
     }
@@ -51,5 +53,5 @@ async function SavedConversation({ params }: { params: Promise<{ id: string }> }
     if (message.status === "interrupted") turn.error = "This answer was cut off. Ask again to get the whole answer.";
     if (message.status === "failed") turn.error = "Docent couldn’t answer this. Ask again.";
   }
-  return <Conversation key={id} conversationId={id} initialTurns={turns} />;
+  return <Conversation key={id} conversationId={id} initialTurns={turns} scope={scope} />;
 }

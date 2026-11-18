@@ -77,7 +77,7 @@ Ingestion runs in short batches: one starts right after each upload, and a pg_cr
 
 ### Demo Collection
 
-Every User can ask the **Demo Collection**: 33 openly licensed workplace guides from [GOV.UK](https://www.gov.uk/) (Open Government Licence v3.0) and the [GitLab Handbook](https://handbook.gitlab.com/) (CC BY-SA 4.0), as Markdown, PDF, and Word. Each is credited with its source and licence in the app, and listed in [`evals/demo/sources.json`](evals/demo/sources.json). Two of them disagree on purpose: the 2019 holiday calculation guidance and the January 2024 reforms. `uv --directory apps/api run docent-demo fetch` downloads the sources again; `docent-demo seed` loads them into a database's Demo Collection.
+Every User can ask the **Demo Collection**, read-only: 32 openly licensed workplace guides from [GOV.UK](https://www.gov.uk/) (Open Government Licence v3.0) and the [GitLab Handbook](https://handbook.gitlab.com/) (CC BY-SA 4.0), as Markdown, PDF, and Word. Each is credited with its source and licence in the app, and listed in [`evals/demo/sources.json`](evals/demo/sources.json); [`evals/demo/LICENSE.md`](evals/demo/LICENSE.md) explains why these files are not under Docent's MIT licence. Questions asked on its page are answered from it alone. Two of them disagree on purpose: the 2019 holiday calculation guidance and the January 2024 reforms. `uv --directory apps/api run docent-demo fetch` downloads the sources again; `docent-demo seed` loads them into a database's Demo Collection.
 
 Contains public sector information licensed under the Open Government Licence v3.0. GitLab Handbook content © GitLab B.V., licensed under CC BY-SA 4.0; converted to Markdown, with images, links, and diagrams removed.
 

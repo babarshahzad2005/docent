@@ -7,7 +7,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/holiday-entitlement-rights",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2014-11-17"
     },
     {
       "file": "govuk-statutory-sick-pay.md",
@@ -15,7 +18,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/statutory-sick-pay",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2015-03-09"
     },
     {
       "file": "govuk-maternity-pay-leave.md",
@@ -23,7 +29,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/maternity-pay-leave",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2015-04-06"
     },
     {
       "file": "govuk-paternity-pay-leave.md",
@@ -31,7 +40,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/paternity-pay-leave",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2024-11-27"
     },
     {
       "file": "govuk-flexible-working.md",
@@ -39,7 +51,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/flexible-working",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2018-12-18"
     },
     {
       "file": "govuk-national-minimum-wage-rates.md",
@@ -47,7 +62,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/national-minimum-wage-rates",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2024-10-30"
     },
     {
       "file": "govuk-employment-contracts-and-conditions.md",
@@ -55,7 +73,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/employment-contracts-and-conditions",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2020-04-06"
     },
     {
       "file": "govuk-time-off-for-dependants.md",
@@ -63,7 +84,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/time-off-for-dependants",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2016-09-05"
     },
     {
       "file": "govuk-workplace-pensions.md",
@@ -71,7 +95,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/workplace-pensions",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2015-01-26"
     },
     {
       "file": "govuk-disciplinary-procedures-and-action-at-work.md",
@@ -79,7 +106,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/disciplinary-procedures-and-action-at-work",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2016-05-13"
     },
     {
       "file": "govuk-maximum-weekly-working-hours.md",
@@ -87,7 +117,10 @@
       "kind": "govuk",
       "source": "https://www.gov.uk/maximum-weekly-working-hours",
       "licence": "Open Government Licence v3.0",
-      "credit": "GOV.UK, © Crown copyright"
+      "credit": "GOV.UK, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2015-03-09"
     },
     {
       "file": "govuk-holiday-pay-and-entitlement-reforms-from-1-january-2024.md",
@@ -97,7 +130,9 @@
       "licence": "Open Government Licence v3.0",
       "credit": "GOV.UK, © Crown copyright",
       "effective_date": "2024-01-01",
-      "note": "Changes the 2019 calculation guidance for irregular-hours and part-year workers (conflict case)."
+      "note": "Changes the 2019 calculation guidance for irregular-hours and part-year workers (conflict case).",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18"
     },
     {
       "file": "gitlab-time-off-types.md",
@@ -106,7 +141,10 @@
       "source": "https://handbook.gitlab.com/handbook/people-group/time-off-and-absence/time-off-types/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/people-group/time-off-and-absence/time-off-types.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-leave-types.md",
@@ -115,7 +153,10 @@
       "source": "https://handbook.gitlab.com/handbook/people-group/time-off-and-absence/leave-types/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/people-group/time-off-and-absence/leave-types.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-time-away-philosophy.md",
@@ -124,7 +165,10 @@
       "source": "https://handbook.gitlab.com/handbook/people-group/time-off-and-absence/time-away-philosophy/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/people-group/time-off-and-absence/time-away-philosophy.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-offboarding.md",
@@ -133,7 +177,10 @@
       "source": "https://handbook.gitlab.com/handbook/people-group/offboarding/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/people-group/offboarding/_index.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-general-onboarding.md",
@@ -142,7 +189,10 @@
       "source": "https://handbook.gitlab.com/handbook/people-group/general-onboarding/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/people-group/general-onboarding/_index.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-communication.md",
@@ -151,7 +201,10 @@
       "source": "https://handbook.gitlab.com/handbook/communication/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/communication/_index.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-security.md",
@@ -160,7 +213,10 @@
       "source": "https://handbook.gitlab.com/handbook/security/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/security/_index.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-compensation.md",
@@ -169,7 +225,10 @@
       "source": "https://handbook.gitlab.com/handbook/total-rewards/compensation/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/total-rewards/compensation/_index.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-careers.md",
@@ -178,7 +237,10 @@
       "source": "https://handbook.gitlab.com/handbook/engineering/careers/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/engineering/careers/_index.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-leadership.md",
@@ -187,7 +249,10 @@
       "source": "https://handbook.gitlab.com/handbook/leadership/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/leadership/_index.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-learning-and-development.md",
@@ -196,7 +261,10 @@
       "source": "https://handbook.gitlab.com/handbook/people-group/learning-and-development/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/people-group/learning-and-development/_index.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-spending-company-money.md",
@@ -205,7 +273,10 @@
       "source": "https://handbook.gitlab.com/handbook/finance/spending-company-money/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/finance/spending-company-money.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-anti-harassment.md",
@@ -214,16 +285,10 @@
       "source": "https://handbook.gitlab.com/handbook/people-group/anti-harassment/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/people-group/anti-harassment.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
-    },
-    {
-      "file": "gitlab-all-remote.md",
-      "title": "All-remote work",
-      "kind": "gitlab",
-      "source": "https://handbook.gitlab.com/handbook/company/culture/all-remote/",
-      "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/company/culture/all-remote/_index.md",
-      "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-promotions-transfers.md",
@@ -232,7 +297,10 @@
       "source": "https://handbook.gitlab.com/handbook/people-group/promotions-transfers/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/people-group/promotions-transfers.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "gitlab-benefits.md",
@@ -241,7 +309,10 @@
       "source": "https://handbook.gitlab.com/handbook/total-rewards/benefits/",
       "raw": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/main/content/handbook/total-rewards/benefits/_index.md",
       "licence": "CC BY-SA 4.0",
-      "credit": "GitLab Handbook, © GitLab B.V."
+      "credit": "GitLab Handbook, © GitLab B.V.",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "checked_on": "2026-11-18",
+      "effective_date": "2026-11-18"
     },
     {
       "file": "holiday-entitlement-guidance-2019.pdf",
@@ -252,7 +323,9 @@
       "licence": "Open Government Licence v3.0",
       "credit": "Department for Business, Energy & Industrial Strategy, © Crown copyright 2019",
       "effective_date": "2019-11-01",
-      "note": "Superseded in part by the January 2024 reforms (conflict case)."
+      "note": "Superseded in part by the January 2024 reforms (conflict case).",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18"
     },
     {
       "file": "fit-note-checklist.pdf",
@@ -261,7 +334,9 @@
       "path": "apps/api/tests/extraction/files/fit-note-checklist.pdf",
       "source": "https://assets.publishing.service.gov.uk/media/64ef3bbf13ae15000d6e3093/fit-note-checklist-for-employers.pdf",
       "licence": "Open Government Licence v3.0",
-      "credit": "Department for Work and Pensions, © Crown copyright"
+      "credit": "Department for Work and Pensions, © Crown copyright",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18"
     },
     {
       "file": "staffing-guidance-for-schools.pdf",
@@ -271,25 +346,33 @@
       "source": "https://assets.publishing.service.gov.uk/media/68b836c9cc8356c3c882aa13/Staffing_and_employment_guidance_for_schools_-_Sept_2025.pdf",
       "licence": "Open Government Licence v3.0",
       "credit": "Department for Education, © Crown copyright 2025",
-      "effective_date": "2025-09-01"
+      "effective_date": "2025-09-01",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18"
     },
     {
       "file": "early-years-employment-reference-template.docx",
       "title": "Early years employment reference template (2025)",
-      "kind": "download",
+      "kind": "local",
       "source": "https://assets.publishing.service.gov.uk/media/68a883c7969253904d1557c5/Early_years_employment_reference_template_2025.docx",
       "licence": "Open Government Licence v3.0",
       "credit": "Department for Education, © Crown copyright 2025",
-      "effective_date": "2025-08-26"
+      "effective_date": "2025-08-26",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "path": "apps/api/tests/extraction/files/early-years-employment-reference-template.docx"
     },
     {
       "file": "reservist-hr-policy-template.docx",
       "title": "Reservist HR policy: a template for employers",
-      "kind": "download",
+      "kind": "local",
       "source": "https://assets.publishing.service.gov.uk/media/5a81abf540f0b62305b90368/20160118_Template_example_Reservist_HR_Policy.docx",
       "licence": "Open Government Licence v3.0",
       "credit": "Ministry of Defence, © Crown copyright",
-      "effective_date": "2016-01-18"
+      "effective_date": "2016-01-18",
+      "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "checked_on": "2026-11-18",
+      "path": "apps/api/tests/extraction/files/reservist-hr-policy-template.docx"
     }
   ]
 }

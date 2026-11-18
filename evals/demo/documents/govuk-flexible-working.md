@@ -81,10 +81,10 @@ Employees can apply for flexible working from their first day in a job. This is 
 
 The basic steps are:
 
-- The employee writes to the employer.
-- The employer discusses the employee’s request with them and makes a decision on it within 2 months - or longer if agreed with the employee.
-- If the employer agrees to the request, they must change the terms and conditions in the employee’s contract.
-- If the employer disagrees, they must tell the employee giving the business reasons for the refusal. The employee may be able to complain to an employment tribunal.
+1. The employee writes to the employer.
+2. The employer discusses the employee’s request with them and makes a decision on it within 2 months - or longer if agreed with the employee.
+3. If the employer agrees to the request, they must change the terms and conditions in the employee’s contract.
+4. If the employer disagrees, they must tell the employee giving the business reasons for the refusal. The employee may be able to complain to an employment tribunal.
 
 The employer must discuss the employee’s request with them before refusing their application.
 
@@ -190,4 +190,4 @@ If an employer or employee is unsure of their rights, they should get legal advi
 
 Source: https://www.gov.uk/flexible-working
 
-GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). Contains public sector information licensed under the Open Government Licence v3.0. Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

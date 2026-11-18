@@ -435,7 +435,7 @@ def load_conversation(
         raise ConversationNotFound(conversation_id)
     messages = conn.execute(
         """
-        select id, role, content, status, created_at from app.messages
+        select id, role, content, status, scope, created_at from app.messages
         where conversation_id = %s order by created_at, role  -- the question before its answer
         """,
         (conversation_id,),

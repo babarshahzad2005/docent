@@ -24,10 +24,10 @@ It should also include the name of someone you can speak to if you do not agree 
 
 Your employer’s disciplinary procedure should include the following steps:
 
-- A letter setting out the issue.
-- A meeting to discuss the issue.
-- A disciplinary decision.
-- A chance to appeal this decision.
+1. A letter setting out the issue.
+2. A meeting to discuss the issue.
+3. A disciplinary decision.
+4. A chance to appeal this decision.
 
 ### Acas (Advisory, Conciliation and Arbitration Service) Code of Practice
 
@@ -166,4 +166,4 @@ You can also find more information on the Equality Advisory Support Service webs
 
 Source: https://www.gov.uk/disciplinary-procedures-and-action-at-work
 
-GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). Contains public sector information licensed under the Open Government Licence v3.0. Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

@@ -63,7 +63,7 @@ export function LibraryDocuments({
     id: string;
     name: string;
     role: "owner" | "editor" | "viewer";
-    is_demo?: boolean;
+    is_demo: boolean;
   };
   initialDocuments: DocumentSummary[];
 }) {
@@ -367,14 +367,19 @@ export function LibraryDocuments({
           {collection.is_demo ? (
             <p className="text-muted-foreground text-pretty">
               Openly licensed workplace guidance from GOV.UK and the GitLab Handbook, for
-              trying Docent. Ask about anything here; each document below links to where it was
-              published, with its licence.
+              trying Docent. Questions asked on this page are answered from these documents
+              only. Each one links to where it was published, with its licence.
             </p>
           ) : (
             <p className="text-muted-foreground">You can ask about these documents.</p>
           )}
         </div>
         {progress}
+        {documents.length === 0 && (
+          <p className="text-muted-foreground">
+            There are no documents here yet. Your own documents are in your Personal Library.
+          </p>
+        )}
         <ul aria-label="Documents" className="flex flex-col border-t border-border">
           {documents.map((document) => (
             <DocumentRow
@@ -510,14 +515,28 @@ function DocumentRow({
             {document.name}
           </span>
           {document.source_url && (
-            <a
-              href={document.source_url}
-              rel="noreferrer"
-              target="_blank"
-              className="text-meta text-muted-foreground underline underline-offset-2"
-            >
-              {document.source_credit ?? "Source"}
-            </a>
+            <span className="flex flex-wrap gap-x-3 text-meta">
+              <a
+                href={document.source_url}
+                rel="noreferrer"
+                target="_blank"
+                className="text-brand underline underline-offset-2"
+              >
+                {document.source_credit ?? "Source"}
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>
+              {document.source_licence_url && (
+                <a
+                  href={document.source_licence_url}
+                  rel="noreferrer license"
+                  target="_blank"
+                  className="text-brand underline underline-offset-2"
+                >
+                  Licence
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              )}
+            </span>
           )}
         </span>
         <span

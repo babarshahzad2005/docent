@@ -104,7 +104,7 @@ The manager and the team member should have walked through the guidelines on und
    - Important:
       - Informing the team and answering questions should be the top priority.
       - Departure announcements should not be made in the `#team-member-updates` Slack channel, opt for channels specific to your team or department
-      - In most cases, a team call can occur the same day of the offboarding. 
+      - In most cases, a team call can occur the same day of the offboarding.
 1. **TMR/Manager**: Decide what offboarding actions need to be taken *before* the call (e.g. revoke admin permissions), or *during* the call (e.g. revoke Slack and Gmail access), and which ones can wait until later. You can reference the offboarding issue template for the full list of actions. This conversation should take place in the private Slack channel with PBP, Manager and Leader.
 1. **TMR**: If the team member is a risk to the production environment, the TMR should privately reach out to the `Infrastructure Managers` to determine who will be available to assist with the offboarding. Once an infrastructure team member has been identified, they should be added to the private calendar invite sent to People Operations, Security, and Payroll to hold the time for the team member offboarding. Once the offboarding conversation starts the TMR will privately Slack the infrastructure contact the name of the team member to start the offboarding process.
 
@@ -116,7 +116,7 @@ The manager and the team member should have walked through the guidelines on und
 1. **TMR**: Make sure to communicate the practical points from the offboarding memo outlined below.
 1. **TMR**: Once the conversation is complete, the TMR will stage the involuntary offboarding email document along with the severance document in DocuSign for review and signatures.
 
-#### Critical Points During Offboarding Call {#offboarding-points}
+#### Critical Points During Offboarding Call
 
 ##### All Team Members
 
@@ -166,7 +166,7 @@ People Engineering automations will generate the offboarding issue at the end of
 If appropriate (to be determined by conversation with the manager, the Group Executive, and People Ops), use the following offboarding memo, which is provided here as an openly viewable Google Doc, but of course needs to be personalized and tailored to each individual's situation.
 As written, it is applicable to US-based employees only.
 
-### Separation and Release of Claims Agreements {#separation-agreement}
+### Separation and Release of Claims Agreements
 
 Separation and Release of Claims Agreements ***do not*** apply for all offboardings. To review in which cases they do/do not apply, please reference the `Severance Eligibility` document accessible by Team Member Relations team and PBPs. In the case that a severance agreement is applicable, the steps below should be followed:
 
@@ -235,7 +235,7 @@ Our goals in communicating offboardings is transparency, and to provide an oppor
 
 ### Voluntary Terminations
 
-1. We ask that all voluntary offboardings are announced in the appropriate team channels for stakeholder transparency and awareness. 
+1. We ask that all voluntary offboardings are announced in the appropriate team channels for stakeholder transparency and awareness.
 1. Team members and managers have the discretion to determine who shares the news of the team member's offboarding (I.E. team member or manager). Regardless of who shares, it is required that team members review offboarding messaging with their managers prior to sharing.
 
 Depending on the team members' role, timing of communication may vary (e.g. direct team, key stakeholders, etc.), and managers have discretion to determine who should be informed most immediately. The typical order followed for communicating departures is:
@@ -279,7 +279,7 @@ There will be situations in which team members prefer to share their offboarding
 
 ### Involuntary Terminations
 
-Transparency is one of our values. In the case of offboarding, we opt to share the departure only with peers and direct reports as needed.  
+Transparency is one of our values. In the case of offboarding, we opt to share the departure only with peers and direct reports as needed.
 If someone is let go involuntarily, this generally cannot be shared since it affects the individual's privacy and job performance is intentionally kept between an individual and their manager.
 
 Please discuss any concerns you have about another employee's offboarding with your manager or your People Business Partner.
@@ -360,4 +360,4 @@ Additionally here is a link to the U.S Department of Labor Contact Particulars t
 
 Source: https://handbook.gitlab.com/handbook/people-group/offboarding/
 
-GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

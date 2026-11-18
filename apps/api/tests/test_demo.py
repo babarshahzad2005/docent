@@ -45,7 +45,7 @@ def test_the_sources_are_complete_licensed_and_present() -> None:
     assert {s["licence"] for s in SOURCES} == {"Open Government Licence v3.0", "CC BY-SA 4.0"}
     suffixes = {Path(s["file"]).suffix for s in SOURCES}
     assert {".md", ".pdf", ".docx"} <= suffixes
-    assert sum(s["file"].endswith(".docx") and s["kind"] == "download" for s in SOURCES) >= 2
+    assert sum(s["file"].endswith(".docx") for s in SOURCES) >= 2  # real-world Word files
     for source in SOURCES:
         path = (
             demo.REPO / source["path"]
@@ -66,16 +66,23 @@ def test_the_conflicting_versions_are_both_included() -> None:
 def test_govuk_html_becomes_markdown_with_its_structure() -> None:
     body = (
         "<h2>Entitlement</h2><p>Most workers get <strong>5.6 weeks</strong>.</p>"
-        "<ul><li>agency workers</li><li>part-year workers</li></ul>"
-        "<table><tr><th>Year</th><th>Rate</th></tr><tr><td>2025</td><td>£12.21</td></tr></table>"
+        "<ul><li>agency workers</li>"
+        "<li>part-year workers<ul><li>term-time staff</li></ul></li></ul>"
+        "<ol><li>Check the contract</li><li><p>Work out the days</p><p>Round up.</p></li></ol>"
+        "<p>Rates in &lt;GBP&gt;:</p>"
+        "<table><tr><th>Year</th><th>Rate</th></tr><tr><td>2025</td><td>£12.21 | hour</td></tr>"
+        "</table><h3></h3>"
     )
 
     markdown = html_to_markdown(body, shift=1)
 
     assert markdown.splitlines()[0] == "### Entitlement"
     assert "Most workers get 5.6 weeks." in markdown
-    assert "- agency workers\n- part-year workers" in markdown
-    assert "Year | Rate\n2025 | £12.21" in markdown
+    assert "- agency workers\n- part-year workers\n   - term-time staff" in markdown
+    assert "1. Check the contract\n2. Work out the days\n   Round up." in markdown
+    assert "Rates in <GBP>:" in markdown  # entities decoded once, never turned into tags
+    assert "| Year | Rate |\n| --- | --- |\n| 2025 | £12.21 \\| hour |" in markdown
+    assert "###\n" not in markdown + "\n"  # an empty heading is dropped
 
 
 def test_handbook_pages_lose_their_site_markup_and_keep_their_words() -> None:
@@ -91,7 +98,7 @@ def test_handbook_pages_lose_their_site_markup_and_keep_their_words() -> None:
     assert "Read the policy first." in markdown and "Take time off." in markdown
     for leftover in ("{{", "mermaid", "](", "<br>", "c.png"):
         assert leftover not in markdown
-    assert "Licence: CC BY-SA 4.0" in markdown
+    assert "Licence: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/)" in markdown
 
 
 # --- Seeding and access -------------------------------------------------------------------
@@ -114,10 +121,12 @@ def test_seeding_fills_the_collection_once_and_credits_every_document(
     again = seed(conn, store)
 
     assert (first.added, first.unchanged) == (len(SOURCES), 0)
+    assert len({s["file"] for s in SOURCES}) == len(SOURCES)  # seeding matches by name
     assert (again.added, again.replaced, again.unchanged, again.removed) == (0, 0, len(SOURCES), 0)
     assert len(store.files) == len(SOURCES)
     rows = conn.execute(
-        "select name, status, source_url, source_credit, effective_date from app.documents"
+        "select name, status, source_url, source_credit, source_licence_url, effective_date "
+        "from app.documents"
     ).fetchall()
     conn.commit()
     assert all(

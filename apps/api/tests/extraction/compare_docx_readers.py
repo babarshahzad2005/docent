@@ -71,6 +71,12 @@ CHECKS = {
     "table rows": ("holiday-guidance.docx", "Beckie | 6 | 28.0 days"),
     "content controls": ("built", "Inside a content control"),
     "nested tables": ("built", "Nested"),
+    # Real-world files (#36)
+    "bold headings": ("reservist-hr-policy-template.docx", "# 1. Introduction"),
+    "form table": (
+        "early-years-employment-reference-template.docx",
+        "Dates employed | From [DD/MM/YYYY] to [DD/MM/YYYY]",
+    ),
 }
 
 
@@ -78,6 +84,13 @@ def main() -> None:
     documents = {
         "holiday-guidance.docx": (FILES / "holiday-guidance.docx").read_bytes(),
         "built": docx_with_content_control_and_nested_table(),
+        **{
+            name: (FILES / name).read_bytes()
+            for name in (
+                "reservist-hr-policy-template.docx",
+                "early-years-employment-reference-template.docx",
+            )
+        },
     }
     print("| Reader | " + " | ".join(CHECKS) + " |")
     print("| --- |" + " --- |" * len(CHECKS))

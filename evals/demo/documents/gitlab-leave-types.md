@@ -167,4 +167,4 @@ For complete details, please refer to our Equity policy page. If you have questi
 
 Source: https://handbook.gitlab.com/handbook/people-group/time-off-and-absence/leave-types/
 
-GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

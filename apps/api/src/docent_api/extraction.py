@@ -440,7 +440,10 @@ def _docx_blocks(element: Any, parent: Any) -> Iterator[Block]:
     for child in element.iterchildren():
         if child.tag == qn("w:p"):
             paragraph = Paragraph(child, parent)
-            yield Block(paragraph.text, _docx_heading_level(paragraph))
+            level = _docx_heading_level(paragraph)
+            # A heading's tabs and line breaks (after its number, say) are layout, not words.
+            text = paragraph.text if level is None else " ".join(paragraph.text.split())
+            yield Block(text, level)
         elif child.tag == qn("w:tbl"):
             yield from (Block(row) for row in _table_rows(Table(child, parent)))
         elif child.tag == qn("w:sdt"):
@@ -465,7 +468,21 @@ def _docx_heading_level(paragraph: Any) -> int | None:
         if match:
             return int(match.group(1))
         style = style.base_style
-    return None
+    return 1 if _looks_like_bold_heading(paragraph) else None
+
+
+def _looks_like_bold_heading(paragraph: Any) -> bool:
+    """Many documents made in Word mark headings with bold text instead of heading styles:
+    a short paragraph that is bold throughout and doesn't end like a sentence."""
+    text = paragraph.text.strip()
+    if not text or len(text) > _MAX_BOLD_HEADING or text[-1] in ".!?:;,":
+        return False
+    style_bold = bool(getattr(getattr(paragraph.style, "font", None), "bold", False))
+    runs = [run for run in paragraph.runs if run.text.strip()]
+    return bool(runs) and all(run.bold is True or (run.bold is None and style_bold) for run in runs)
+
+
+_MAX_BOLD_HEADING = 100
 
 
 def _table_rows(table: Any) -> Iterator[str]:

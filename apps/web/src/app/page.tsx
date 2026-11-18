@@ -29,7 +29,7 @@ async function Library() {
   if (!documents.ok) throw new Error(documents.message);
 
   return (
-    <LibraryHome>
+    <LibraryHome collectionId={personal.id} label="Ask a question about your documents">
       <LibraryDocuments collection={personal} initialDocuments={documents.value} />
     </LibraryHome>
   );

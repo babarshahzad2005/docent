@@ -123,9 +123,9 @@ Employers must give employees and workers a wider written statement within 2 mon
 
 If an employee or worker has a problem receiving their written statement, they can:
 
-- Try to solve the problem with their employer informally.
-- If this does not work, take out a grievance against their employer (employers can also get advice about handling grievances).
-- Take a case to an employment tribunal as a last resort.
+1. Try to solve the problem with their employer informally.
+2. If this does not work, take out a grievance against their employer (employers can also get advice about handling grievances).
+3. Take a case to an employment tribunal as a last resort.
 
 The tribunal will decide what the employment particulars in the statement should have been.
 
@@ -139,4 +139,4 @@ Compensation can be up to 4 weeks’ pay although there’s a limit on how much 
 
 Source: https://www.gov.uk/employment-contracts-and-conditions
 
-GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). Contains public sector information licensed under the Open Government Licence v3.0. Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

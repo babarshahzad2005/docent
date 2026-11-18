@@ -237,7 +237,7 @@ Note for Sales Managers: If team members are not moved under the correct sales m
 
 1. Audit all job change requests and ensure the changes are captured in the Payroll tracker.
 1. In case of `Job Title Specialty` change requests, managers will reach out to the People Operations Team Compass to have a team members `Speciality` updated in Workday.
-    - The People Operations Team member should check whether the title already exists in Workday. If not, check whether the `Job Speciality` has been added to the respective departments Handbook page (example:  or if the People Operations Team members are tagged in a respective issue to have it added. If unclear, reach out to the respective People Business Partner).
+    - The People Operations Team member should check whether the title already exists in Workday. If not, check whether the `Job Speciality` has been added to the respective departments Handbook page (example: https://handbook.gitlab.com/handbook/engineering/ai/search/ or if the People Operations Team members are tagged in a respective issue to have it added. If unclear, reach out to the respective People Business Partner).
 
 ## Department Transfers
 
@@ -469,4 +469,4 @@ For field teams:
 
 Source: https://handbook.gitlab.com/handbook/people-group/promotions-transfers/
 
-GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

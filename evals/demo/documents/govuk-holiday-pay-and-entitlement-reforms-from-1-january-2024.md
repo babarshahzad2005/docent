@@ -86,10 +86,11 @@ In June, she works 68 hours. To work out how much holiday she accrues in June, y
 
 #### Table 1: calculation of statutory holiday accrual for irregular hours and part-year workers
 
-Step | Calculation method | Example
-1 | Divide the hours worked in pay period by 100 | 68 ÷ 100 = 0.68
-2 | Multiply the answer to Step 1 by 12.07 | 0.68 x 12.07 = 8.2076
-3 | Round up or down to the nearest hour | 8.2076 becomes 8
+| Step | Calculation method | Example |
+| --- | --- | --- |
+| 1 | Divide the hours worked in pay period by 100 | 68 ÷ 100 = 0.68 |
+| 2 | Multiply the answer to Step 1 by 12.07 | 0.68 x 12.07 = 8.2076 |
+| 3 | Round up or down to the nearest hour | 8.2076 becomes 8 |
 
 Answer: Jill accrues 8 hours of holiday during the month of June.
 
@@ -143,10 +144,10 @@ Workers who leave employment have their annual leave pro-rated based on the time
 
 This is calculated in a 4-step method:
 
-- Calculate the worker’s full annual leave entitlement.
-- Work out the proportion of the leave year worked.
-- Pro-rate based on the proportion of the year worked.
-- In our view, it is appropriate to then multiply by the average working day to convert into hours.
+1. Calculate the worker’s full annual leave entitlement.
+2. Work out the proportion of the leave year worked.
+3. Pro-rate based on the proportion of the year worked.
+4. In our view, it is appropriate to then multiply by the average working day to convert into hours.
 
 #### Example of calculating leave when worker leaves during leave year when on fixed hours
 
@@ -154,11 +155,12 @@ Mary has been working for her current employer for more than a year, working 45 
 
 #### Table 2: calculation of entitlement for a worker who works fixed hours leaving during a leave year
 
-Step | Method | Example
-1 | Calculate holiday entitlement in days. | Mary is entitled to the lower amount of 28 days or 5.6 x 4 days (22.40 days). Therefore, Mary’s full statutory annual leave entitlement is 22.4 days.
-2 | Calculate the proportion of leave year in employment. Days in employment during the leave year ÷ days in leave year x 100. | Between 1 April 2024 and 25 July 2024 there are 116 days. The leave year runs from 1 April 2024 to 31 March 2025. 116 ÷ 365 x 100 = 31.78 Therefore, Mary is in employment for 116 days out of 365 days in the leave year or 31.78% of the leave year.
-3 | Pro-rate leave based on the proportion of the leave year worked. Total holiday entitlement for the worker ÷ 100 x proportion of leave year in employment. | Mary’s leave entitlement in the leave year up until she leaves her job is 31.78% of 22.4 days. 22.4 ÷ 100 x 31.78 = 7.1 Mary’s statutory entitlement is 7.1 days.
-4 | Multiply by the average working day to convert into hours. Average hours worked per day = total hours worked per week ÷ days worked per week. Holiday entitlement in hours = average hours worked per day x statutory entitlement calculated in step 3. | Mary works 45 hours a week over 4 days. 45 ÷ 4 = 11.25 average hours worked per day. To convert annual leave into hours, the entitlement in days should be multiplied by the statutory entitlement. 11.25 hours x 7.1 days = 79.9
+| Step | Method | Example |
+| --- | --- | --- |
+| 1 | Calculate holiday entitlement in days. | Mary is entitled to the lower amount of 28 days or 5.6 x 4 days (22.40 days). Therefore, Mary’s full statutory annual leave entitlement is 22.4 days. |
+| 2 | Calculate the proportion of leave year in employment. Days in employment during the leave year ÷ days in leave year x 100. | Between 1 April 2024 and 25 July 2024 there are 116 days. The leave year runs from 1 April 2024 to 31 March 2025. 116 ÷ 365 x 100 = 31.78 Therefore, Mary is in employment for 116 days out of 365 days in the leave year or 31.78% of the leave year. |
+| 3 | Pro-rate leave based on the proportion of the leave year worked. Total holiday entitlement for the worker ÷ 100 x proportion of leave year in employment. | Mary’s leave entitlement in the leave year up until she leaves her job is 31.78% of 22.4 days. 22.4 ÷ 100 x 31.78 = 7.1 Mary’s statutory entitlement is 7.1 days. |
+| 4 | Multiply by the average working day to convert into hours. Average hours worked per day = total hours worked per week ÷ days worked per week. Holiday entitlement in hours = average hours worked per day x statutory entitlement calculated in step 3. | Mary works 45 hours a week over 4 days. 45 ÷ 4 = 11.25 average hours worked per day. To convert annual leave into hours, the entitlement in days should be multiplied by the statutory entitlement. 11.25 hours x 7.1 days = 79.9 |
 
 Answer: Rounded to the nearest hour, Mary’s statutory holiday entitlement in hours is 80 hours.
 
@@ -188,11 +190,12 @@ Harriet is a part-year worker who is entitled to the minimum 5.6 weeks statutory
 
 #### Table 3: method for calculating statutory holiday entitlement accrued by irregular hours and part-year workers while off sick or on statutory leave
 
-Step | Method | Example
-1 | Calculate the average number of hours per week that the worker worked during the 52-week relevant period before the worker started the maternity or family related leave or off sick. Average number of hours worked per week = total number of hours worked ÷ 46.4 (as explained above, the 46.4 figure is a recommendation) | 1032 ÷ 46.4 = 22.241 hours (rounded to 3 decimal places)
-2 | Calculate the number of hours of annual leave accrued per week of the maternity or family related leave or off sick. Hours of annual leave accrued per week = average number of hours worked per week ÷ 100 x 12.07 | 22.241 ÷ 100 x 12.07 = 2.684 (rounded to 3 decimal places)
-3 | Calculate the total number of hours of annual leave accrued while on maternity or family related leave or off sick. Total hours of annual leave accrued = hours of annual leave accrued per week x number of weeks of maternity or family related leave or off sick. | 2.684 x 40 = 107.36
-4 | Round up or down to the nearest hour. | 107.36 becomes 107
+| Step | Method | Example |
+| --- | --- | --- |
+| 1 | Calculate the average number of hours per week that the worker worked during the 52-week relevant period before the worker started the maternity or family related leave or off sick. Average number of hours worked per week = total number of hours worked ÷ 46.4 (as explained above, the 46.4 figure is a recommendation) | 1032 ÷ 46.4 = 22.241 hours (rounded to 3 decimal places) |
+| 2 | Calculate the number of hours of annual leave accrued per week of the maternity or family related leave or off sick. Hours of annual leave accrued per week = average number of hours worked per week ÷ 100 x 12.07 | 22.241 ÷ 100 x 12.07 = 2.684 (rounded to 3 decimal places) |
+| 3 | Calculate the total number of hours of annual leave accrued while on maternity or family related leave or off sick. Total hours of annual leave accrued = hours of annual leave accrued per week x number of weeks of maternity or family related leave or off sick. | 2.684 x 40 = 107.36 |
+| 4 | Round up or down to the nearest hour. | 107.36 becomes 107 |
 
 Answer: Harriet accrued 107 hours of holiday entitlement while on maternity leave.
 
@@ -216,11 +219,12 @@ Her employer will need to calculate her statutory holiday entitlement after each
 
 First period of maternity or family related leave or period off sick (19 weeks of shared parental leave for Sharon).
 
-Step | Method | Calculation
-1 | Calculate the average number of hours per week that Sharon worked during the 52-week relevant period before she went on shared parental leave. To get the average hours worked per week, the employer may choose to, divide the total number of hours Sharon worked (832) by 46.4 | 832 ÷ 46.4 = 17.931 hours (rounded to 3 decimal places)
-2 | Calculate the number of hours of annual leave that Sharon accrued during each week of the shared parental leave. | 17.931 ÷ 100 x 12.07 = 2.164 (rounded to 3 decimal places)
-3 | Calculate the total number of hours of annual leave that Sharon accrued. | 2.164 x 19 = 41.116
-4 | Round the answer to Step 3 up or down to the nearest hour. | 41.116 would be rounded down to 41.
+| Step | Method | Calculation |
+| --- | --- | --- |
+| 1 | Calculate the average number of hours per week that Sharon worked during the 52-week relevant period before she went on shared parental leave. To get the average hours worked per week, the employer may choose to, divide the total number of hours Sharon worked (832) by 46.4 | 832 ÷ 46.4 = 17.931 hours (rounded to 3 decimal places) |
+| 2 | Calculate the number of hours of annual leave that Sharon accrued during each week of the shared parental leave. | 17.931 ÷ 100 x 12.07 = 2.164 (rounded to 3 decimal places) |
+| 3 | Calculate the total number of hours of annual leave that Sharon accrued. | 2.164 x 19 = 41.116 |
+| 4 | Round the answer to Step 3 up or down to the nearest hour. | 41.116 would be rounded down to 41. |
 
 Answer: Sharon accrued 41 hours of statutory holiday entitlement while on her first period of shared parental leave.
 
@@ -228,12 +232,13 @@ Answer: Sharon accrued 41 hours of statutory holiday entitlement while on her fi
 
 Second period of maternity or family related leave or time off sick (4 weeks of shared parental leave for Sharon)
 
-Step | Method | Calculation
-1 | Determine the 52-week relevant period, working backwards from the day Sharon began her second period of shared parental leave | Sharon worked a total of 88 hours in the 5 weeks before starting her second period of shared parental leave. This is included in the 52-week relevant period. Prior to this, Sharon was on shared parental leave for 19 weeks. These 19 weeks are excluded from the relevant period. The remainder of the 52-week relevant period will come from the 47 weeks prior to Sharon taking her first period of shared parental leave. During this time, she worked 756 hours.
-2 | Calculate the average number of hours per week that Sharon worked during the relevant period before she started her second (4-week) period of shared parental leave. Average number of hours per work worked in the relevant period = total number of hours worked during the 52-week relevant period + 46.4 (as explained above, the 46.4 figure is a recommendation) | 756 + 88 = 844 total hours worked during the 52-week relevant period 844 ÷ 46.4 = 18.190 hours (rounded to 3 decimal places)
-3 | Calculate the number of hours of annual leave that Sharon accrued during each week of this period of shared parental leave | 18.190 ÷ 100 x 12.07 = 2.196 (rounded to 3 decimal places)
-4 | Multiply the number of hours accrued in each week by the number of weeks of shared parental leave to find the total number of hours of annual leave that Sharon accrued | 2.196 x 4 = 8.784
-5 | Round the answer to Step 4 up or down to the nearest hour | 8.78 becomes 9 hours.
+| Step | Method | Calculation |
+| --- | --- | --- |
+| 1 | Determine the 52-week relevant period, working backwards from the day Sharon began her second period of shared parental leave | Sharon worked a total of 88 hours in the 5 weeks before starting her second period of shared parental leave. This is included in the 52-week relevant period. Prior to this, Sharon was on shared parental leave for 19 weeks. These 19 weeks are excluded from the relevant period. The remainder of the 52-week relevant period will come from the 47 weeks prior to Sharon taking her first period of shared parental leave. During this time, she worked 756 hours. |
+| 2 | Calculate the average number of hours per week that Sharon worked during the relevant period before she started her second (4-week) period of shared parental leave. Average number of hours per work worked in the relevant period = total number of hours worked during the 52-week relevant period + 46.4 (as explained above, the 46.4 figure is a recommendation) | 756 + 88 = 844 total hours worked during the 52-week relevant period 844 ÷ 46.4 = 18.190 hours (rounded to 3 decimal places) |
+| 3 | Calculate the number of hours of annual leave that Sharon accrued during each week of this period of shared parental leave | 18.190 ÷ 100 x 12.07 = 2.196 (rounded to 3 decimal places) |
+| 4 | Multiply the number of hours accrued in each week by the number of weeks of shared parental leave to find the total number of hours of annual leave that Sharon accrued | 2.196 x 4 = 8.784 |
+| 5 | Round the answer to Step 4 up or down to the nearest hour | 8.78 becomes 9 hours. |
 
 Answer: Sharon accrued 9 hours of statutory holiday entitlement while on her second period of shared parental leave.
 
@@ -241,12 +246,13 @@ Answer: Sharon accrued 9 hours of statutory holiday entitlement while on her sec
 
 Third period of maternity or family related leave or sickness (3 days off sick leave for Sharon).
 
-Step | Method | Calculation
-1 | Determine the 52-week relevant period, working backwards from the day Sharon went off sick. | Sharon worked a total of 108 hours in the 6 weeks before being off sick. This is included in the 52-week relevant period. Prior to this, Sharon was on her second period of shared parental leave for 4 weeks. These 4 weeks are excluded from the 52-week relevant period. Prior to her second period of shared parental leave, Sharon worked a total of 88 hours over 5 weeks. This goes towards the 52-week relevant period, which now stands at 11 weeks (6 + 5 = 11). Prior to this, Sharon was on shared parental leave for 19 weeks. These 19 weeks are excluded from the relevant period. The remainder of the 52-week relevant period will come from the 41 weeks prior to that. During this time, Sharon worked 676 hours. The 52-week relevant period is therefore made up of 41 weeks (676 hours) prior to Sharon taking her first period of shared parental leave, the 5 weeks (88 hours) she worked after that, and the 6 weeks (108 hours) that she worked between the second period of shared parental leave and being off sick.
-2 | Calculate the average number of hours per week that Sharon worked during the 52-week relevant period before she was off sick. Average number of hours per week worked in relevant period = total number of hours worked during the 52-week relevant period + 46.4 (as explained above, the 46.4 figure is a recommendation.) | 676 + 88 + 108 = 872 hours worked in the 52-week relevant period 872 ÷ 46.4 = 18.793 hours (rounded to 3 decimal places)
-3 | Calculate the number of hours of annual leave that Sharon accrued during each week before she was off sick. | 18.793 ÷ 100 x 12.07 = 2.268 (rounded to 3 decimal places)
-4 | Multiply the number of hours accrued in each week by the number of weeks off sick to find the total number of hours of annual leave that Sharon accrued. | 2.268 x 3 ÷ 5 = 1.361
-5 | Round the answer to Step 4 up or down to the nearest hour. | 1.361 becomes 1 hour.
+| Step | Method | Calculation |
+| --- | --- | --- |
+| 1 | Determine the 52-week relevant period, working backwards from the day Sharon went off sick. | Sharon worked a total of 108 hours in the 6 weeks before being off sick. This is included in the 52-week relevant period. Prior to this, Sharon was on her second period of shared parental leave for 4 weeks. These 4 weeks are excluded from the 52-week relevant period. Prior to her second period of shared parental leave, Sharon worked a total of 88 hours over 5 weeks. This goes towards the 52-week relevant period, which now stands at 11 weeks (6 + 5 = 11). Prior to this, Sharon was on shared parental leave for 19 weeks. These 19 weeks are excluded from the relevant period. The remainder of the 52-week relevant period will come from the 41 weeks prior to that. During this time, Sharon worked 676 hours. The 52-week relevant period is therefore made up of 41 weeks (676 hours) prior to Sharon taking her first period of shared parental leave, the 5 weeks (88 hours) she worked after that, and the 6 weeks (108 hours) that she worked between the second period of shared parental leave and being off sick. |
+| 2 | Calculate the average number of hours per week that Sharon worked during the 52-week relevant period before she was off sick. Average number of hours per week worked in relevant period = total number of hours worked during the 52-week relevant period + 46.4 (as explained above, the 46.4 figure is a recommendation.) | 676 + 88 + 108 = 872 hours worked in the 52-week relevant period 872 ÷ 46.4 = 18.793 hours (rounded to 3 decimal places) |
+| 3 | Calculate the number of hours of annual leave that Sharon accrued during each week before she was off sick. | 18.793 ÷ 100 x 12.07 = 2.268 (rounded to 3 decimal places) |
+| 4 | Multiply the number of hours accrued in each week by the number of weeks off sick to find the total number of hours of annual leave that Sharon accrued. | 2.268 x 3 ÷ 5 = 1.361 |
+| 5 | Round the answer to Step 4 up or down to the nearest hour. | 1.361 becomes 1 hour. |
 
 Sharon accrued 1 hour of statutory holiday entitlement while she was off sick.
 
@@ -260,9 +266,9 @@ Leave entitlement for full year × Proportion of leave year in employment
 
 This is calculated in a 3-step method:
 
-- Calculate the worker’s full annual leave entitlement.
-- Work out the proportion of the leave year in employment.
-- Pro-rate based on the proportion of the year in employment.
+1. Calculate the worker’s full annual leave entitlement.
+2. Work out the proportion of the leave year in employment.
+3. Pro-rate based on the proportion of the year in employment.
 
 #### Days worked per week example
 
@@ -270,10 +276,11 @@ Edward has been working for his current employer for more than a year, working 6
 
 #### Table 2: calculation of leave entitlement when leaving during leave year, based on days per week
 
-Step | Method | Entitlement
-1 | Calculate the full holiday entitlement | Edward is entitled to the lower amount of 28 days or 5.6 x 6 days (33.6 days). Therefore, his full annual leave entitlement is 28 days.
-2 | Calculate proportion of leave year in employment Days in employment during the leave year ÷ days in leave year x 100 | Between 1 July and 16 November there are 139 days. The leave year runs from 1 July 2024 to 30 June 2025. Edward is in employment for 139 days out of 365 days in the leave year. 139 ÷ 365 x 100 = 38.08 This means Edward was in employment for 38.08% of the leave year.
-3 | Pro-rate leave based on proportion of the leave year worked. Total holiday entitlement for the worker ÷ 100 x proportion of leave year in employment. | Edward’s leave entitlement in the leave year up until he leaves his job is 38.08% of 28 days. 28 ÷ 100 x 38.08 = 10.66
+| Step | Method | Entitlement |
+| --- | --- | --- |
+| 1 | Calculate the full holiday entitlement | Edward is entitled to the lower amount of 28 days or 5.6 x 6 days (33.6 days). Therefore, his full annual leave entitlement is 28 days. |
+| 2 | Calculate proportion of leave year in employment Days in employment during the leave year ÷ days in leave year x 100 | Between 1 July and 16 November there are 139 days. The leave year runs from 1 July 2024 to 30 June 2025. Edward is in employment for 139 days out of 365 days in the leave year. 139 ÷ 365 x 100 = 38.08 This means Edward was in employment for 38.08% of the leave year. |
+| 3 | Pro-rate leave based on proportion of the leave year worked. Total holiday entitlement for the worker ÷ 100 x proportion of leave year in employment. | Edward’s leave entitlement in the leave year up until he leaves his job is 38.08% of 28 days. 28 ÷ 100 x 38.08 = 10.66 |
 
 Answer: Edward’s statutory holiday entitlement is 10.7 days.
 
@@ -359,11 +366,12 @@ To work out how much rolled-up holiday pay Hana is entitled to, you will need to
 
 #### Table 6: rolled-up holiday pay calculation when a worker’s basic pay is their normal pay
 
-Step | Method | Calculation
-1 | Multiply the hours worked by the hourly rate to find the worker’s total pay in this pay period (1 October to 7 October) | 35 x £10.42 per hour = £364.70
-2 | Divide the answer to Step 1 by 100, rounding to the nearest pence | £364.70 ÷ 100 = £3.65
-3 | Multiply the answer to Step 2 by 12.07 | £3.65 x 12.07 = £44.0555
-4 | Round the answer to Step 3 up or down to the nearest pence | £44.0555 becomes £44.06
+| Step | Method | Calculation |
+| --- | --- | --- |
+| 1 | Multiply the hours worked by the hourly rate to find the worker’s total pay in this pay period (1 October to 7 October) | 35 x £10.42 per hour = £364.70 |
+| 2 | Divide the answer to Step 1 by 100, rounding to the nearest pence | £364.70 ÷ 100 = £3.65 |
+| 3 | Multiply the answer to Step 2 by 12.07 | £3.65 x 12.07 = £44.0555 |
+| 4 | Round the answer to Step 3 up or down to the nearest pence | £44.0555 becomes £44.06 |
 
 Answer: Hana is entitled to receive £44.06 rolled-up holiday pay in her payslip for the period 1 October to 7 October.
 
@@ -375,12 +383,13 @@ To work out how much rolled-up holiday pay Mark is entitled to, you will need to
 
 #### Table 7: rolled-up holiday pay calculation when a worker’s shifts are at a premium rate
 
-Step | Method | Calculation
-1 | Multiply the hours worked by the relevant hourly rate | 20 hours (normal rate) x £11 per hour = £220 20 hours (enhanced rate) x £12 per hour = £240
-2 | Add the answers from Step 1 together to find the worker’s total pay in this pay period (1 August to 14 August) | £220 + £240 = £460
-3 | Divide the answer from Step 2 by 100, rounding to the nearest pence | £460 ÷ 100 = £4.60
-4 | Multiply the answer to Step 3 by 12.07 | £4.60 x 12.07 = £55.522
-5 | Round the answer to Step 4 up or down to the nearest pence | £55.522 becomes £55.52
+| Step | Method | Calculation |
+| --- | --- | --- |
+| 1 | Multiply the hours worked by the relevant hourly rate | 20 hours (normal rate) x £11 per hour = £220 20 hours (enhanced rate) x £12 per hour = £240 |
+| 2 | Add the answers from Step 1 together to find the worker’s total pay in this pay period (1 August to 14 August) | £220 + £240 = £460 |
+| 3 | Divide the answer from Step 2 by 100, rounding to the nearest pence | £460 ÷ 100 = £4.60 |
+| 4 | Multiply the answer to Step 3 by 12.07 | £4.60 x 12.07 = £55.522 |
+| 5 | Round the answer to Step 4 up or down to the nearest pence | £55.522 becomes £55.52 |
 
 Answer: Mark is entitled to receive £55.52 rolled-up holiday pay in his payslip for the period 1 August to 14 August.
 
@@ -431,12 +440,13 @@ There is an exception for workers whose pay is calculated weekly by a week endin
 
 #### Table 8: 52-week reference period holiday pay calculation examples
 
-Worker | Current holiday pay calculation
-Joe has been working for his employer for over a year with variable pay. | Joe’s holiday pay is averaged from his pay over the past 52 weeks.
-Rachel started with a new employer 20 weeks ago and is on variable pay. | As Rachel’s employer does not have 52 weeks’ worth of data to use, they use what data is available. As such, Rachel’s holiday pay is averaged from her pay over the past 20 weeks.
-Ben works irregularly for his employer and over the past 104 weeks has received pay in 45 of them. | As Ben only has 45 applicable weeks in the last 104, Ben’s employer calculates his holiday pay using an average from his pay over the 45 weeks in which he earned pay.
-Amy works irregularly for her employer and in the past 104 weeks she has received pay in 75 of them. | As Amy has at least 52 applicable weeks in the last 104, her holiday pay is averaged from her pay in the most recent 52 complete weeks worked.
-Carys works part-year and over the past 52 weeks she has worked for 25 of them. | As Carys only has 25 applicable weeks, her employer calculates her holiday pay using an average from her pay of the 25 weeks in which she earned pay.
+| Worker | Current holiday pay calculation |
+| --- | --- |
+| Joe has been working for his employer for over a year with variable pay. | Joe’s holiday pay is averaged from his pay over the past 52 weeks. |
+| Rachel started with a new employer 20 weeks ago and is on variable pay. | As Rachel’s employer does not have 52 weeks’ worth of data to use, they use what data is available. As such, Rachel’s holiday pay is averaged from her pay over the past 20 weeks. |
+| Ben works irregularly for his employer and over the past 104 weeks has received pay in 45 of them. | As Ben only has 45 applicable weeks in the last 104, Ben’s employer calculates his holiday pay using an average from his pay over the 45 weeks in which he earned pay. |
+| Amy works irregularly for her employer and in the past 104 weeks she has received pay in 75 of them. | As Amy has at least 52 applicable weeks in the last 104, her holiday pay is averaged from her pay in the most recent 52 complete weeks worked. |
+| Carys works part-year and over the past 52 weeks she has worked for 25 of them. | As Carys only has 25 applicable weeks, her employer calculates her holiday pay using an average from her pay of the 25 weeks in which she earned pay. |
 
 ### 6.4 Calculating holiday pay for irregular hours workers and part-year workers using a 52-week reference period
 
@@ -450,18 +460,19 @@ The following example uses a worker’s gross pay data to set out how to calcula
 
 #### Table 9: illustration of paid and non-paid weeks, for the 52-week reference period method for holiday pay
 
-Week | Gross pay per week | Paid / unpaid week
-1 | £300 | Paid
-2-5 | £350 | Paid
-6 | £0 | Unpaid
-7 | £10 | Paid
-8-22 | £100 | Paid
-23-25 | £0 | Unpaid
-25-40 | £400 | Paid
-41-45 | £200 | Paid
-46-48 | £0 | Unpaid
-49-54 | £180 | Paid
-55-59 | £150 | Paid
+| Week | Gross pay per week | Paid / unpaid week |
+| --- | --- | --- |
+| 1 | £300 | Paid |
+| 2-5 | £350 | Paid |
+| 6 | £0 | Unpaid |
+| 7 | £10 | Paid |
+| 8-22 | £100 | Paid |
+| 23-25 | £0 | Unpaid |
+| 25-40 | £400 | Paid |
+| 41-45 | £200 | Paid |
+| 46-48 | £0 | Unpaid |
+| 49-54 | £180 | Paid |
+| 55-59 | £150 | Paid |
 
 An employer should discount weeks 6, 23 to 25 and 46 to 48 in Table 9, which is 7 weeks, as there was no pay in these weeks, reflecting that the worker performed no work. As 7 weeks have to be discounted, the employer must go back a further 7 weeks to take the total to 52 weeks of pay data when calculating holiday pay for this period. These extra weeks are weeks 53 to 59 in Table 9.
 
@@ -505,4 +516,4 @@ Find out about call charges
 
 Source: https://www.gov.uk/government/publications/simplifying-holiday-entitlement-and-holiday-pay-calculations/holiday-pay-and-entitlement-reforms-from-1-january-2024
 
-GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). Contains public sector information licensed under the Open Government Licence v3.0. Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

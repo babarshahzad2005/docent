@@ -154,10 +154,11 @@ Most workers are entitled to 5.6 weeks’ paid holiday a year. You can use the h
 
 A week’s pay is worked out according to the kind of hours someone works and how they’re paid for the hours. This includes full-time, part-time, term-time and casual workers.
 
-Working pattern | How a week’s pay is calculated
-Regular hours and fixed pay (full- or part-time) | A worker’s pay for a week
-Shift work with regular hours (full- or part-time) | The average number of weekly fixed hours a worker has worked in the previous 52 weeks, at their average hourly rate
-Irregular-hours and part-year work | A worker’s average pay from the previous 52 weeks (only counting weeks in which they were paid)
+| Working pattern | How a week’s pay is calculated |
+| --- | --- |
+| Regular hours and fixed pay (full- or part-time) | A worker’s pay for a week |
+| Shift work with regular hours (full- or part-time) | The average number of weekly fixed hours a worker has worked in the previous 52 weeks, at their average hourly rate |
+| Irregular-hours and part-year work | A worker’s average pay from the previous 52 weeks (only counting weeks in which they were paid) |
 
 ### Calculating average hourly or weekly rate
 
@@ -173,8 +174,8 @@ If a worker has less than 52 weeks of pay, use the average pay rate for the full
 
 To work out a week’s pay for someone who’s paid monthly:
 
-- Calculate the worker’s average hourly pay for the last month. Do this by dividing the month’s pay by the number of hours worked in the month.
-- Calculate the weekly pay. Do this by multiplying the average hourly pay by the number of hours worked in a week.
+1. Calculate the worker’s average hourly pay for the last month. Do this by dividing the month’s pay by the number of hours worked in the month.
+2. Calculate the weekly pay. Do this by multiplying the average hourly pay by the number of hours worked in a week.
 
 Use the weekly pay calculation for each of the last 52 weeks to work out an average week’s pay.
 
@@ -260,4 +261,4 @@ If an employer offers more than 5.6 weeks’ annual leave, they can agree separa
 
 Source: https://www.gov.uk/holiday-entitlement-rights
 
-GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). Contains public sector information licensed under the Open Government Licence v3.0. Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

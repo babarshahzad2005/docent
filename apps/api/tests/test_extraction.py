@@ -291,3 +291,63 @@ def test_word_documents_that_unpack_too_large_are_refused(monkeypatch: pytest.Mo
 
     with pytest.raises(UnreadableDocument, match="too large to read once unpacked"):
         extract_docx((FILES / "holiday-guidance.docx").read_bytes())
+
+
+# --- Real-world Word documents (#36) ------------------------------------------------------
+
+RESERVIST = "reservist-hr-policy-template.docx"
+EARLY_YEARS = "early-years-employment-reference-template.docx"
+
+
+def test_bold_paragraphs_used_as_headings_in_a_real_policy_become_headings() -> None:
+    # The Ministry of Defence template marks its headings in bold, not with heading styles.
+    chunks = chunk_blocks(extract_docx((FILES / RESERVIST).read_bytes()))
+
+    sections = {chunk.heading_path[-1] for chunk in chunks if chunk.heading_path}
+    assert {
+        "1. Introduction",
+        "5. Mobilisation",
+        "Sick Pay",
+        "10. Financial Assistance",
+    } <= sections
+    two_types = next(c for c in chunks if "There are two main types of Reservist" in c.content)
+    assert two_types.heading_path[-1] == "2. Types of Reservist"
+    assert "Volunteer Reservists" in two_types.content
+
+
+def test_a_real_form_template_keeps_its_questions_answers_and_table() -> None:
+    # The Department for Education template: styled headings, a form table, and check boxes.
+    blocks = extract_docx((FILES / EARLY_YEARS).read_bytes())
+    chunks = chunk_blocks(blocks)
+    texts = [" ".join(b.text.split()) for b in blocks]
+
+    assert "Dates employed | From [DD/MM/YYYY] to [DD/MM/YYYY]" in texts
+    reemploy = next(
+        c
+        for c in chunks
+        if c.heading_path[-1:] == ("Would you re-employ the candidate at your organisation?",)
+    )
+    assert reemploy.heading_path[:2] == (
+        "Early years employment reference template",
+        "Section 2 – Safeguarding information",  # noqa: RUF001 (the document uses an en dash)
+    )
+    assert "Yes" in reemploy.content and "No" in reemploy.content
+
+
+def test_bold_text_inside_a_paragraph_does_not_make_it_a_heading() -> None:
+    from docx import Document
+
+    document = Document()
+    mixed = document.add_paragraph()
+    mixed.add_run("Note").bold = True
+    mixed.add_run(" this paragraph is partly bold")
+    document.add_paragraph().add_run("A whole bold sentence ends with a full stop.").bold = True
+    document.add_paragraph().add_run("Bold heading").bold = True
+    out = io.BytesIO()
+    document.save(out)
+
+    levels = {b.text: b.heading_level for b in extract_docx(out.getvalue())}
+
+    assert levels["Note this paragraph is partly bold"] is None
+    assert levels["A whole bold sentence ends with a full stop."] is None
+    assert levels["Bold heading"] == 1

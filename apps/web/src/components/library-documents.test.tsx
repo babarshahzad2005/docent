@@ -18,7 +18,7 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: vi.fn() }));
 
 import { LibraryDocuments } from "./library-documents";
 
-const PERSONAL = { id: "c1", name: "Personal", role: "owner" as const };
+const PERSONAL = { id: "c1", name: "Personal", role: "owner" as const, is_demo: false };
 
 function aDocument(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
   return {
@@ -31,6 +31,7 @@ function aDocument(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
     can_retry: false,
     source_url: null,
     source_credit: null,
+    source_licence_url: null,
     effective_date: "2026-11-17",
     created_at: "2026-11-17T10:00:00Z",
     updated_at: "2026-11-17T10:00:00Z",
@@ -363,5 +364,42 @@ describe("Deleting a Document", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Delete policy.pdf" })).toBeNull();
+  });
+});
+
+describe("the Demo Collection", () => {
+  const DEMO = { id: "demo", name: "Demo Collection", role: "viewer" as const, is_demo: true };
+
+  it("shows only its own documents, each credited with a link to its source", () => {
+    render(
+      <LibraryDocuments
+        collection={DEMO}
+        initialDocuments={[
+          aDocument(),
+          aDocument({
+            id: "d2",
+            collection_id: "demo",
+            name: "govuk-statutory-sick-pay.md",
+            source_url: "https://www.gov.uk/statutory-sick-pay",
+            source_credit: "GOV.UK, © Crown copyright. Licence: Open Government Licence v3.0.",
+            source_licence_url: "https://www.nationalarchives.gov.uk/doc/open-government-licence/",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Demo Collection" })).toBeTruthy();
+    expect(screen.queryByText("policy.pdf")).toBeNull();
+    const credit = screen.getByRole("link", { name: /Crown copyright.*opens in a new tab/ });
+    expect(credit.getAttribute("href")).toBe("https://www.gov.uk/statutory-sick-pay");
+    const licence = screen.getByRole("link", { name: /^Licence/ });
+    expect(licence.getAttribute("href")).toContain("open-government-licence");
+    expect(screen.queryByRole("button", { name: /upload/i })).toBeNull();
+  });
+
+  it("says so when it has no documents yet", () => {
+    render(<LibraryDocuments collection={DEMO} initialDocuments={[]} />);
+
+    expect(screen.getByText(/no documents here yet/)).toBeTruthy();
   });
 });

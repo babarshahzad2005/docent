@@ -43,61 +43,36 @@ The Security Division provides essential security operational services, is direc
 
 To reflect this, we have structured the Security Division around four key tenets, which drive the structure and the activities of our group. These are :
 
-  
-    
-        
-        Product Security
-    
-    
-        
-        Security Operations
-    
-    
-        
-        Corporate Security
-    
-    
-        
-        Security Assurance
-    
-  
-  
-      
-        
-            Application Security
-            Infrastructure Security
-            Security Platforms and Architecture
-            Vulnerability Management
-            Data Security
-        
-      
-      
-        
-            Security Incident Response Team (SIRT)
-            Trust and Safety
-            Red Team
-            Threat Intelligence
-            Signals Engineering
-            Security Logging
-        
-      
-      
-        
-            Corporate Security
-            Helpdesk Support
-            Tech Stack Systems
-            Engineering Teams
-        
-      
-      
-        
-            Field Security
-            Security Compliance
-            Security Governance
-            Security Risk
-        
-      
-  
+Product Security
+
+Security Operations
+
+Corporate Security
+
+Security Assurance
+
+Application Security
+Infrastructure Security
+Security Platforms and Architecture
+Vulnerability Management
+Data Security
+
+Security Incident Response Team (SIRT)
+Trust and Safety
+Red Team
+Threat Intelligence
+Signals Engineering
+Security Logging
+
+Corporate Security
+Helpdesk Support
+Tech Stack Systems
+Engineering Teams
+
+Field Security
+Security Compliance
+Security Governance
+Security Risk
 
 #### Secure the Product - The Product Security Department
 
@@ -172,4 +147,4 @@ When opening issues, please follow the Creating New Security Issues process for 
 
 Source: https://handbook.gitlab.com/handbook/security/
 
-GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0. Converted to Markdown for Docent's Demo Collection: images, links, and diagrams were removed; the text is otherwise unchanged.
+GitLab Handbook, © GitLab B.V. Licence: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified and images, links, and diagrams removed.

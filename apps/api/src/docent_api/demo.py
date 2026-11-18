@@ -47,24 +47,47 @@ _USER_AGENT = "docent-demo-fetch/1.0"
 
 # --- Fetching -----------------------------------------------------------------------------
 
+LICENCE_URLS = {
+    "Open Government Licence v3.0": (
+        "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
+    ),
+    "CC BY-SA 4.0": "https://creativecommons.org/licenses/by-sa/4.0/",
+}
+OGL_STATEMENT = (
+    "Contains public sector information licensed under the Open Government Licence v3.0."
+)
+
 
 def fetch_all() -> None:
-    sources = json.loads(SOURCES.read_text(encoding="utf-8"))
+    """Download every source, convert it, and record when it was checked and its dates."""
+    listing = json.loads(SOURCES.read_text(encoding="utf-8"))
     DOCUMENTS.mkdir(parents=True, exist_ok=True)
-    for source in sources["documents"]:
+    today = date.today().isoformat()
+    names = [source["file"] for source in listing["documents"]]
+    if len(names) != len(set(names)):
+        raise SystemExit("Two sources share a file name; seeding matches Documents by name.")
+    for source in listing["documents"]:
+        source["licence_url"] = LICENCE_URLS[source["licence"]]
+        source["checked_on"] = today
         target = DOCUMENTS / source["file"]
         kind = source["kind"]
         if kind == "govuk":
-            target.write_text(govuk_markdown(source), encoding="utf-8", newline="\n")
+            markdown, updated = govuk_markdown(source)
+            source.setdefault("effective_date", updated)
+            target.write_text(markdown, encoding="utf-8", newline="\n")
         elif kind == "gitlab":
             raw = _get(source["raw"]).decode("utf-8")
+            source.setdefault("effective_date", today)
             target.write_text(handbook_markdown(raw, source), encoding="utf-8", newline="\n")
         elif kind == "download":
             target.write_bytes(_get(source["source"]))
         elif kind != "local":
             raise SystemExit(f"unknown kind {kind!r} for {source['file']}")
         print(f"  {source['file']}")
-    print(f"Fetched {len(sources['documents'])} sources into {DOCUMENTS}")
+    SOURCES.write_text(
+        json.dumps(listing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
+    )
+    print(f"Fetched {len(names)} sources into {DOCUMENTS}")
 
 
 def _get(url: str, attempts: int = 3) -> bytes:
@@ -81,8 +104,8 @@ def _get(url: str, attempts: int = 3) -> bytes:
     raise AssertionError("unreachable")
 
 
-def govuk_markdown(source: dict[str, Any]) -> str:
-    """A GOV.UK guide or publication as Markdown, from its content API."""
+def govuk_markdown(source: dict[str, Any]) -> tuple[str, str]:
+    """A GOV.UK guide or publication as Markdown (from its content API), and its update date."""
     path = source["source"].removeprefix("https://www.gov.uk/")
     page = json.loads(_get(f"https://www.gov.uk/api/content/{path}"))
     details = page.get("details", {})
@@ -95,111 +118,190 @@ def govuk_markdown(source: dict[str, Any]) -> str:
             sections.append(html_to_markdown(part["body"], shift=1))
     else:
         sections.append(html_to_markdown(details.get("body", ""), shift=0))
-    return _footer("\n\n".join(sections), source)
+    updated = str(page.get("public_updated_at") or date.today().isoformat())[:10]
+    return _footer("\n\n".join(sections), source), updated
+
+
+_FENCE = re.compile(r"(```.*?```)", re.S)
 
 
 def handbook_markdown(raw: str, source: dict[str, Any]) -> str:
-    """A GitLab Handbook page as plain Markdown: front matter, shortcodes, and HTML removed."""
+    """A GitLab Handbook page as plain Markdown, without its site's markup.
+
+    Code blocks are kept as they are; everywhere else Hugo shortcodes, heading anchors,
+    images, HTML tags, and link targets are removed, and diagrams drawn in code are dropped.
+    """
     title = source["title"]
     match = re.match(r"^---\n(.*?)\n---\n", raw, re.S)
     if match:
         found = re.search(r'^title:\s*"?(.+?)"?\s*$', match.group(1), re.M)
         title = found.group(1) if found else title
         raw = raw[match.end() :]
-    text = re.sub(r"```mermaid.*?```", "", raw, flags=re.S)  # diagrams drawn in code
-    text = re.sub(r"\{\{[<%].*?[%>]\}\}", "", text, flags=re.S)  # Hugo shortcodes
-    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
-    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)  # images
-    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)  # links keep their words
-    text = re.sub(r"</?[a-zA-Z][^>]*>", "", text)
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    pieces = []
+    for piece in _FENCE.split(raw):
+        if piece.startswith("```"):
+            if not piece.startswith("```mermaid"):
+                pieces.append(piece)
+            continue
+        pieces.append(_clean_handbook_text(piece))
+    text = re.sub(r"\n{3,}", "\n\n", "".join(pieces)).strip()
     return _footer(f"# {title}\n\n{text}", source)
 
 
+def _clean_handbook_text(text: str) -> str:
+    text = re.sub(r"\{\{[<%][^\n]*?[%>]\}\}", "", text)  # shortcodes, one line at a time
+    text = re.sub(r"[ \t]*\{#[^}\n]+\}", "", text)  # heading anchors, "## Title {#title}"
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)  # images
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)  # links keep their words
+    text = re.sub(r"<(https?://[^>\s]+)>", r"\1", text)  # autolinks keep their address
+    text = re.sub(r"</?[a-zA-Z][^>\n]*>", "", text)
+    # What's left of the site's HTML layout is indented text; only list items keep their indent.
+    lines = []
+    for line in html.unescape(text).split("\n"):
+        if not line.strip():
+            lines.append("")
+        elif line.startswith("    ") and not re.match(r"\s*([-*+]|\d+\.)\s", line):
+            lines.append(line.strip())
+        else:
+            lines.append(line.rstrip())
+    return "\n".join(lines)
+
+
 def _footer(markdown: str, source: dict[str, Any]) -> str:
+    licence = source["licence"]
+    statement = f" {OGL_STATEMENT}" if licence.startswith("Open Government") else ""
     return (
         f"{markdown.rstrip()}\n\n---\n\nSource: {source['source']}\n\n"
-        f"{source['credit'].rstrip('.')}. Licence: {source['licence']}. Converted to Markdown "
-        "for Docent's Demo Collection: images, links, and diagrams were removed; the text is "
-        "otherwise unchanged.\n"
+        f"{source['credit'].rstrip('.')}. Licence: {licence} ({LICENCE_URLS[licence]}).{statement} "
+        "Adapted for Docent's Demo Collection: converted to Markdown, with formatting simplified "
+        "and images, links, and diagrams removed.\n"
     )
 
 
 class _HtmlToMarkdown(HTMLParser):
-    """GOV.UK's body HTML (headings, paragraphs, lists, tables, links) as Markdown."""
+    """GOV.UK's body HTML as Markdown: headings, paragraphs, numbered and nested lists, and
+    tables (as Markdown tables). Entities are decoded once, by the parser."""
 
     def __init__(self, shift: int) -> None:
         super().__init__(convert_charrefs=True)
         self.shift = shift
-        self.out: list[str] = []
-        self.line: list[str] = []
-        self.lists: list[str] = []
-        self.cells: list[str] | None = None
+        self.blocks: list[str] = []
+        self.text: list[str] = []
+        self.prefix = ""
+        self.lists: list[list[int | None]] = []  # [counter] per open list; None = bullets
+        self.item_open = False
+        self.table: list[list[str]] | None = None
+        self.cell: list[str] | None = None
         self.skip = 0
+
+    # Blocks
+
+    def _emit(self) -> None:
+        words = " ".join("".join(self.text).split())
+        self.text = []
+        if not words:
+            return  # keep the prefix (an item's number) for the text still to come
+        self.blocks.append(self.prefix + words)
+        if self.item_open:  # further paragraphs of the same item line up under its text
+            self.prefix = "   " * len(self.lists)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in ("script", "style", "svg"):
             self.skip += 1
+        elif self.cell is not None:
+            if tag in ("li", "p", "br") and "".join(self.cell).strip():
+                self.cell.append("; " if tag == "li" else " ")
         elif re.fullmatch(r"h[1-6]", tag):
-            self._flush()
-            level = min(6, int(tag[1]) + self.shift)
-            self.line.append("#" * level + " ")
+            self._emit()
+            self.prefix = "#" * min(6, int(tag[1]) + self.shift) + " "
         elif tag in ("ul", "ol"):
-            self._flush()
-            self.lists.append(tag)
-        elif tag == "li":
-            self._flush()
-            self.line.append("  " * (len(self.lists) - 1) + "- ")
-        elif tag == "tr":
-            self._flush()
-            self.cells = []
-        elif tag in ("td", "th") and self.cells is not None:
-            self.line = []
+            self._emit()
+            self.lists.append([0 if tag == "ol" else None])
+        elif tag == "li" and self.lists:
+            self._emit()
+            counter = self.lists[-1]
+            depth = "   " * (len(self.lists) - 1)
+            if counter[0] is None:
+                self.prefix = f"{depth}- "
+            else:
+                counter[0] += 1
+                self.prefix = f"{depth}{counter[0]}. "
+            self.item_open = True
+        elif tag == "p":
+            self._emit()
+        elif tag == "table":
+            self._emit()
+            self.table = []
+        elif tag == "tr" and self.table is not None:
+            self.table.append([])
+        elif tag in ("td", "th") and self.table is not None:
+            self.cell = []
         elif tag == "br":
-            self.line.append(" ")
+            self.text.append(" ")
 
     def handle_endtag(self, tag: str) -> None:
         if tag in ("script", "style", "svg"):
             self.skip = max(0, self.skip - 1)
-        elif tag in ("p", "li", "div") or re.fullmatch(r"h[1-6]", tag):
-            self._flush()
-        elif tag in ("ul", "ol"):
-            self._flush()
-            if self.lists:
-                self.lists.pop()
-            self.out.append("")
-        elif tag in ("td", "th") and self.cells is not None:
-            self.cells.append(" ".join("".join(self.line).split()))
-            self.line = []
-        elif tag == "tr" and self.cells is not None:
-            if any(self.cells):
-                self.out.append(" | ".join(self.cells))
-            self.cells = None
-        elif tag == "table":
-            self.out.append("")
+        elif tag in ("td", "th") and self.cell is not None and self.table:
+            words = " ".join("".join(self.cell).split()).replace("|", "\\|")
+            self.table[-1].append(words)
+            self.cell = None
+        elif self.cell is not None:
+            return
+        elif re.fullmatch(r"h[1-6]", tag) or tag == "p":
+            self._emit()
+            if not self.item_open:
+                self.prefix = ""
+        elif tag == "li":
+            self._emit()
+            self.item_open = False
+            self.prefix = ""
+        elif tag in ("ul", "ol") and self.lists:
+            self._emit()
+            self.lists.pop()
+            self.item_open = bool(self.lists)
+            self.prefix = "   " * len(self.lists) if self.lists else ""
+            if not self.lists:
+                self.blocks.append("")
+        elif tag == "table" and self.table is not None:
+            self._table(self.table)
+            self.table = None
 
     def handle_data(self, data: str) -> None:
-        if not self.skip:
-            self.line.append(data)
-
-    def _flush(self) -> None:
-        if self.cells is not None:
+        if self.skip:
             return
-        text = " ".join("".join(self.line).split())
-        self.line = []
-        if text and text not in ("-", "#"):
-            self.out.append(text)
-            if not text.startswith("- ") and not text.lstrip().startswith("- "):
-                self.out.append("")
+        (self.cell if self.cell is not None else self.text).append(data)
+
+    def _table(self, rows: list[list[str]]) -> None:
+        rows = [row for row in rows if any(row)]
+        if not rows:
+            return
+        width = max(len(row) for row in rows)
+        rows = [row + [""] * (width - len(row)) for row in rows]
+        lines = ["| " + " | ".join(rows[0]) + " |", "|" + " --- |" * width]
+        lines += ["| " + " | ".join(row) + " |" for row in rows[1:]]
+        self.blocks.append("\n".join(lines))
 
     def markdown(self) -> str:
-        self._flush()
-        return re.sub(r"\n{3,}", "\n\n", "\n".join(self.out)).strip()
+        self._emit()
+        out: list[str] = []
+        for block in self.blocks:
+            # List items sit together; other blocks are separated by a blank line.
+            is_item = bool(re.match(r"\s*(- |\d+\. )", block)) or block.startswith("   ")
+            if out and not (is_item and out[-1] != "" and _is_list_line(out[-1])):
+                out.append("")
+            out.append(block)
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+def _is_list_line(line: str) -> bool:
+    return bool(re.match(r"\s*(- |\d+\. )", line)) or line.startswith("   ")
 
 
 def html_to_markdown(body: str, shift: int) -> str:
     parser = _HtmlToMarkdown(shift)
-    parser.feed(html.unescape(body) if "&lt;" in body else body)
+    parser.feed(body)
     return parser.markdown()
 
 
@@ -286,9 +388,9 @@ def _add(
             """
             insert into app.documents
                 (id, collection_id, name, size_bytes, storage_path, status, content_hash,
-                 effective_date, source_url, source_credit)
+                 effective_date, source_url, source_credit, source_licence_url)
             values (%(id)s, %(collection)s, %(name)s, %(size)s, %(path)s, 'queued', %(hash)s,
-                    %(effective)s, %(url)s, %(credit)s)
+                    %(effective)s, %(url)s, %(credit)s, %(licence_url)s)
             """,
             {
                 "id": document_id,
@@ -299,9 +401,20 @@ def _add(
                 "hash": digest,
                 "effective": source.get("effective_date") or date.today().isoformat(),
                 "url": source["source"],
-                "credit": f"{source['credit'].rstrip('.')}. Licence: {source['licence']}.",
+                "credit": _credit(source),
+                "licence_url": LICENCE_URLS[source["licence"]],
             },
         )
+
+
+def _credit(source: dict[str, Any]) -> str:
+    """The credit shown with a Demo Document, as its licence asks."""
+    credit = f"{source['credit'].rstrip('.')}. Licence: {source['licence']}."
+    if source["licence"].startswith("Open Government"):
+        credit += f" {OGL_STATEMENT}"
+    else:
+        credit += " Adapted: converted to Markdown, images and links removed."
+    return credit
 
 
 def _remove(conn: Connection[DictRow], store: FileStore, document_id: UUID) -> None:
