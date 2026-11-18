@@ -176,3 +176,51 @@ def _rank(ranking: list[UUID], chunk_id: UUID) -> int | None:
 
 def _vector_literal(vector: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(v)) for v in vector) + "]"
+
+
+class PassageNotFound(Exception):
+    """No such passage that the User can read."""
+
+
+def passage_in_context(
+    conn: Connection[DictRow], user_id: UUID, chunk_id: UUID
+) -> dict[str, object]:
+    """A passage with the passages just before and after it in the same section.
+
+    Readable only through a Membership of its Collection, like every other read of passages.
+    """
+    row = conn.execute(
+        """
+        select c.id as chunk_id, c.document_id, d.name as document_name, c.heading_path,
+               c.page, c.content, c.ordinal
+        from app.chunks c
+        join app.documents d on d.id = c.document_id and d.status = 'indexed'
+        join app.memberships m on m.collection_id = c.collection_id and m.user_id = %s
+        where c.id = %s
+        """,
+        (user_id, chunk_id),
+    ).fetchone()
+    if row is None:
+        raise PassageNotFound(chunk_id)
+    neighbours = {
+        neighbour["ordinal"]: neighbour["content"]
+        for neighbour in conn.execute(
+            """
+            select ordinal, content from app.chunks
+            where document_id = %(document)s and ordinal in (%(before)s, %(after)s)
+              and heading_path = %(path)s and page is not distinct from %(page)s
+            """,
+            {
+                "document": row["document_id"],
+                "before": row["ordinal"] - 1,
+                "after": row["ordinal"] + 1,
+                "path": row["heading_path"],
+                "page": row["page"],
+            },
+        ).fetchall()
+    }
+    return {
+        **{key: value for key, value in row.items() if key != "ordinal"},
+        "before": neighbours.get(row["ordinal"] - 1),
+        "after": neighbours.get(row["ordinal"] + 1),
+    }

@@ -65,10 +65,12 @@ class ConversationNotFound(Exception):
 @dataclass(frozen=True)
 class SourceInfo:
     number: int
+    chunk_id: str
     document_id: str
     document_name: str
     heading_path: list[str]
     page: int | None
+    passage: str  # shown at once when a Citation is opened, before its context loads
 
 
 @dataclass(frozen=True)
@@ -268,10 +270,12 @@ async def _embed_question(embedder: Embedder, question: str) -> list[float] | No
 def _source(number: int, passage: Passage) -> SourceInfo:
     return SourceInfo(
         number=number,
+        chunk_id=str(passage.chunk_id),
         document_id=str(passage.document_id),
         document_name=passage.document_name,
         heading_path=list(passage.heading_path),
         page=passage.page,
+        passage=passage.content,
     )
 
 
@@ -438,8 +442,8 @@ def load_conversation(
     ).fetchall()
     citations = conn.execute(
         """
-        select c.message_id, c.number, c.document_id, c.document_name, c.heading_path, c.page,
-               c.passage
+        select c.message_id, c.number, c.chunk_id, c.document_id, c.document_name,
+               c.heading_path, c.page, c.passage
         from app.citations c join app.messages m on m.id = c.message_id
         where m.conversation_id = %s order by c.number
         """,
