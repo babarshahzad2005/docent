@@ -657,7 +657,7 @@ def test_an_unsupported_claim_is_removed_and_the_check_is_logged(
     assert done.removed == [
         {
             "text": "Unused days are paid out.",
-            "reason": "its quote isn’t in the cited passage",
+            "reason": "the cited passage doesn’t say this",
             "original": "Unused days are paid out [1].",
         }
     ]
