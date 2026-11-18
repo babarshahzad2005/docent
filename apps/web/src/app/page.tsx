@@ -10,7 +10,13 @@ import { getMe } from "@/lib/me";
 export default function LibraryPage() {
   return (
     <AppShell>
-      <Suspense fallback={<p role="status" className="p-6 text-muted-foreground">Loading your library…</p>}>
+      <Suspense
+        fallback={
+          <p role="status" className="p-6 text-muted-foreground">
+            Loading your library…
+          </p>
+        }
+      >
         <Library />
       </Suspense>
     </AppShell>
@@ -25,12 +31,20 @@ async function Library() {
 
   const personal = me.collections.find((collection) => collection.is_personal);
   if (!personal) throw new Error("Your Personal collection is missing.");
+  const demo = me.collections.find((collection) => collection.is_demo);
   const documents = await listDocuments();
   if (!documents.ok) throw new Error(documents.message);
 
   return (
-    <LibraryHome>
-      <LibraryDocuments collection={personal} initialDocuments={documents.value} />
+    <LibraryHome
+      collectionId={personal.id}
+      label="Ask a question about your documents"
+    >
+      <LibraryDocuments
+        collection={personal}
+        initialDocuments={documents.value}
+        demoHref={demo && `/collections/${demo.id}`}
+      />
     </LibraryHome>
   );
 }

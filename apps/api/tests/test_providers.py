@@ -393,7 +393,8 @@ def test_only_the_adapters_talk_to_providers() -> None:
     offenders = [
         str(path.relative_to(package))
         for path in package.rglob("*.py")
-        if path.relative_to(package).parts[0] not in allowed and "httpx2" in path.read_text()
+        if path.relative_to(package).parts[0] not in allowed
+        and "httpx2" in path.read_text(encoding="utf-8")
     ]
 
     assert offenders == []

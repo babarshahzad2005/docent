@@ -24,6 +24,7 @@ docent-migrate = "docent_api.migrate:main"
 docent-measure-models = "docent_api.measure_models:main"
 docent-setup-storage = "docent_api.storage:main"
 docent-setup-scheduler = "docent_api.scheduler:main"
+docent-demo = "docent_api.demo:main"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]

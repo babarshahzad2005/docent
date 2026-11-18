@@ -123,6 +123,8 @@ class MessageOut(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     status: Literal["streaming", "complete", "interrupted", "failed"]
+    scope: list[UUID]
+    """The Collections the question was answered from."""
     created_at: datetime
     citations: list[CitationOut]
 
