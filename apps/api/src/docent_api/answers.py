@@ -43,7 +43,7 @@ from docent_api.verification import INSTRUCTIONS, QuoteFilter, Verification, spl
 
 logger = logging.getLogger(__name__)
 
-MAX_ANSWER_TOKENS = 900
+MAX_ANSWER_TOKENS = 1500  # the answer, then a quote for each Citation
 DECLINE = "I couldn’t find that in your documents."
 SYSTEM_PROMPT = f"""You answer questions using only the numbered passages you are given.
 
@@ -62,7 +62,7 @@ NOTHING_VERIFIED = (
 )
 
 # Models sometimes write a citation with CJK lenticular brackets (【11】); accept both.
-_CITATION = re.compile(r"[\[【](\d{1,2})[\]】]")
+_CITATION = re.compile(r"[\[【](\d{1,2})(?:†[^\]】\n]{0,20})?[\]】]")  # also 【1†L1-L4】
 
 
 class ConversationNotFound(Exception):
@@ -97,7 +97,7 @@ class Delta:
 @dataclass(frozen=True)
 class Completed:
     message_id: str
-    outcome: str  # "answered" or "declined"
+    outcome: str  # "answered", "declined", or "unverified" (nothing in it could be checked)
     cited: list[int] = field(default_factory=list)
     answer: str = ""  # the answer as verified: replaces the streamed text
     verified: bool = False  # its Citations were checked against their passages
@@ -268,9 +268,9 @@ async def answer(
 
 
 def _verify(turn: Turn) -> str:
-    """Check the finished answer's Citations; the outcome, "answered" or "declined"."""
+    """Check the finished answer's Citations; the outcome."""
     text, quotes = split_answer(normalize_citations(turn.raw))
-    if text.startswith(DECLINE):
+    if text.replace("'", "’").startswith(DECLINE):
         turn.answer = text
         return "declined"
     turn.verification = verify(text, quotes, [p.content for p in turn.passages])
@@ -278,7 +278,7 @@ def _verify(turn: Turn) -> str:
     if not turn.verification.checked:
         # Nothing it says could be tied to a passage: say so rather than show it.
         turn.answer = NOTHING_VERIFIED
-        return "declined"
+        return "unverified"
     return "answered"
 
 

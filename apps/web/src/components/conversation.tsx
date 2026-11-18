@@ -7,6 +7,7 @@ import { AskBox } from "@/components/ask-box";
 import { CITATION_CHIP, type CitedSource, SourceMeta, SourcePane } from "@/components/source-pane";
 import { Button } from "@/components/ui/button";
 import {
+  normalizeCitations,
   readAnswerEvents,
   type RemovedClaim,
   segments,
@@ -100,13 +101,19 @@ export function Conversation({
           answerSoFar.current += event.text;
           update((turn) => ({ ...turn, answer: turn.answer + event.text }));
         } else if (event.event === "done") {
-          // Announced once, when complete, never token by token (DESIGN.md › Accessibility).
-          setAnnouncement(withoutCitations(event.answer || answerSoFar.current));
+          // Announced once, when complete, never token by token (DESIGN.md › Accessibility),
+          // with what verification removed.
+          const final = event.answer || answerSoFar.current;
+          setAnnouncement(
+            [withoutCitations(final), event.verified ? removedSummary(event.removed) : ""]
+              .filter(Boolean)
+              .join(" "),
+          );
           const fading = event.removed.map((claim) => claim.original);
           const checked = (turn: Turn): Turn => ({
             ...turn,
             answer: event.answer || turn.answer,
-            status: event.outcome === "declined" ? "declined" : "complete",
+            status: event.outcome === "answered" ? "complete" : "declined",
             cited: event.cited,
             verified: event.verified,
             removed: event.removed,
@@ -115,7 +122,9 @@ export function Conversation({
           if (fading.length === 0) {
             update(checked);
           } else {
-            update((turn) => ({ ...turn, fading }));
+            // The streamed text, with its markers written as the API writes them, so the
+            // removed sentences can be found in it and faded out.
+            update((turn) => ({ ...turn, answer: normalizeCitations(turn.answer), fading }));
             await new Promise((resolve) => setTimeout(resolve, FADE_MS));
             update(checked);
           }
@@ -268,7 +277,10 @@ function TurnView({
         )}
       </div>
       {turn.verified && turn.status !== "streaming" && (
-        <VerificationLine checked={cited.length} removed={turn.removed ?? []} />
+        <VerificationLine
+          checked={citationCount(turn.answer, available)}
+          removed={turn.removed ?? []}
+        />
       )}
       {turn.error && (
         <div role="alert" className="flex flex-wrap items-center gap-3 text-destructive">
@@ -318,23 +330,44 @@ function withFading(answer: string, fading: string[]): { text: string; fading: b
   return pieces;
 }
 
-/** DESIGN.md › Answer: a check mark and words; says how many claims were removed, and why. */
+/** The Citations left in a checked answer (each one verified), counting repeats. */
+function citationCount(answer: string, available: Set<number>): number {
+  return segments(answer, available).filter((part) => "citation" in part).length;
+}
+
+/** "1 claim was removed because it couldn’t be checked." */
+function removedSummary(removed: RemovedClaim[]): string {
+  if (removed.length === 0) return "";
+  return removed.length === 1
+    ? "1 claim was removed because it couldn’t be checked."
+    : `${removed.length} claims were removed because they couldn’t be checked.`;
+}
+
+/**
+ * DESIGN.md › Answer: a check mark and "All N citations checked against their source"; if
+ * claims were removed, how many, and what they were and why. With nothing checked there is
+ * no check mark: the answer itself says it couldn't be checked.
+ */
 function VerificationLine({ checked, removed }: { checked: number; removed: RemovedClaim[] }) {
-  const sources = checked === 1 ? "citation" : "citations";
-  const claims = removed.length === 1 ? "1 claim was" : `${removed.length} claims were`;
+  if (checked === 0 && removed.length === 0) return null;
+  const summary =
+    checked === 0
+      ? ""
+      : checked === 1
+        ? removed.length === 0
+          ? "The citation was checked against its source."
+          : "1 citation was checked against its source."
+        : removed.length === 0
+          ? `All ${checked} citations checked against their source.`
+          : `${checked} citations were checked against their source.`;
   return (
     <div className="flex flex-col gap-1 text-meta text-text-secondary">
       <p className="flex items-center gap-1.5">
-        <CheckIcon aria-hidden="true" className="size-4 shrink-0 text-brand" />
-        {checked > 0 &&
-          (removed.length === 0
-            ? `All ${checked} ${sources} checked against their source.`
-            : `${checked} ${sources} checked against their source.`)}
-        {removed.length > 0 &&
-          ` ${claims} removed because ${removed.length === 1 ? "it" : "they"} couldn’t be checked.`}
+        {checked > 0 && <CheckIcon aria-hidden="true" className="size-4 shrink-0 text-brand" />}
+        {[summary, removedSummary(removed)].filter(Boolean).join(" ")}
       </p>
       {removed.length > 0 && (
-        <details className="pl-5.5">
+        <details className={checked > 0 ? "pl-5.5" : undefined}>
           <summary className="cursor-pointer text-brand underline-offset-2 [@media(hover:hover)_and_(pointer:fine)]:hover:underline">
             What was removed
           </summary>

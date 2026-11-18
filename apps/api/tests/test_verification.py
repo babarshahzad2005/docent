@@ -161,3 +161,82 @@ def test_a_last_line_that_only_looks_like_the_heading_is_shown_in_the_end() -> N
     streamed = shown.feed("You get 28 days [1].\nQuo") + shown.finish()
 
     assert streamed == "You get 28 days [1].\nQuo"
+
+
+# --- Cases found in review and live answers -----------------------------------------------
+
+
+def test_one_quote_per_passage_verifies_every_sentence_citing_it() -> None:
+    result = check(
+        "You get 28 days [1]. That is 5.6 weeks of holiday [1]. SSP is weekly [2].",
+        (1, "the equivalent of 5.6 weeks of holiday"),
+        (2, "Statutory Sick Pay (SSP) is £118.75 a week"),
+    )
+
+    assert result.removed == [] and result.checked == 3
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["Quotes:", "Quotes", "Quote:", "**Quotes:**", "**Quotes**:", "### Quotes", "Sources:"],
+)
+def test_forms_of_the_quotes_heading_are_recognised_and_never_streamed(heading: str) -> None:
+    raw = f'You get 28 days [1].\n\n{heading}\n[1] "at least 28 days’ paid annual leave"\n'
+    shown = QuoteFilter()
+
+    streamed = "".join(shown.feed(raw[i : i + 3]) for i in range(0, len(raw), 3))
+    streamed += shown.finish()
+    text, quotes = split_answer(raw)
+
+    assert streamed.strip() == "You get 28 days [1]."
+    assert (text, quotes) == ("You get 28 days [1].", [(1, "at least 28 days’ paid annual leave")])
+
+
+def test_quotes_on_the_heading_line_or_with_windows_line_ends_are_read() -> None:
+    same_line = 'You get 28 days [1].\nQuotes: [1] "at least 28 days’ paid annual leave"'
+    crlf = 'You get 28 days [1].\r\n\r\nQuotes:\r\n[1] "at least 28 days’ paid annual leave"\r\n'
+
+    for raw in (same_line, crlf):
+        assert split_answer(raw)[1] == [(1, "at least 28 days’ paid annual leave")]
+
+
+def test_abbreviations_list_numbers_and_wrapped_lines_stay_in_their_claim() -> None:
+    result = check(
+        "The rate e.g. in the U.K. is weekly [2].\n1. Workers get 28 days [1]\n"
+        "A sentence that\nwraps onto a new line [7].",
+        (2, "Statutory Sick Pay (SSP) is £118.75 a week"),
+        (1, "at least 28 days’ paid annual leave"),
+    )
+
+    assert [claim.text for claim in result.claims] == [
+        "The rate e.g. in the U.K. is weekly [2].",
+        "1. Workers get 28 days [1]",
+        "A sentence that\nwraps onto a new line [7].",
+    ]
+    assert result.answer == "The rate e.g. in the U.K. is weekly [2].\n1. Workers get 28 days [1]"
+
+
+def test_a_removed_list_item_leaves_no_gap() -> None:
+    result = check(
+        "- 28 days [1].\n- 40 weeks [2].\n- 5.6 weeks [1].",
+        (1, "at least 28 days’ paid annual leave"),
+        (2, "paid for up to 40 weeks"),
+        (1, "the equivalent of 5.6 weeks of holiday"),
+    )
+
+    assert result.answer == "- 28 days [1].\n- 5.6 weeks [1]."
+    assert result.removed[0].text == "40 weeks."
+
+
+@pytest.mark.parametrize(
+    ("quote", "verified"),
+    [
+        ("is 118.75 a week", True),  # without the £
+        ("is £ 118.75 a week", True),
+        ("is £11875 a week", False),  # a different number
+        ("sick pay (SSP) is £118,75", False),  # 118,75 isn't 118.75
+        ("classed as an employee & have done", True),
+    ],
+)
+def test_numbers_symbols_and_ampersands(quote: str, verified: bool) -> None:
+    assert check("SSP [2].", (2, quote)).checked == int(verified)

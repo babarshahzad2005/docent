@@ -455,6 +455,7 @@ def test_citations_in_lenticular_brackets_are_understood_and_rewritten() -> None
     # gpt-oss sometimes writes 【1】 instead of [1].
     assert cited_numbers("Fewer than 1.5 s 【1】.", available=2) == [1]
     assert normalize_citations("A 【2】 and [1].") == "A [2] and [1]."
+    assert normalize_citations("PTO is flexible【1†L1-L4】.") == "PTO is flexible[1]."
 
 
 def test_a_document_cant_break_out_of_its_quotes() -> None:
@@ -682,6 +683,6 @@ def test_an_answer_with_no_verifiable_claim_is_not_shown(
     events = ask(reader, "How much leave carries over?", ScriptedModel(["Ten days [1]."]))
 
     done = events[-1]
-    assert isinstance(done, Completed) and done.outcome == "declined"
+    assert isinstance(done, Completed) and done.outcome == "unverified"
     assert done.answer.startswith("Docent couldn’t check this answer")
     assert done.cited == [] and len(done.removed) == 1

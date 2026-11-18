@@ -1,15 +1,17 @@
 """Checking an answer's Citations against their passages (ADR 0007).
 
-The answer model writes its answer, then a `Quotes:` line and, for each Citation in order,
-the exact words it relies on: `[2] "words copied from passage 2"`. The reader never sees the
-quotes; they are held back while the answer streams (`QuoteFilter`). Once it has finished,
-`verify` checks each quote against its passage:
+The answer model writes its answer, then a `Quotes:` line and, for each Citation, the exact
+words it relies on: `[2] "words copied from passage 2"`. The reader never sees the quotes;
+they are held back while the answer streams (`QuoteFilter`). Once it has finished, `verify`
+checks each Citation against its passage:
 
-- a Citation is verified when its quote occurs in the cited passage, allowing for differences
-  in case, whitespace, punctuation, and quotation marks, and for "…" between quoted parts;
+- a Citation is verified when a quote given for its passage occurs in that passage, allowing
+  for differences in case, whitespace, punctuation, and quotation marks, and for "…" between
+  quoted parts. Quotes are tried in the order given, then any other quote for the same
+  passage (models often quote each passage once, however often they cite it);
 - a quote shorter than three words can't verify anything (it would match almost any passage);
-- a sentence keeps its verified Citations and loses the others; a sentence left with none is
-  removed, with the reason. Sentences that cite nothing are kept as they are.
+- a Claim (a sentence, or a list item) keeps its verified Citations and loses the others; a
+  Claim left with none is removed, with the reason. Sentences that cite nothing are kept.
 
 Quote matching proves the passage contains the words, not that it fully supports the claim;
 the offline faithfulness eval measures that gap.
@@ -33,17 +35,24 @@ words out of the middle of a quote. Write no quotes when you reply that you coul
 the answer."""
 
 _CITATION = re.compile(r"\[(\d{1,2})\]")
-_QUOTE_LINE = re.compile(r"^\s*[-*]?\s*\[(\d{1,2})\]\s*[:\-]?\s*[\"“”](.+)[\"“”]\s*$")
+_QUOTE = re.compile(r"\[(\d{1,2})\][ \t]*[:\-]?[ \t]*[\"“”](.+?)[\"“”][ \t]*(?=\n|\[|$)")
 _ELLIPSIS = re.compile(r"\s*(?:…|\.\.\.)\s*")
-# A sentence ends at . ! or ? followed by a space (after any citations), or at a line break.
-_SENTENCE_END = re.compile(r"(?<=[.!?])((?:\s*\[\d{1,2}\])*)[ \t]+|\n")
+# The line that starts the quotes: "Quotes:", and the forms models drift into ("**Quotes**",
+# "### Quotes", "Quote:", "Sources:"), alone on its line or followed by the first quote.
+_HEADING = re.compile(
+    r"(?:^|\n)[ \t]*(?:#{1,6}[ \t]*)?\**[ \t]*(?:quotes?|sources?)[ \t]*\**[ \t]*:?[ \t]*\**"
+    r"[ \t]*(?=\n|\[\d|$)",
+    re.IGNORECASE,
+)
+_HEADING_WORDS = ("quotes:", "quote:", "sources:", "source:")
+_LIST_ITEM = re.compile(r"[ \t]*(?:[-*]|\d{1,2}[.)])[ \t]+")
 
 
 class QuoteFilter:
     """Passes the answer through as it streams, and holds back the quotes after it.
 
-    Text is held only while it could be the start of the `Quotes:` line, so the answer
-    itself streams without delay.
+    Text is held only while the line it is on could still become the quotes heading, so the
+    answer itself streams without a noticeable delay.
     """
 
     def __init__(self) -> None:
@@ -52,20 +61,23 @@ class QuoteFilter:
         self.closed = False  # the quotes have begun
 
     def feed(self, text: str) -> str:
-        self.raw += text
+        self.raw += text.replace("\r\n", "\n")
         if self.closed:
             return ""
         start = _quotes_start(self.raw)
         if start is not None:
             self.closed = True
-            visible = self.raw[self.shown : start]
-            self.shown = start
+            visible = self.raw[self.shown : max(start, self.shown)]
+            self.shown = max(start, self.shown)
             return visible
-        # Hold back the last line while it could still become the heading.
         line_start = self.raw.rfind("\n") + 1
-        tail = self.raw[line_start:].strip().lower()
-        safe = line_start if tail and QUOTES_HEADING.lower().startswith(tail) else len(self.raw)
-        safe = max(safe, self.shown)
+        line = self.raw[line_start:].strip()
+        tail = line.lstrip("#* \t").lower()
+        # "**" or "##" so far could still become the heading, as could "Quo".
+        could_be_heading = bool(line) and (
+            not tail or any(word.startswith(tail) for word in _HEADING_WORDS)
+        )
+        safe = max(line_start if could_be_heading else len(self.raw), self.shown)
         visible = self.raw[self.shown : safe]
         self.shown = safe
         return visible
@@ -80,24 +92,17 @@ class QuoteFilter:
 
 
 def _quotes_start(raw: str) -> int | None:
-    match = re.search(
-        rf"(?:^|\n)[ \t]*\**{re.escape(QUOTES_HEADING)}\**[ \t]*(?:\n|$)", raw, re.IGNORECASE
-    )
-    if match is None:
-        return None
-    return match.start()
+    match = _HEADING.search(raw)
+    return None if match is None else match.start()
 
 
 def split_answer(raw: str) -> tuple[str, list[tuple[int, str]]]:
     """The answer text, and its quotes as (passage number, quote) in order."""
+    raw = raw.replace("\r\n", "\n")
     start = _quotes_start(raw)
     if start is None:
         return raw.strip(), []
-    quotes = []
-    for line in raw[start:].splitlines()[1:]:
-        match = _QUOTE_LINE.match(line)
-        if match:
-            quotes.append((int(match.group(1)), match.group(2).strip()))
+    quotes = [(int(m.group(1)), m.group(2).strip()) for m in _QUOTE.finditer(raw, start)]
     return raw[:start].strip(), quotes
 
 
@@ -118,20 +123,20 @@ class Claim:
 
 @dataclass
 class Removed:
-    text: str  # the claim, without its Citation markers
+    text: str  # the Claim, without its Citation markers
     reason: str
-    original: str  # the sentence as it streamed, so the reader's copy can fade it out
+    original: str  # the Claim as it streamed, so the reader's copy can fade it out
 
 
 @dataclass
 class Verification:
-    answer: str  # what the reader sees: unsupported claims and Citations removed
+    answer: str  # what the reader sees: unsupported Claims and Citations removed
     claims: list[Claim]
     removed: list[Removed]
 
     @property
     def checked(self) -> int:
-        """Citations in the answer that were checked and verified."""
+        """Citations left in the answer, each checked and verified."""
         return sum(c.verified for claim in self.claims if claim.kept for c in claim.citations)
 
     def log(self) -> dict[str, Any]:
@@ -143,55 +148,75 @@ class Verification:
         }
 
 
-NO_QUOTE = "no quote was given for it"
-NOT_FOUND = "its quote isn’t in the cited passage"
-TOO_SHORT = "its quote is too short to check"
-NO_PASSAGE = "it cites a passage that doesn’t exist"
+# Why a Claim was removed, as the reader sees it ("…was removed: <reason>").
+NOT_FOUND = "the cited passage doesn’t say this"
+NO_QUOTE = "Docent couldn’t tie it to the cited passage"
+TOO_SHORT = "too little of the cited passage was given to check it"
+NO_PASSAGE = "it cited a source that wasn’t found"
 
 
 def verify(answer: str, quotes: Sequence[tuple[int, str]], passages: Sequence[str]) -> Verification:
-    """Check every Citation in `answer` against its quote and passage (1-based numbers)."""
-    unused: dict[int, list[str]] = {}
-    for number, given in quotes:
-        unused.setdefault(number, []).append(given)
+    """Check every Citation in `answer` against its quotes and passage (1-based numbers)."""
+    given: dict[int, list[str]] = {}
+    for number, quote in quotes:
+        given.setdefault(number, []).append(quote)
+    next_quote = dict.fromkeys(given, 0)
     claims: list[Claim] = []
     removed: list[Removed] = []
     pieces: list[str] = []
-    for sentence, separator in _sentences(answer):
+    line_start = True  # the next Claim begins a line
+    for sentence, separator in _claims(answer):
         claim = Claim(sentence)
         for match in _CITATION.finditer(sentence):
             number = int(match.group(1))
-            queue = unused.get(number)
-            quote = queue.pop(0) if queue else None
-            claim.citations.append(_check(number, quote, passages))
+            # Its own quote first (in order of use), then any other quote for the passage.
+            candidates = given.get(number, [])
+            first = next_quote.get(number, 0)
+            if first < len(candidates):
+                next_quote[number] = first + 1
+            ordered = candidates[first:] + candidates[:first]
+            claim.citations.append(_check(number, ordered, passages))
         claims.append(claim)
         if claim.citations and not any(c.verified for c in claim.citations):
             claim.kept = False
             reason = claim.citations[0].reason or NOT_FOUND
-            removed.append(Removed(_without_citations(sentence), reason, sentence.strip()))
-            pieces.append(_drop_separator(separator))
-            continue
-        pieces.append(_keep_verified(sentence, claim.citations) + separator)
-    text = _tidy("".join(pieces))
-    return Verification(text, claims, removed)
+            removed.append(Removed(_plain(sentence), reason, sentence.strip()))
+            # A whole line removed takes its line break with it; mid-line, keep the break.
+            pieces.append("" if line_start else ("\n" if "\n" in separator else ""))
+        else:
+            pieces.append(_keep_verified(sentence, claim.citations) + separator)
+        line_start = "\n" in separator or (line_start and not pieces[-1])
+    return Verification(_tidy("".join(pieces)), claims, removed)
 
 
-def _check(number: int, quote: str | None, passages: Sequence[str]) -> CitationCheck:
+def _check(number: int, quotes: list[str], passages: Sequence[str]) -> CitationCheck:
     if not 1 <= number <= len(passages):
-        return CitationCheck(number, quote, False, NO_PASSAGE)
-    if quote is None:
+        return CitationCheck(number, quotes[0] if quotes else None, False, NO_PASSAGE)
+    if not quotes:
         return CitationCheck(number, None, False, NO_QUOTE)
+    passage = _words(passages[number - 1])
+    failure: CitationCheck | None = None
+    for quote in quotes:
+        reason = _quote_fails(quote, passage)
+        if reason is None:
+            return CitationCheck(number, quote, True)
+        failure = failure or CitationCheck(number, quote, False, reason)
+    assert failure is not None
+    return failure
+
+
+def _quote_fails(quote: str, passage: str) -> str | None:
+    """Why `quote` doesn't verify against the normalised `passage`; None if it does."""
     parts = [part for part in (_words(p) for p in _ELLIPSIS.split(quote)) if part]
     if sum(len(part.split()) for part in parts) < MIN_QUOTE_WORDS:
-        return CitationCheck(number, quote, False, TOO_SHORT)
-    passage = _words(passages[number - 1])
+        return TOO_SHORT
     position = 0
     for part in parts:
         found = _find_words(passage, part, position)
         if found < 0:
-            return CitationCheck(number, quote, False, NOT_FOUND)
+            return NOT_FOUND
         position = found + len(part)
-    return CitationCheck(number, quote, True)
+    return None
 
 
 def _find_words(text: str, words: str, start: int) -> int:
@@ -207,33 +232,56 @@ def _words(text: str) -> str:
     text = unicodedata.normalize("NFKC", text).lower()
     text = re.sub("[‘’`´]", "'", text)  # noqa: RUF001 (apostrophes)
     text = re.sub(r"(?<=\w)'(?=\w)", "", text)  # don't → dont, worker’s → workers
-    text = re.sub(r"(?<=\d)[.,](?=\d)", "", text)  # 12.21 → 1221, 1,000 → 1000
-    text = re.sub(r"[^\w£$€%]+", " ", text)
+    text = re.sub(r"(?<=\d),(?=\d{3}\b)", "", text)  # 1,000 → 1000
+    text = re.sub(r"(?<=\d)\.(?=\d)", "_", text)  # 12.21 stays one number, distinct from 1221
+    text = text.replace("&", " and ")
+    text = text.replace("%", " % ")  # 50 % and 50% match
+    # Currency signs are dropped, so "£12.21" and "12.21" match; the number must still match.
+    text = re.sub(r"[^\w%]+", " ", text)
     return " ".join(text.split())
 
 
-def _sentences(answer: str) -> list[tuple[str, str]]:
-    """The answer as (sentence, the whitespace after it), keeping citations with their
-    sentence."""
+def _claims(answer: str) -> list[tuple[str, str]]:
+    """The answer as Claims (sentences, or list items), each with the whitespace after it.
+
+    A sentence ends at . ! or ? (after any Citations) followed by a space and a capital,
+    digit, or quote, so "e.g. in the U.K. is" stays whole; a list item's number ("1.") is
+    not a sentence. A line break ends a Claim when the line ends a sentence or a Citation,
+    or the next line is blank or a list item; otherwise the sentence carries on.
+    """
     out: list[tuple[str, str]] = []
     position = 0
-    for match in _SENTENCE_END.finditer(answer):
+    for match in re.finditer(
+        r"(?<=[.!?])((?:[ \t]*\[\d{1,2}\])*)([ \t]+)(?=[A-Z0-9\"“‘(*])|\n", answer
+    ):
         if match.group(0) == "\n":
-            end, after = match.start(), match.end()
-            out.append((answer[position:end], "\n"))
-        else:
-            citations = match.group(1) or ""
-            end = match.start() + len(citations)
-            out.append((answer[position:end], answer[end : match.end()]))
-            after = match.end()
-        position = after
+            line = answer[position : match.start()]
+            after = answer[match.end() :]
+            ends = re.search(r"[.!?:\]]\s*$", line) or not line.strip()
+            if not (ends or not after.strip() or after.startswith("\n") or _LIST_ITEM.match(after)):
+                continue  # the sentence carries on onto the next line
+            out.append((line, "\n"))
+            position = match.end()
+            continue
+        end = match.start() + len(match.group(1))
+        if _LIST_ITEM.fullmatch(answer[answer.rfind("\n", 0, end) + 1 : end] + " "):
+            continue  # "1. " starts a list item; it doesn't end a sentence
+        out.append((answer[position:end], match.group(2)))
+        position = match.end()
     if position < len(answer):
         out.append((answer[position:], ""))
-    return [(sentence, separator) for sentence, separator in out if sentence or separator]
+    # Separators of consecutive line breaks collapse into the Claim before them.
+    merged: list[tuple[str, str]] = []
+    for sentence, separator in out:
+        if not sentence and merged:
+            merged[-1] = (merged[-1][0], merged[-1][1] + separator)
+        else:
+            merged.append((sentence, separator))
+    return merged
 
 
 def _keep_verified(sentence: str, checks: list[CitationCheck]) -> str:
-    """The sentence without the markers of Citations that failed their check."""
+    """The Claim without the markers of Citations that failed their check."""
     results = iter(checks)
 
     def keep(match: re.Match[str]) -> str:
@@ -243,18 +291,16 @@ def _keep_verified(sentence: str, checks: list[CitationCheck]) -> str:
     return _CITATION.sub(keep, sentence)
 
 
-def _without_citations(sentence: str) -> str:
+def _plain(sentence: str) -> str:
+    """A Claim as words alone: no Citation markers, list marker, or space before punctuation."""
     text = " ".join(_CITATION.sub("", sentence).split())
-    return re.sub(r" ([.,;:!?])", r"\1", text).lstrip("-* ")
-
-
-def _drop_separator(separator: str) -> str:
-    return "\n" if "\n" in separator else ""
+    text = re.sub(r" ([.,;:!?])", r"\1", text)
+    return _LIST_ITEM.sub("", text, count=1) if _LIST_ITEM.match(text) else text
 
 
 def _tidy(text: str) -> str:
     text = re.sub(r"[ \t]+([.,;:!?])", r"\1", text)  # a space left before punctuation
     text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
-    lines = [line for line in text.split("\n") if line.strip() not in ("-", "*")]
+    lines = [line for line in text.split("\n") if not _LIST_ITEM.fullmatch(line + " ")]
     return "\n".join(line.rstrip() for line in lines).strip()

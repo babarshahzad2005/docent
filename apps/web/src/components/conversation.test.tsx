@@ -73,7 +73,7 @@ describe("Conversation", () => {
     await waitFor(() =>
       expect(screen.getByText("Up to 10 days carry over .", { selector: "p" })).toBeTruthy(),
     );
-    expect(screen.getByText("All 1 citation checked against their source.")).toBeTruthy();
+    expect(screen.getByText("The citation was checked against its source.")).toBeTruthy();
     expect(window.location.pathname).toBe("/conversations/c1");
     const results = await axe(container, { rules: { "color-contrast": { enabled: false } } });
     expect(results.violations.map((v) => v.id)).toEqual([]);
@@ -97,7 +97,7 @@ describe("Conversation", () => {
               removed: [
                 {
                   text: "Unused days are paid out.",
-                  reason: "its quote isn’t in the cited passage",
+                  reason: "the cited passage doesn’t say this",
                   original: "Unused days are paid out [1].",
                 },
               ],
@@ -108,10 +108,14 @@ describe("Conversation", () => {
     );
     render(<Conversation conversationId={null} initialTurns={[]} startQuestion="How much?" />);
 
-    await waitFor(() => expect(screen.getByText(/1 claim was removed/)).toBeTruthy());
+    await screen.findByText("What was removed");
     expect(screen.queryByText(/paid out \[|paid out $/)).toBeNull();
     expect(document.querySelector("[data-fading]")).toBeNull();
-    expect(screen.getByText("1 citation checked against their source. 1 claim was removed because it couldn’t be checked.", { exact: false })).toBeTruthy();
+    expect(
+      screen.getByText(
+        "1 citation was checked against its source. 1 claim was removed because it couldn’t be checked.",
+      ),
+    ).toBeTruthy();
     await userEvent.click(screen.getByText("What was removed"));
     expect(screen.getByText("“Unused days are paid out.”")).toBeTruthy();
   });

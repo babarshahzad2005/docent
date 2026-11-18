@@ -92,6 +92,10 @@ _Avoid_: Context, filter, selection
 A numbered reference in an answer to the exact passage that supports a claim; it always shows the passage as it was when the answer was given.
 _Avoid_: Source, reference, footnote
 
+**Claim**:
+A sentence or list item of an answer that cites at least one passage. A Claim whose Citations can't be checked against their passages is removed from the answer, and the answer says so.
+_Avoid_: Statement, assertion
+
 **Decline**:
 An answer stating the Documents in Scope don't contain the answer, offered with the closest passages instead of a guess.
 _Avoid_: Fallback, refusal, no-answer

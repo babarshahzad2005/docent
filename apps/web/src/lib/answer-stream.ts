@@ -21,7 +21,8 @@ export type AnswerEvent =
   | {
       event: "done";
       message_id: string;
-      outcome: "answered" | "declined";
+      /** "unverified": nothing in the answer could be checked, so it isn't shown. */
+      outcome: "answered" | "declined" | "unverified";
       cited: number[];
       /** The answer once its Citations were checked: replaces the streamed text. */
       answer: string;
@@ -69,10 +70,16 @@ function parseEvent(block: string): AnswerEvent | null {
 export type Segment = { text: string } | { citation: number };
 
 /**
- * A Citation marker: `[n]`, or `\u3010n\u3011` (CJK brackets), which models sometimes write
- * instead. The API rewrites saved answers to `[n]`; text still streaming is read either way.
+ * A Citation marker: `[n]`, or `\u3010n\u3011` (CJK brackets, sometimes with a line range:
+ * `\u30101\u2020L1-L4\u3011`), which models sometimes write instead. The API rewrites saved
+ * answers to `[n]`; text still streaming is read either way.
  */
-export const CITATION = /[[\u3010](\d{1,2})[\]\u3011]/g;
+export const CITATION = /[[\u3010](\d{1,2})(?:\u2020[^\]\u3011\n]{0,20})?[\]\u3011]/g;
+
+/** Every Citation marker written as `[n]`, as the API saves them. */
+export function normalizeCitations(answer: string): string {
+  return answer.replace(CITATION, "[$1]");
+}
 
 /** The answer's words without its Citation markers, for reading aloud. */
 export function withoutCitations(answer: string): string {
