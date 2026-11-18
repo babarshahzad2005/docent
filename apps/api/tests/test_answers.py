@@ -533,3 +533,81 @@ def test_unknown_conversations_are_not_found(client: TestClient) -> None:
 def test_empty_questions_are_refused(client: TestClient) -> None:
     assert client.post("/answers", json={"question": ""}).status_code == 422
     assert client.post("/answers", json={"question": "   "}).status_code == 422
+
+
+# --- Passages in context (Citation pane) ---------------------------------------------------
+
+LONG = b"# Handbook\n\n## Leave\n\n" + b"\n\n".join(
+    f"Paragraph {n}. ".encode() + b"Leave rules apply to everyone in the team. " * 30
+    for n in range(1, 5)
+)
+
+
+def test_a_cited_passage_comes_with_its_neighbours(conn: Connection[DictRow]) -> None:
+    from docent_api.retrieval import passage_in_context
+
+    user = make_user(conn, "context@example.com")
+    document_id = add(conn, user, "handbook.md", LONG)
+    rows = conn.execute(
+        "select id, ordinal from app.chunks where document_id = %s order by ordinal",
+        (document_id,),
+    ).fetchall()
+    conn.commit()
+    assert len(rows) >= 3
+    middle = rows[1]["id"]
+
+    shown = passage_in_context(conn, user.id, middle)
+
+    assert shown["heading_path"] == ["Handbook", "Leave"]
+    assert shown["before"] is not None and str(shown["before"]).startswith("Paragraph 1.")
+    assert shown["after"] is not None
+    first = passage_in_context(conn, user.id, rows[0]["id"])
+    assert first["before"] is None
+
+
+def test_nobody_reads_a_passage_they_cant_reach(
+    conn: Connection[DictRow], reader: AuthUser
+) -> None:
+    from docent_api.retrieval import PassageNotFound, passage_in_context
+
+    chunk = conn.execute("select id from app.chunks limit 1").fetchone()
+    conn.commit()
+    assert chunk is not None
+    stranger = make_user(conn, "nosy@example.com")
+
+    with pytest.raises(PassageNotFound):
+        passage_in_context(conn, stranger.id, chunk["id"])
+
+
+def test_citations_keep_their_passage_after_the_document_is_deleted(
+    conn: Connection[DictRow], reader: AuthUser
+) -> None:
+    from docent_api.documents import delete_document
+
+    events = ask(
+        reader, "How much unused annual leave carries over?", ScriptedModel(["10 days [1]."])
+    )
+    start = events[0]
+    assert isinstance(start, Started) and start.sources[0].chunk_id
+    leave = conn.execute("select id from app.documents where name = 'leave.md'").fetchone()
+    conn.commit()
+    assert leave is not None
+    delete_document(conn, MemoryStore(), reader.id, leave["id"])
+
+    citation = load_conversation(conn, reader.id, UUID(start.conversation_id))["messages"][1][
+        "citations"
+    ][0]
+
+    assert citation["chunk_id"] is None and citation["document_id"] is None
+    assert "carries into the next year" in citation["passage"]  # the passage as it was cited
+
+
+def test_the_passage_endpoint(client: TestClient, conn: Connection[DictRow]) -> None:
+    chunk = conn.execute("select id from app.chunks limit 1").fetchone()
+    conn.commit()
+    assert chunk is not None
+
+    found = client.get(f"/passages/{chunk['id']}")
+
+    assert found.status_code == 200 and found.json()["content"]
+    assert client.get(f"/passages/{uuid4()}").status_code == 404

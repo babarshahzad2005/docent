@@ -3,6 +3,18 @@
     "schemas": {
       "CitationOut": {
         "properties": {
+          "chunk_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Id"
+          },
           "document_id": {
             "anyOf": [
               {
@@ -48,6 +60,7 @@
         },
         "required": [
           "number",
+          "chunk_id",
           "document_id",
           "document_name",
           "heading_path",
@@ -368,6 +381,80 @@
           "sha256"
         ],
         "title": "NewDocument",
+        "type": "object"
+      },
+      "PassageOut": {
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "chunk_id": {
+            "format": "uuid",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_name": {
+            "title": "Document Name",
+            "type": "string"
+          },
+          "heading_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Heading Path",
+            "type": "array"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "document_id",
+          "document_name",
+          "heading_path",
+          "page",
+          "content",
+          "before",
+          "after"
+        ],
+        "title": "PassageOut",
         "type": "object"
       },
       "Question": {
@@ -918,6 +1005,55 @@
         "summary": "Me",
         "tags": [
           "library"
+        ]
+      }
+    },
+    "/passages/{chunk_id}": {
+      "get": {
+        "description": "A passage the User can read, with its neighbours, for showing a Citation in context.",
+        "operationId": "getPassage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chunk_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chunk Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Passage",
+        "tags": [
+          "answers"
         ]
       }
     }

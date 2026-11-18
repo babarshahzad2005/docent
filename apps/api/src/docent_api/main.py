@@ -38,6 +38,7 @@ from docent_api.documents import (
 from docent_api.ingestion import run_batch
 from docent_api.library import CollectionSummary, ensure_user, list_collections
 from docent_api.providers.registry import answer_generator, embedder
+from docent_api.retrieval import PassageNotFound, passage_in_context
 from docent_api.scheduler import is_valid_trigger
 from docent_api.storage import FileStore, StorageError, get_file_store
 
@@ -108,6 +109,8 @@ class Question(BaseModel):
 
 class CitationOut(BaseModel):
     number: int
+    chunk_id: UUID | None
+    """The passage it cites, while it still exists; None once its Document is deleted."""
     document_id: UUID | None
     document_name: str
     heading_path: list[str]
@@ -122,6 +125,18 @@ class MessageOut(BaseModel):
     status: Literal["streaming", "complete", "interrupted", "failed"]
     created_at: datetime
     citations: list[CitationOut]
+
+
+class PassageOut(BaseModel):
+    chunk_id: UUID
+    document_id: UUID
+    document_name: str
+    heading_path: list[str]
+    page: int | None
+    content: str
+    before: str | None
+    """The passage just before, in the same Document and section, for context."""
+    after: str | None
 
 
 class ConversationOut(BaseModel):
@@ -325,4 +340,15 @@ def conversation(conversation_id: UUID, user: User, conn: Db) -> ConversationOut
     except ConversationNotFound:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, "That conversation doesn\u2019t exist."
+        ) from None
+
+
+@app.get("/passages/{chunk_id}", operation_id="getPassage", tags=["answers"])
+def passage(chunk_id: UUID, user: User, conn: Db) -> PassageOut:
+    """A passage the User can read, with its neighbours, for showing a Citation in context."""
+    try:
+        return PassageOut.model_validate(passage_in_context(conn, user.id, chunk_id))
+    except PassageNotFound:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "That passage isn\u2019t available any more."
         ) from None

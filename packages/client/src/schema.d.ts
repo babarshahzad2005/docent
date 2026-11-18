@@ -209,12 +209,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/passages/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Passage
+         * @description A passage the User can read, with its neighbours, for showing a Citation in context.
+         */
+        get: operations["getPassage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** CitationOut */
         CitationOut: {
+            /** Chunk Id */
+            chunk_id: string | null;
             /** Document Id */
             document_id: string | null;
             /** Document Name */
@@ -381,6 +403,31 @@ export interface components {
             sha256: string;
             /** Size Bytes */
             size_bytes: number;
+        };
+        /** PassageOut */
+        PassageOut: {
+            /** After */
+            after: string | null;
+            /** Before */
+            before: string | null;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Content */
+            content: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Document Name */
+            document_name: string;
+            /** Heading Path */
+            heading_path: string[];
+            /** Page */
+            page: number | null;
         };
         /** Question */
         Question: {
@@ -743,6 +790,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Me"];
+                };
+            };
+        };
+    };
+    getPassage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PassageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
