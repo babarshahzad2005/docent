@@ -50,6 +50,8 @@ async function SavedConversation({ params }: { params: Promise<{ id: string }> }
     turn.sources = message.citations;
     turn.cited = message.citations.map((citation) => citation.number);
     turn.status = message.status === "streaming" ? "interrupted" : message.status;
+    turn.verified = message.verified;
+    turn.removed = message.removed;
     if (message.status === "interrupted") turn.error = "This answer was cut off. Ask again to get the whole answer.";
     if (message.status === "failed") turn.error = "Docent couldn’t answer this. Ask again.";
   }

@@ -58,6 +58,13 @@ Unused annual leave of up to 10 days carries into the next year. The rest is for
 
 Leave longer than five days needs two weeks' notice using form HR-27.
 """
+
+# The quotes a model gives after its answer, for each Citation in order (ADR 0007).
+QUOTES = '\n\nQuotes:\n[1] "up to 10 days carries into the next year"\n'
+QUOTE_REST = '[1] "The rest is forfeited"\n'
+QUOTE_REST_ONLY = '\nQuotes:\n[1] "The rest is forfeited"'
+QUOTE_FORM = '\nQuotes:\n[1] "needs two weeks\' notice using form HR-27"'
+
 EXPENSES = b"""# Expenses
 
 Travel is reimbursed at economy fares. Claims must be submitted within 30 days.
@@ -275,7 +282,9 @@ def test_keywords_match_other_forms_of_a_word(conn: Connection[DictRow], reader:
 def test_an_answer_streams_with_citations_and_is_saved(
     conn: Connection[DictRow], reader: AuthUser
 ) -> None:
-    model = ScriptedModel(["Up to 10 days ", "carry over [1]", ". The rest is forfeited [1]."])
+    model = ScriptedModel(
+        ["Up to 10 days ", "carry over [1]", ". The rest is forfeited [1].", QUOTES, QUOTE_REST]
+    )
 
     events = ask(reader, "How much unused annual leave carries over?", model)
 
@@ -318,7 +327,7 @@ def test_without_embeddings_keyword_search_still_answers(
     events = ask(
         reader,
         "What is form HR-27 for?",
-        ScriptedModel(["Long leave [1]."]),
+        ScriptedModel(["Long leave [1].", QUOTE_FORM]),
         WordsEmbedder(broken=True),
     )
 
@@ -330,7 +339,9 @@ def test_the_backup_model_answers_when_the_main_one_fails_first(
 ) -> None:
     from docent_api.providers.fallback import FallbackGenerator
 
-    model = FallbackGenerator(ScriptedModel(["x"], fail_after=0), ScriptedModel(["10 days [1]."]))
+    model = FallbackGenerator(
+        ScriptedModel(["x"], fail_after=0), ScriptedModel(["10 days [1].", QUOTES])
+    )
 
     events = ask(reader, "How much leave carries over?", model)  # type: ignore[arg-type]
 
@@ -416,9 +427,14 @@ def test_a_model_decline_is_recorded_as_one(conn: Connection[DictRow], reader: A
 def test_follow_ups_join_the_conversation_and_others_cant(
     conn: Connection[DictRow], reader: AuthUser
 ) -> None:
-    first = ask(reader, "How much leave carries over?", ScriptedModel(["10 days [1]."]))
+    first = ask(reader, "How much leave carries over?", ScriptedModel(["10 days [1].", QUOTES]))
     conversation_id = UUID(first[0].conversation_id)  # type: ignore[union-attr]
-    ask(reader, "And the rest?", ScriptedModel(["Forfeited [1]."]), conversation_id=conversation_id)
+    ask(
+        reader,
+        "And the rest?",
+        ScriptedModel(["Forfeited [1].", QUOTE_REST_ONLY]),
+        conversation_id=conversation_id,
+    )
 
     assert len(load_conversation(conn, reader.id, conversation_id)["messages"]) == 4
     stranger = make_user(conn, "stranger@example.com")
@@ -439,6 +455,7 @@ def test_citations_in_lenticular_brackets_are_understood_and_rewritten() -> None
     # gpt-oss sometimes writes 【1】 instead of [1].
     assert cited_numbers("Fewer than 1.5 s 【1】.", available=2) == [1]
     assert normalize_citations("A 【2】 and [1].") == "A [2] and [1]."
+    assert normalize_citations("PTO is flexible【1†L1-L4】.") == "PTO is flexible[1]."
 
 
 def test_a_document_cant_break_out_of_its_quotes() -> None:
@@ -494,7 +511,7 @@ def client(
             yield own
 
     monkeypatch.setattr(main, "embedder", WordsEmbedder)
-    monkeypatch.setattr(main, "answer_generator", lambda: ScriptedModel(["10 days [1]."]))
+    monkeypatch.setattr(main, "answer_generator", lambda: ScriptedModel(["10 days [1].", QUOTES]))
     app = main.app
     app.dependency_overrides[current_user] = lambda: reader
     app.dependency_overrides[get_connection] = connection
@@ -585,7 +602,9 @@ def test_citations_keep_their_passage_after_the_document_is_deleted(
     from docent_api.documents import delete_document
 
     events = ask(
-        reader, "How much unused annual leave carries over?", ScriptedModel(["10 days [1]."])
+        reader,
+        "How much unused annual leave carries over?",
+        ScriptedModel(["10 days [1].", QUOTES]),
     )
     start = events[0]
     assert isinstance(start, Started) and start.sources[0].chunk_id
@@ -612,3 +631,58 @@ def test_the_passage_endpoint(client: TestClient, conn: Connection[DictRow]) -> 
 
     assert found.status_code == 200 and found.json()["content"]
     assert client.get(f"/passages/{uuid4()}").status_code == 404
+
+
+# --- Verification (ADR 0007) --------------------------------------------------------------
+
+
+def test_an_unsupported_claim_is_removed_and_the_check_is_logged(
+    conn: Connection[DictRow], reader: AuthUser
+) -> None:
+    model = ScriptedModel(
+        [
+            "Up to 10 days carry over [1]. ",
+            "Unused days are paid out [1].",
+            '\nQuotes:\n[1] "up to 10 days carries into the next year"\n',
+            '[1] "unused days are paid out at the end of the year"',
+        ]
+    )
+
+    events = ask(reader, "How much unused annual leave carries over?", model)
+
+    start, done = events[0], events[-1]
+    assert isinstance(start, Started)
+    assert isinstance(done, Completed) and done.verified
+    assert done.answer == "Up to 10 days carry over [1]."
+    assert done.removed == [
+        {
+            "text": "Unused days are paid out.",
+            "reason": "the cited passage doesn’t say this",
+            "original": "Unused days are paid out [1].",
+        }
+    ]
+    streamed = "".join(e.text for e in events if isinstance(e, Delta))
+    assert "Quotes:" not in streamed and "paid out at the end" not in streamed
+    reply = load_conversation(conn, reader.id, UUID(start.conversation_id))["messages"][1]
+    assert reply["content"] == "Up to 10 days carry over [1]." and reply["verified"]
+    assert reply["removed"][0]["text"] == "Unused days are paid out."
+    log = conn.execute(
+        "select raw_answer, verification from app.answer_logs where message_id = %s",
+        (UUID(done.message_id),),
+    ).fetchone()
+    conn.commit()
+    assert log is not None and "Quotes:" in log["raw_answer"]
+    checks = [c for claim in log["verification"]["claims"] for c in claim["citations"]]
+    assert [c["verified"] for c in checks] == [True, False]
+    assert log["verification"]["removed"] == 1
+
+
+def test_an_answer_with_no_verifiable_claim_is_not_shown(
+    conn: Connection[DictRow], reader: AuthUser
+) -> None:
+    events = ask(reader, "How much leave carries over?", ScriptedModel(["Ten days [1]."]))
+
+    done = events[-1]
+    assert isinstance(done, Completed) and done.outcome == "unverified"
+    assert done.answer.startswith("Docent couldn’t check this answer")
+    assert done.cited == [] and len(done.removed) == 1

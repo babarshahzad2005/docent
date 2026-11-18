@@ -360,6 +360,13 @@
             "title": "Id",
             "type": "string"
           },
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/RemovedClaim"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
           "role": {
             "enum": [
               "user",
@@ -385,6 +392,10 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "boolean"
           }
         },
         "required": [
@@ -393,6 +404,8 @@
           "content",
           "status",
           "scope",
+          "verified",
+          "removed",
           "created_at",
           "citations"
         ],
@@ -547,6 +560,29 @@
           "question"
         ],
         "title": "Question",
+        "type": "object"
+      },
+      "RemovedClaim": {
+        "properties": {
+          "original": {
+            "title": "Original",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "reason",
+          "original"
+        ],
+        "title": "RemovedClaim",
         "type": "object"
       },
       "StartedUpload": {
