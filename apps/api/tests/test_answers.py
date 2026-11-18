@@ -589,6 +589,7 @@ def test_citations_keep_their_passage_after_the_document_is_deleted(
     )
     start = events[0]
     assert isinstance(start, Started) and start.sources[0].chunk_id
+    assert "carries into the next year" in start.sources[0].passage
     leave = conn.execute("select id from app.documents where name = 'leave.md'").fetchone()
     conn.commit()
     assert leave is not None

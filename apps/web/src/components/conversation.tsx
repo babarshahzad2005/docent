@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { AskBox } from "@/components/ask-box";
-import { type CitedSource, SourcePane } from "@/components/source-pane";
+import { CITATION_CHIP, type CitedSource, SourceMeta, SourcePane } from "@/components/source-pane";
 import { Button } from "@/components/ui/button";
 import {
   readAnswerEvents,
@@ -192,7 +192,12 @@ function TurnView({
   };
   const open = (n: number) => (event: React.MouseEvent<HTMLElement>) => {
     const source = byNumber.get(n);
-    if (source) onOpenSource({ ...source, chunk_id: source.chunk_id ?? null }, event.currentTarget);
+    if (source) {
+      onOpenSource(
+        { ...source, chunk_id: source.chunk_id ?? null, openedAt: Date.now() },
+        event.currentTarget,
+      );
+    }
   };
 
   return (
@@ -214,7 +219,7 @@ function TurnView({
               type="button"
               aria-label={label(part.citation)}
               onClick={open(part.citation)}
-              className="mx-0.5 inline-flex min-w-5 -translate-y-1 cursor-pointer items-center justify-center rounded-sm border-b-2 border-mark-edge bg-mark px-1 font-sans text-cite font-semibold text-mark-text"
+              className={`${CITATION_CHIP} mx-0.5 -translate-y-1 cursor-pointer`}
             >
               {part.citation}
             </button>
@@ -241,15 +246,10 @@ function TurnView({
                 onClick={open(source.number)}
                 className="flex w-full cursor-pointer gap-3 rounded-lg px-2 py-2 text-left text-meta hover:bg-muted"
               >
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm border-b-2 border-mark-edge bg-mark px-1 text-cite font-semibold text-mark-text">
-                  {source.number}
-                </span>
+                <span className={`${CITATION_CHIP} h-5`}>{source.number}</span>
                 <span className="flex flex-col">
                   <span className="font-medium text-foreground">{source.document_name}</span>
-                  <span className="flex flex-wrap gap-x-3 text-muted-foreground">
-                    {source.heading_path.length > 0 && <span>{source.heading_path.join(" › ")}</span>}
-                    {source.page !== null && <span className="tabular-nums">Page&nbsp;{source.page}</span>}
-                  </span>
+                  <SourceMeta headingPath={source.heading_path} page={source.page} />
                 </span>
               </button>
             </li>

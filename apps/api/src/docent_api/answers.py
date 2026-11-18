@@ -70,6 +70,7 @@ class SourceInfo:
     document_name: str
     heading_path: list[str]
     page: int | None
+    passage: str  # shown at once when a Citation is opened, before its context loads
 
 
 @dataclass(frozen=True)
@@ -274,6 +275,7 @@ def _source(number: int, passage: Passage) -> SourceInfo:
         document_name=passage.document_name,
         heading_path=list(passage.heading_path),
         page=passage.page,
+        passage=passage.content,
     )
 
 

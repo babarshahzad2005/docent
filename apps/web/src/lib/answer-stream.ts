@@ -8,6 +8,7 @@ export type Source = {
   document_name: string;
   heading_path: string[];
   page: number | null;
+  /** The passage's text as retrieved; sent with every source, so Citations can show it at once. */
   passage?: string;
 };
 

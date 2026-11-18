@@ -194,7 +194,7 @@ def passage_in_context(
         select c.id as chunk_id, c.document_id, d.name as document_name, c.heading_path,
                c.page, c.content, c.ordinal
         from app.chunks c
-        join app.documents d on d.id = c.document_id
+        join app.documents d on d.id = c.document_id and d.status = 'indexed'
         join app.memberships m on m.collection_id = c.collection_id and m.user_id = %s
         where c.id = %s
         """,

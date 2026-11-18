@@ -144,10 +144,14 @@ describe("The source of a Citation", () => {
     const results = await axe(container, { rules: { "color-contrast": { enabled: false } } });
     expect(results.violations.map((v) => v.id)).toEqual([]);
 
+    await waitFor(() => expect(pane.querySelector("mark[data-shown]")).toBeTruthy());
+
+    // Escape closes it from anywhere on the page, not only from inside the pane.
+    screen.getByRole("textbox", { name: "Ask a follow-up question" }).focus();
     await user.keyboard("{Escape}");
 
-    expect(screen.queryByRole("complementary", { name: "Source" })).toBeNull();
     expect(document.activeElement).toBe(citation);
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Source" })).toBeNull());
   });
 
   it("opens from the Sources list too, and says when the Document was removed", async () => {
@@ -177,6 +181,24 @@ describe("The source of a Citation", () => {
 
     const sheet = await screen.findByRole("dialog", { name: "leave.pdf" });
     expect(sheet.querySelector("mark")).toBeTruthy();
-    expect(await screen.findByText(/This document has been removed/)).toBeTruthy();
+    expect(await screen.findByText(/isn’t available any more/)).toBeTruthy();
+  });
+
+  it("shows the passage at once for an answer that just streamed in", async () => {
+    screenWidth(true);
+    passages.getPassage.mockResolvedValue({ ok: false, message: "Your session has expired." });
+    const streamed: Turn = {
+      ...SAVED,
+      sources: [{ ...SAVED.sources[0], passage: "Unused leave of up to 10 days carries over." }],
+    };
+    const user = userEvent.setup();
+    render(<Conversation conversationId="c1" initialTurns={[streamed]} />);
+
+    await user.click(screen.getByRole("button", { name: "Source 1, leave.pdf, page 9" }));
+
+    const pane = screen.getByRole("complementary", { name: "Source" });
+    expect(pane.querySelector("mark")?.textContent).toBe("Unused leave of up to 10 days carries over.");
+    expect((await screen.findByRole("alert")).textContent).toBe("Your session has expired.");
+    expect(screen.queryByText("Loading the passage…")).toBeNull();
   });
 });
