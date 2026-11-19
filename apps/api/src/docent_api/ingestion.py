@@ -344,7 +344,6 @@ def _replace(conn: Connection[DictRow], version_id: UUID, document_id: UUID) -> 
             "size": new["size_bytes"],
             "path": new["storage_path"],
             "hash": new["content_hash"],
-            "effective": new["effective_date"],
             "by": new["uploaded_by"],
             "id": document_id,
         },
