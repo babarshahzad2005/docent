@@ -7,8 +7,22 @@ from docent_api.answers import SYSTEM_PROMPT, build_prompt
 from docent_api.retrieval import PER_DOCUMENT, Passage, _spread
 
 
-def passage(document: UUID, text: str, effective: date | None = None) -> Passage:
-    return Passage(uuid4(), document, "doc.md", (), None, text, 0.0, 1, None, 0.7, effective)
+def passage(
+    document: UUID, text: str, effective: date | None = None, similarity: float = 0.7
+) -> Passage:
+    return Passage(
+        chunk_id=uuid4(),
+        document_id=document,
+        document_name="doc.md",
+        heading_path=(),
+        page=None,
+        content=text,
+        score=0.0,
+        vector_rank=1,
+        keyword_rank=None,
+        similarity=similarity,
+        effective_date=effective,
+    )
 
 
 def test_one_long_document_cannot_crowd_out_the_others() -> None:
@@ -21,7 +35,26 @@ def test_one_long_document_cannot_crowd_out_the_others() -> None:
 
     assert [p.content for p in chosen][:PER_DOCUMENT] == ["reforms 0", "reforms 1", "reforms 2"]
     assert "guidance 1" in [p.content for p in chosen]
-    assert len(chosen) == 8  # the rest is filled from the long Document, best first
+    assert len(chosen) == 8  # the rest is filled from the long Document
+    assert [p.content for p in chosen] == [p.content for p in ranked if p in chosen]  # best first
+
+
+def test_a_passage_far_down_the_ranking_does_not_displace_a_strong_one() -> None:
+    policy, other = uuid4(), uuid4()
+    ranked = [passage(policy, f"policy {n}") for n in range(20)] + [passage(other, "weak")]
+
+    chosen = _spread(ranked, limit=8)
+
+    assert [p.content for p in chosen] == [f"policy {n}" for n in range(8)]
+
+
+def test_the_passage_closest_in_meaning_always_stays() -> None:
+    a = uuid4()
+    ranked = [passage(a, f"a{n}", similarity=0.70) for n in range(3)]
+    ranked += [passage(uuid4(), f"b{n}", similarity=0.60) for n in range(6)]
+    ranked.insert(9, passage(a, "a-closest", similarity=0.90))
+
+    assert "a-closest" in [p.content for p in _spread(ranked, limit=8)]
 
 
 def test_with_one_document_the_best_passages_are_kept() -> None:

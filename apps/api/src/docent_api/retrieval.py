@@ -136,18 +136,35 @@ def retrieve(
 
 
 def _spread(passages: list[Passage], limit: int) -> list[Passage]:
-    """The best `limit` passages, at most PER_DOCUMENT from any one Document; if there aren't
-    enough other Documents to fill the rest, the best of the remainder."""
-    chosen: list[Passage] = []
+    """The `limit` passages an answer gets, best first: at most PER_DOCUMENT from one Document,
+    so a disagreeing one isn't crowded out, but only giving way to other Documents' passages
+    that rank near the top (within twice `limit`); otherwise the best remain. The passage
+    closest in meaning always stays, since the weak-retrieval decline depends on it."""
+    pool = passages[: 2 * limit]
+    keep: set[UUID] = set()
+    closest = max(
+        (p for p in passages if p.similarity is not None),
+        key=lambda p: p.similarity or 0.0,
+        default=None,
+    )
+    if closest is not None:
+        keep.add(closest.chunk_id)
     per: dict[UUID, int] = {}
-    for passage in passages:
+    if closest is not None:
+        per[closest.document_id] = 1
+    for passage in pool:
+        if len(keep) == limit:
+            break
+        if passage.chunk_id in keep:
+            continue
         if per.get(passage.document_id, 0) < PER_DOCUMENT:
-            chosen.append(passage)
+            keep.add(passage.chunk_id)
             per[passage.document_id] = per.get(passage.document_id, 0) + 1
-        if len(chosen) == limit:
-            return chosen
-    rest = [p for p in passages if p not in chosen]
-    return (chosen + rest)[:limit]
+    for passage in passages:  # not enough near-top Documents: the best of the rest
+        if len(keep) == limit:
+            break
+        keep.add(passage.chunk_id)
+    return [p for p in passages if p.chunk_id in keep]
 
 
 def _fuse(*rankings: list[UUID]) -> list[tuple[UUID, float]]:
