@@ -33,7 +33,11 @@ async function Collection({ params }: { params: Promise<{ id: string }> }) {
   if (!documents.ok) throw new Error(documents.message);
 
   return (
-    <LibraryHome collectionId={collection.id} label={`Ask a question about the ${collection.name}`}>
+    <LibraryHome
+      collections={me.collections}
+      defaultScope={[collection.id]}
+      label={`Ask a question about the ${collection.name}`}
+    >
       <LibraryDocuments collection={collection} initialDocuments={documents.value} />
     </LibraryHome>
   );

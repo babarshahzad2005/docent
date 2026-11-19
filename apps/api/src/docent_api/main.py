@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection
@@ -16,6 +16,7 @@ from docent_api import __version__
 from docent_api.answers import (
     ConversationNotFound,
     answer,
+    list_conversations,
     load_conversation,
     start_turn,
     to_sse,
@@ -151,6 +152,12 @@ class PassageOut(BaseModel):
     before: str | None
     """The passage just before, in the same Document and section, for context."""
     after: str | None
+
+
+class ConversationSummary(BaseModel):
+    id: UUID
+    title: str
+    updated_at: datetime
 
 
 class ConversationOut(BaseModel):
@@ -345,6 +352,14 @@ async def ask(body: Question, user: User) -> StreamingResponse:
         # Keep proxies from buffering, so each piece reaches the reader as it is written.
         headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/conversations", operation_id="listConversations", tags=["answers"])
+def conversations(
+    user: User, conn: Db, limit: Annotated[int, Query(ge=1, le=100)] = 50
+) -> list[ConversationSummary]:
+    """The User's Conversations, most recently active first."""
+    return [ConversationSummary.model_validate(c) for c in list_conversations(conn, user.id, limit)]
 
 
 @app.get("/conversations/{conversation_id}", operation_id="getConversation", tags=["answers"])

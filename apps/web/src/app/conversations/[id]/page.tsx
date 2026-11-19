@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Conversation, type Turn } from "@/components/conversation";
 import { apiAsUser } from "@/lib/api";
+import { getMe } from "@/lib/me";
 
 export const metadata: Metadata = { title: "Conversation · Docent" };
 
@@ -40,7 +41,14 @@ async function SavedConversation({ params }: { params: Promise<{ id: string }> }
   for (const message of data.messages) {
     if (message.role === "user") {
       scope = message.scope; // follow-ups keep the Scope of the latest question
-      turns.push({ question: message.content, answer: "", sources: [], cited: [], status: "complete" });
+      turns.push({
+        question: message.content,
+        answer: "",
+        sources: [],
+        cited: [],
+        status: "complete",
+        scope: message.scope,
+      });
       continue;
     }
     const turn = turns[turns.length - 1];
@@ -57,5 +65,14 @@ async function SavedConversation({ params }: { params: Promise<{ id: string }> }
     if (message.status === "interrupted") turn.error = "This answer was cut off. Ask again to get the whole answer.";
     if (message.status === "failed") turn.error = "Docent couldn’t answer this. Ask again.";
   }
-  return <Conversation key={id} conversationId={id} initialTurns={turns} scope={scope} />;
+  const me = await getMe();
+  return (
+    <Conversation
+      key={id}
+      conversationId={id}
+      initialTurns={turns}
+      scope={scope}
+      collections={me?.collections ?? []}
+    />
+  );
 }

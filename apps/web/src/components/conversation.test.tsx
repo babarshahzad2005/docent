@@ -181,6 +181,63 @@ describe("Conversation", () => {
     expect(link.getAttribute("href")).toBe("/");
   });
 
+  it("asks the chosen Collections, shows them with each answer, and lets the next question change them", async () => {
+    const fetch = vi.fn().mockImplementation(async () =>
+      sse(
+        ["start", START],
+        ["delta", { text: "Up to 10 days [1]." }],
+        [
+          "done",
+          {
+            message_id: "m1",
+            outcome: "answered",
+            cited: [1],
+            answer: "Up to 10 days [1].",
+            verified: true,
+            removed: [],
+          },
+        ],
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    render(
+      <Conversation
+        conversationId={null}
+        initialTurns={[]}
+        startQuestion="How much?"
+        scope={["p"]}
+        collections={[
+          { id: "p", name: "Personal" },
+          { id: "d", name: "Demo Collection" },
+        ]}
+      />,
+    );
+
+    expect(await screen.findByText("Asked of Personal")).toBeTruthy();
+    expect(JSON.parse(fetch.mock.calls[0][1].body).scope).toEqual(["p"]);
+    await screen.findByText("The citation was checked against its source.");
+    await userEvent.click(screen.getByRole("button", { name: "Add a collection" }));
+    await userEvent.click(screen.getByRole("button", { name: "Demo Collection" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Ask a follow-up question" }), "And more?{Enter}");
+
+    expect(await screen.findByText("Asked of Personal and Demo Collection")).toBeTruthy();
+    expect(JSON.parse(fetch.mock.calls[1][1].body).scope).toEqual(["p", "d"]);
+    expect(screen.getByText("Asked of Personal")).toBeTruthy(); // the first answer keeps its Scope
+  });
+
+  it("never starts from a Scope the User can no longer ask", () => {
+    render(
+      <Conversation
+        conversationId="c1"
+        initialTurns={[]}
+        scope={["left-long-ago"]}
+        collections={[{ id: "p", name: "Personal" }]}
+      />,
+    );
+
+    expect(screen.getByRole("list", { name: "Collections to ask" }).textContent).toBe("Personal");
+  });
+
   it("marks an answer cut off without an ending, and lets the User ask again", async () => {
     vi.stubGlobal(
       "fetch",

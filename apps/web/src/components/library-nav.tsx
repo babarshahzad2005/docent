@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 
 import { CollectionsNav } from "./collections-nav";
+import { ConversationsNav } from "./conversations-nav";
 
 /** Navigation for the Library, shared by the sidebar and the drawer on smaller screens. */
 export function LibraryNav() {
@@ -18,6 +19,9 @@ export function LibraryNav() {
       </Link>
       <Suspense fallback={null}>
         <CollectionsNav />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ConversationsNav />
       </Suspense>
       <form action="/auth/sign-out" method="post" className="mt-auto">
         <Button type="submit" variant="ghost" className="w-full justify-start px-2">

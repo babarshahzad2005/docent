@@ -5,6 +5,7 @@ import { listDocuments } from "@/app/documents-actions";
 import { AppShell } from "@/components/app-shell";
 import { LibraryDocuments } from "@/components/library-documents";
 import { LibraryHome } from "@/components/library-home";
+import { defaultScope } from "@/components/scope-chips";
 import { getMe } from "@/lib/me";
 
 export default function LibraryPage() {
@@ -37,7 +38,8 @@ async function Library() {
 
   return (
     <LibraryHome
-      collectionId={personal.id}
+      collections={me.collections}
+      defaultScope={defaultScope(me.collections)}
       label="Ask a question about your documents"
     >
       <LibraryDocuments
