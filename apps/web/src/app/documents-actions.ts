@@ -17,8 +17,12 @@ const UNREACHABLE = "Can't reach the server. Try again in a minute.";
 export async function listDocuments(): Promise<Result<DocumentSummary[]>> {
   const caller = await apiAsUser();
   if (!caller) return { ok: false, message: SIGNED_OUT };
-  const { data, response } = await caller.api.GET("/documents", { headers: caller.headers });
-  return data ? { ok: true, value: data } : { ok: false, message: problem(response.status) };
+  const { data, response } = await caller.api.GET("/documents", {
+    headers: caller.headers,
+  });
+  return data
+    ? { ok: true, value: data }
+    : { ok: false, message: problem(response.status) };
 }
 
 /**
@@ -31,6 +35,8 @@ export async function startUpload(
   sizeBytes: number,
   sha256: string,
   allowDuplicate = false,
+  /** The Document this file replaces (GLOSSARY: Replace), if it is a new version. */
+  replaces?: string,
 ): Promise<
   | { ok: true; value: { document: DocumentSummary; upload: UploadTarget } }
   | { ok: false; message: string; duplicate: boolean }
@@ -45,6 +51,7 @@ export async function startUpload(
       size_bytes: sizeBytes,
       sha256,
       allow_duplicate: allowDuplicate,
+      replaces: replaces ?? null,
     },
   });
   if (data) return { ok: true, value: data };
@@ -59,26 +66,36 @@ export async function startUpload(
  * The file is stored: queue the Document, then start processing it once the response is sent.
  * Processing continues after the browser has its answer, so the Library can show progress.
  */
-export async function finishUpload(documentId: string): Promise<Result<DocumentSummary>> {
+export async function finishUpload(
+  documentId: string,
+): Promise<Result<DocumentSummary>> {
   const caller = await apiAsUser();
   if (!caller) return { ok: false, message: SIGNED_OUT };
-  const { data, response } = await caller.api.POST("/documents/{document_id}/uploaded", {
-    headers: caller.headers,
-    params: { path: { document_id: documentId } },
-  });
+  const { data, response } = await caller.api.POST(
+    "/documents/{document_id}/uploaded",
+    {
+      headers: caller.headers,
+      params: { path: { document_id: documentId } },
+    },
+  );
   if (!data) return { ok: false, message: problem(response.status) };
   processInBackground(caller);
   return { ok: true, value: data };
 }
 
 /** Delete a Document with its file, passages, and vectors. */
-export async function deleteDocument(documentId: string): Promise<Result<null>> {
+export async function deleteDocument(
+  documentId: string,
+): Promise<Result<null>> {
   const caller = await apiAsUser();
   if (!caller) return { ok: false, message: SIGNED_OUT };
-  const { error, response } = await caller.api.DELETE("/documents/{document_id}", {
-    headers: caller.headers,
-    params: { path: { document_id: documentId } },
-  });
+  const { error, response } = await caller.api.DELETE(
+    "/documents/{document_id}",
+    {
+      headers: caller.headers,
+      params: { path: { document_id: documentId } },
+    },
+  );
   if (response.ok) return { ok: true, value: null };
   return { ok: false, message: detail(error) ?? problem(response.status) };
 }
@@ -90,11 +107,14 @@ export async function setEffectiveDate(
 ): Promise<Result<DocumentSummary>> {
   const caller = await apiAsUser();
   if (!caller) return { ok: false, message: SIGNED_OUT };
-  const { data, error, response } = await caller.api.PATCH("/documents/{document_id}", {
-    headers: caller.headers,
-    params: { path: { document_id: documentId } },
-    body: { effective_date: effectiveDate },
-  });
+  const { data, error, response } = await caller.api.PATCH(
+    "/documents/{document_id}",
+    {
+      headers: caller.headers,
+      params: { path: { document_id: documentId } },
+      body: { effective_date: effectiveDate },
+    },
+  );
   if (data) return { ok: true, value: data };
   if (response.status === 422) {
     return { ok: false, message: "Choose a date between 1900 and 2100." };
@@ -103,13 +123,18 @@ export async function setEffectiveDate(
 }
 
 /** Queue a failed Document again and start processing it. */
-export async function retryDocument(documentId: string): Promise<Result<DocumentSummary>> {
+export async function retryDocument(
+  documentId: string,
+): Promise<Result<DocumentSummary>> {
   const caller = await apiAsUser();
   if (!caller) return { ok: false, message: SIGNED_OUT };
-  const { data, response } = await caller.api.POST("/documents/{document_id}/retry", {
-    headers: caller.headers,
-    params: { path: { document_id: documentId } },
-  });
+  const { data, response } = await caller.api.POST(
+    "/documents/{document_id}/retry",
+    {
+      headers: caller.headers,
+      params: { path: { document_id: documentId } },
+    },
+  );
   if (!data) return { ok: false, message: problem(response.status) };
   processInBackground(caller);
   return { ok: true, value: data };
@@ -119,14 +144,21 @@ export async function retryDocument(documentId: string): Promise<Result<Document
  * Starts a batch after the response is sent, so a new Document doesn't wait for the scheduler's
  * next minute. The function stays alive until the batch finishes.
  */
-function processInBackground(caller: NonNullable<Awaited<ReturnType<typeof apiAsUser>>>) {
+function processInBackground(
+  caller: NonNullable<Awaited<ReturnType<typeof apiAsUser>>>,
+) {
   after(async () => {
     await caller.api.POST("/ingestion/run", { headers: caller.headers });
   });
 }
 
 function detail(error: unknown): string | undefined {
-  if (error && typeof error === "object" && "detail" in error && typeof error.detail === "string") {
+  if (
+    error &&
+    typeof error === "object" &&
+    "detail" in error &&
+    typeof error.detail === "string"
+  ) {
     return error.detail;
   }
   return undefined;

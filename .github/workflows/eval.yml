@@ -87,16 +87,28 @@ jobs:
           DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        id: run
         run: |
+          set +e
           if [ "$RUN" = full ]; then
             uv run docent-eval --out ../../evals/results/eval.json
           else
             uv run docent-eval --answers 8 --out ../../evals/results/eval.json
           fi
+          code=$?
+          set -e
+          if [ "$code" = 3 ] && [ "${{ github.event_name }}" = pull_request ]; then
+            # A migration this change brings isn't live yet: main's run after merging measures it.
+            echo "This change brings a database migration that isn't live yet, so it's measured on main once merged." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "measured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [ "$code" = 0 ] || exit "$code"
+          echo "measured=true" >> "$GITHUB_OUTPUT"
           cat ../../evals/results/eval.md >> "$GITHUB_STEP_SUMMARY"
       - name: Fetch main's latest report
         id: baseline
-        if: steps.secrets.outputs.ready == 'true' && github.event_name == 'pull_request'
+        if: steps.run.outputs.measured == 'true' && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -114,7 +126,7 @@ jobs:
             echo "Main has no Eval report yet: only failed questions are checked." | tee -a "$GITHUB_STEP_SUMMARY"
           fi
       - name: Block regressions (and, on main, a run with failed questions)
-        if: steps.secrets.outputs.ready == 'true' && env.RUN == 'subset'
+        if: steps.run.outputs.measured == 'true' && env.RUN == 'subset'
         run: |
           set -o pipefail
           uv run docent-eval-compare ${{ steps.baseline.outputs.required }} \

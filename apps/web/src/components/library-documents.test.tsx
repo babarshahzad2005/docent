@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
@@ -33,6 +33,7 @@ function aDocument(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
     source_url: null,
     source_credit: null,
     source_licence_url: null,
+    replacement: null,
     effective_date: "2026-11-17",
     created_at: "2026-11-17T10:00:00Z",
     updated_at: "2026-11-17T10:00:00Z",
@@ -448,5 +449,91 @@ describe("the Demo Collection", () => {
     render(<LibraryDocuments collection={DEMO} initialDocuments={[]} />);
 
     expect(screen.getByText(/no documents here yet/)).toBeTruthy();
+  });
+});
+
+describe("Replacing a Document", () => {
+  async function mockStorage() {
+    const { createClient } = await import("@/lib/supabase/client");
+    vi.mocked(createClient).mockReturnValue({
+      storage: { from: () => ({ uploadToSignedUrl: vi.fn().mockResolvedValue({ error: null }) }) },
+    } as never);
+  }
+
+  beforeEach(() => {
+    actions.startUpload.mockResolvedValue({
+      ok: true,
+      value: {
+        document: aDocument({ id: "v1", name: "policy-2025.pdf", status: "uploading" }),
+        upload: { bucket: "documents", path: "c1/v1.pdf", token: "t" },
+      },
+    });
+    actions.finishUpload.mockResolvedValue({
+      ok: true,
+      value: aDocument({ id: "v1", name: "policy-2025.pdf", status: "queued" }),
+    });
+    actions.listDocuments.mockResolvedValue({ ok: true, value: [aDocument()] });
+  });
+
+  it("sends the new file as a new version, and the Document keeps answering meanwhile", async () => {
+    await mockStorage();
+    const { container } = render(
+      <LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />,
+    );
+    const inputs = container.querySelectorAll<HTMLInputElement>('input[type="file"]');
+    const rowInput = inputs[inputs.length - 1];
+
+    await userEvent.upload(rowInput, new File(["new"], "policy-2025.pdf"));
+
+    await waitFor(() => expect(actions.finishUpload).toHaveBeenCalledWith("v1"));
+    expect(actions.startUpload.mock.calls[0][5]).toBe("d1"); // replaces policy.pdf
+    expect(await screen.findByText(/Replacing with policy-2025.pdf: waiting to be processed/)).toBeTruthy();
+    expect(screen.getAllByRole("listitem", { name: "policy.pdf" })).toHaveLength(1); // one row
+    // One replacement at a time: Replace returns once this one is done or dismissed.
+    expect(screen.queryByRole("button", { name: "Replace policy.pdf" })).toBeNull();
+  });
+
+  it("offers Replace when a file with the same name is uploaded", async () => {
+    await mockStorage();
+    const { container } = render(
+      <LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />,
+    );
+    const picker = container.querySelector<HTMLInputElement>('input[type="file"][multiple]');
+    if (!picker) throw new Error("no picker");
+
+    await userEvent.upload(picker, new File(["new"], "policy.pdf"));
+
+    const prompt = await screen.findByRole("list", { name: "Already in this collection" });
+    expect(prompt.textContent).toContain("policy.pdf is already in this collection. Replace it");
+    expect(actions.startUpload).not.toHaveBeenCalled();
+    await userEvent.click(within(prompt).getByRole("button", { name: "Replace the current version" }));
+    await waitFor(() => expect(actions.startUpload).toHaveBeenCalled());
+    expect(actions.startUpload.mock.calls[0][5]).toBe("d1");
+  });
+
+  it("shows why a replacement failed, and Dismiss leaves the current version", async () => {
+    actions.deleteDocument.mockResolvedValue({ ok: true, value: null });
+    render(
+      <LibraryDocuments
+        collection={PERSONAL}
+        initialDocuments={[
+          aDocument({
+            replacement: {
+              id: "v1",
+              name: "policy-2025.pdf",
+              status: "failed",
+              failure_reason: "This PDF is scanned.",
+              can_retry: false,
+            },
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/policy-2025.pdf couldn’t replace it: This PDF is scanned./)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(actions.deleteDocument).toHaveBeenCalledWith("v1");
+    await waitFor(() => expect(screen.queryByText(/couldn’t replace it/)).toBeNull());
   });
 });

@@ -42,6 +42,16 @@ const PARALLEL_UPLOADS = 3;
 
 type Status = DocumentSummary["status"];
 
+/** A new version's progress, as part of a sentence. */
+const REPLACEMENT_PROGRESS: Record<Status, string> = {
+  uploading: "uploading",
+  queued: "waiting to be processed",
+  parsing: "being read",
+  embedding: "being indexed",
+  indexed: "ready",
+  failed: "failed",
+};
+
 const STATUS_LABELS: Record<Status, string> = {
   uploading: "Uploading…",
   queued: "Waiting…",
@@ -86,7 +96,7 @@ export function LibraryDocuments({
   const [dragging, setDragging] = useState(false);
   // Files the Collection already has: the User chooses to keep both or skip.
   const [duplicates, setDuplicates] = useState<
-    { file: File; message: string }[]
+    { file: File; message: string; replaceable?: DocumentSummary }[]
   >([]);
   const [announcement, setAnnouncement] = useState("");
   const input = useRef<HTMLInputElement>(null);
@@ -100,7 +110,13 @@ export function LibraryDocuments({
   const busy = useRef(0);
   const uploadRef = useRef<(files: File[]) => void>(() => undefined);
 
-  const processing = documents.some((d) => isProcessing(d.status));
+  const processing = documents.some(
+    (d) =>
+      isProcessing(d.status) ||
+      (d.replacement !== null &&
+        d.replacement !== undefined &&
+        isProcessing(d.replacement.status)),
+  );
 
   // Refresh statuses while anything is processing: one request at a time, stopping on errors.
   useEffect(() => {
@@ -220,7 +236,7 @@ export function LibraryDocuments({
     const queue = [...files];
     const sendNext = async () => {
       for (let file = queue.shift(); file; file = queue.shift())
-        await uploadOne(file, false);
+        await uploadOne(file, {});
     };
     await Promise.all(
       Array.from(
@@ -232,16 +248,26 @@ export function LibraryDocuments({
 
   uploadRef.current = (files) => void upload(files);
 
-  async function uploadOne(file: File, allowDuplicate: boolean) {
+  type Send = {
+    /** Keep both when the Collection already has a Document with this content or name. */
+    allowDuplicate?: boolean;
+    /** Send the file as a new version of this Document (GLOSSARY: Replace). */
+    replaces?: DocumentSummary;
+  };
+
+  async function uploadOne(file: File, options: Send) {
     busy.current += 1;
     try {
-      await sendOne(file, allowDuplicate);
+      await sendOne(file, options);
     } finally {
       busy.current -= 1;
     }
   }
 
-  async function sendOne(file: File, allowDuplicate: boolean) {
+  async function sendOne(
+    file: File,
+    { allowDuplicate = false, replaces }: Send,
+  ) {
     const fail = (message: string) =>
       setErrors((current) => [...current, message]);
     const refused = precheck(file);
@@ -249,6 +275,26 @@ export function LibraryDocuments({
       fail(refused);
       return;
     }
+    // A file named like a Document already here is probably its new version: ask.
+    const namesake = documents.find((d) => d.name === file.name);
+    if (!replaces && !allowDuplicate && namesake) {
+      // Replace is offered when the Document can take a new version now.
+      const replaceable =
+        namesake.status === "indexed" &&
+        (!namesake.replacement || namesake.replacement.status === "failed")
+          ? namesake
+          : undefined;
+      const message = replaceable
+        ? `${file.name} is already in this collection. Replace it with this file, or keep both?`
+        : `${file.name} is already in this collection. Upload it anyway to keep both.`;
+      setDuplicates((current) => [...current, { file, message, replaceable }]);
+      setAnnouncement(message);
+      return;
+    }
+    const replacing = (change: (d: DocumentSummary) => DocumentSummary) =>
+      setDocuments((current) =>
+        current.map((d) => (d.id === replaces?.id ? change(d) : d)),
+      );
     const supabase = createClient();
     let sentId: string | null = null;
     try {
@@ -258,6 +304,7 @@ export function LibraryDocuments({
         file.size,
         await sha256(file),
         allowDuplicate,
+        replaces?.id,
       );
       if (!started.ok) {
         if (started.duplicate) {
@@ -272,7 +319,19 @@ export function LibraryDocuments({
         return;
       }
       const { document, upload: target } = started.value;
-      setDocuments((current) => [document, ...current]);
+      const asReplacement = (status: DocumentSummary["status"]) => ({
+        id: document.id,
+        name: document.name,
+        status,
+        failure_reason: null,
+        can_retry: false,
+      });
+      if (replaces) {
+        // The new version shows on the Document it replaces, which keeps answering.
+        replacing((d) => ({ ...d, replacement: asReplacement("uploading") }));
+      } else {
+        setDocuments((current) => [document, ...current]);
+      }
       sentId = document.id;
       setSending((current) => new Set(current).add(document.id));
       const { error } = await supabase.storage
@@ -282,7 +341,11 @@ export function LibraryDocuments({
         });
       if (error) {
         // Cancel the half-made Document, so it neither counts nor blocks uploading again.
-        setDocuments((current) => current.filter((d) => d.id !== document.id));
+        if (replaces) replacing((d) => ({ ...d, replacement: null }));
+        else
+          setDocuments((current) =>
+            current.filter((d) => d.id !== document.id),
+          );
         void deleteDocument(document.id).catch(() => undefined);
         fail(
           `${file.name} couldn't be uploaded (${error.message}). Upload it again.`,
@@ -294,9 +357,19 @@ export function LibraryDocuments({
         fail(finished.message);
         return;
       }
-      setDocuments((current) =>
-        current.map((d) => (d.id === document.id ? finished.value : d)),
-      );
+      if (replaces) {
+        replacing((d) => ({
+          ...d,
+          replacement: asReplacement(finished.value.status),
+        }));
+        setAnnouncement(
+          `${replaces.name} is being replaced by ${file.name}. It answers from the current version until the new one is ready.`,
+        );
+      } else {
+        setDocuments((current) =>
+          current.map((d) => (d.id === document.id ? finished.value : d)),
+        );
+      }
     } catch {
       fail(
         `${file.name} couldn't be uploaded. Check your connection and upload it again.`,
@@ -346,7 +419,7 @@ export function LibraryDocuments({
           aria-label="Already in this collection"
           className="flex flex-col gap-3"
         >
-          {duplicates.map(({ file, message }) => {
+          {duplicates.map(({ file, message, replaceable }) => {
             // The choice's own buttons disappear with it; continue from the upload button.
             const settle = () => {
               setDuplicates((current) =>
@@ -361,14 +434,26 @@ export function LibraryDocuments({
               >
                 <p>{message}</p>
                 <div className="flex flex-wrap gap-2">
+                  {replaceable && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        settle();
+                        void uploadOne(file, { replaces: replaceable });
+                      }}
+                    >
+                      Replace the current version
+                    </Button>
+                  )}
                   <Button
                     size="sm"
+                    variant={replaceable ? "outline" : "default"}
                     onClick={() => {
                       settle();
-                      void uploadOne(file, true);
+                      void uploadOne(file, { allowDuplicate: true });
                     }}
                   >
-                    Upload anyway
+                    {replaceable ? "Keep both" : "Upload anyway"}
                   </Button>
                   <Button variant="outline" size="sm" onClick={settle}>
                     Skip
@@ -452,6 +537,10 @@ export function LibraryDocuments({
               onRetry={async () => false}
               canDate={false}
               onDate={async () => null}
+              canReplace={false}
+              onReplace={() => undefined}
+              onCancelReplacement={async () => undefined}
+              onRetryReplacement={async () => undefined}
             />
           ))}
         </ul>
@@ -531,13 +620,73 @@ export function LibraryDocuments({
               }
             }}
             canDate={canEdit && !sending.has(document.id)}
+            canReplace={
+              canEdit &&
+              document.status === "indexed" &&
+              (!document.replacement ||
+                document.replacement.status === "failed")
+            }
+            onReplace={(file) => void uploadOne(file, { replaces: document })}
+            onCancelReplacement={async () => {
+              const replacement = document.replacement;
+              if (!replacement) return;
+              const cancelled = await deleteDocument(replacement.id).catch(
+                () => null,
+              );
+              if (!cancelled?.ok) {
+                setErrors([
+                  `The replacement of ${document.name} couldn't be cancelled. Try again.`,
+                ]);
+                return;
+              }
+              setDocuments((current) =>
+                current.map((d) =>
+                  d.id === document.id ? { ...d, replacement: null } : d,
+                ),
+              );
+              setAnnouncement(
+                `The replacement of ${document.name} was cancelled.`,
+              );
+            }}
+            onRetryReplacement={async () => {
+              const replacement = document.replacement;
+              if (!replacement) return;
+              const retried = await retryDocument(replacement.id).catch(
+                () => null,
+              );
+              if (!retried?.ok) {
+                setErrors([
+                  retried?.message ??
+                    `${document.name}'s replacement couldn't be retried.`,
+                ]);
+                return;
+              }
+              setDocuments((current) =>
+                current.map((d) =>
+                  d.id === document.id && d.replacement
+                    ? {
+                        ...d,
+                        replacement: {
+                          ...d.replacement,
+                          status: retried.value.status,
+                          failure_reason: null,
+                          can_retry: false,
+                        },
+                      }
+                    : d,
+                ),
+              );
+              setRefreshes((n) => n + 1);
+            }}
             onDate={async (date) => {
               try {
                 const changed = await setEffectiveDate(document.id, date);
                 if (!changed.ok) return changed.message;
                 datesSaved.current.set(document.id, Date.now());
                 setDocuments((current) =>
-                  current.map((d) => (d.id === document.id ? changed.value : d)),
+                  current.map((d) =>
+                    d.id === document.id ? changed.value : d,
+                  ),
                 );
                 setAnnouncement(
                   `${document.name} now applies from ${formatDate(changed.value.effective_date)}.`,
@@ -586,6 +735,10 @@ function DocumentRow({
   onDelete,
   canDate,
   onDate,
+  canReplace,
+  onReplace,
+  onCancelReplacement,
+  onRetryReplacement,
 }: {
   document: DocumentSummary;
   canRetry: boolean;
@@ -594,6 +747,11 @@ function DocumentRow({
   canDate: boolean;
   /** Resolves to null once saved, or to a message saying why it wasn't. */
   onDate: (date: string) => Promise<string | null>;
+  /** Whether the User may give the Document new content (GLOSSARY: Replace). */
+  canReplace: boolean;
+  onReplace: (file: File) => void;
+  onCancelReplacement: () => Promise<void>;
+  onRetryReplacement: () => Promise<void>;
   /** Where focus goes once the Document (and so its row) is gone. */
   afterDelete: React.RefObject<HTMLButtonElement | null>;
   /** Resolves to whether the Document was queued again. */
@@ -665,14 +823,27 @@ function DocumentRow({
             onChange={onDate}
           />
         </span>
-        {canDelete && (
-          <DeleteDocument
-            name={document.name}
-            afterDelete={afterDelete}
-            onDelete={onDelete}
-          />
-        )}
+        <span className="flex items-center gap-1">
+          {canReplace && (
+            <ReplaceDocument name={document.name} onFile={onReplace} />
+          )}
+          {canDelete && (
+            <DeleteDocument
+              name={document.name}
+              afterDelete={afterDelete}
+              onDelete={onDelete}
+            />
+          )}
+        </span>
       </div>
+      {document.replacement && (
+        <Replacement
+          replacement={document.replacement}
+          canChange={canDelete}
+          onCancel={onCancelReplacement}
+          onRetry={onRetryReplacement}
+        />
+      )}
       {failed && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           {document.failure_reason && (
@@ -700,6 +871,104 @@ function DocumentRow({
         </div>
       )}
     </li>
+  );
+}
+
+/** Replace: choose the file with the Document's new content. */
+function ReplaceDocument({
+  name,
+  onFile,
+}: {
+  name: string;
+  onFile: (file: File) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input
+        ref={input}
+        type="file"
+        accept={ACCEPT}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) onFile(file);
+        }}
+      />
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label={`Replace ${name}`}
+        onClick={() => input.current?.click()}
+      >
+        Replace
+      </Button>
+    </>
+  );
+}
+
+/** The new version on its way: its progress, or why it failed and what to do. */
+function Replacement({
+  replacement,
+  canChange,
+  onCancel,
+  onRetry,
+}: {
+  replacement: NonNullable<DocumentSummary["replacement"]>;
+  canChange: boolean;
+  onCancel: () => Promise<void>;
+  onRetry: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const run = (action: () => Promise<void>) => async () => {
+    setBusy(true);
+    await action();
+    setBusy(false);
+  };
+  if (replacement.status !== "failed") {
+    return (
+      <p className="text-meta text-muted-foreground">
+        Replacing with {replacement.name}:{" "}
+        {REPLACEMENT_PROGRESS[replacement.status]}. The current version answers
+        until then.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-meta text-destructive">
+        {replacement.name} couldn’t replace it
+        {replacement.failure_reason
+          ? `: ${replacement.failure_reason}`
+          : "."}{" "}
+        The current version still answers.
+      </p>
+      {canChange && (
+        <span className="flex gap-2">
+          {replacement.can_retry && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={run(onRetry)}
+            >
+              Retry
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={run(onCancel)}
+          >
+            Dismiss
+          </Button>
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -790,7 +1059,13 @@ function EffectiveDate({
       <Button type="submit" size="sm" disabled={saving || !value}>
         {saving ? "Saving…" : "Save"}
       </Button>
-      <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={close}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={saving}
+        onClick={close}
+      >
         Cancel
       </Button>
       {problem && (
