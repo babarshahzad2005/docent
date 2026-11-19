@@ -258,15 +258,14 @@ def test_a_failing_quote_is_not_rescued_by_another_quote_for_the_same_passage() 
 
 def test_verified_quotes_are_tied_to_an_uncited_answer_sentence_they_match() -> None:
     result = check(
-        "Most workers on a 5-day week get at least 28 days' paid leave a year. SSP is weekly.",
+        "Most workers get at least 28 days' paid leave a year. SSP is £118.75 a week.",
         (1, "must receive at least 28 days’ paid annual leave a year"),
         (2, "Statutory Sick Pay (SSP) is £118.75 a week"),
     )
 
     assert result.attached
     assert result.answer == (
-        "Most workers on a 5-day week get at least 28 days' paid leave a year [1]. "
-        "SSP is weekly [2]."
+        "Most workers get at least 28 days' paid leave a year [1]. SSP is £118.75 a week [2]."
     )
     assert result.checked == 2 and result.removed == []
 
@@ -299,3 +298,36 @@ def test_an_answer_that_cites_anything_is_left_as_written() -> None:
 
     assert not result.attached
     assert result.answer == "You get 28 days [1]. That is 5.6 weeks of holiday."
+
+
+def test_an_attached_citation_is_checked_against_the_quote_it_was_attached_for() -> None:
+    result = check(
+        "Workers get at least 28 days of paid annual leave a year.",
+        (1, "you get 40 days of leave"),  # not in the passage
+        (1, "at least 28 days’ paid annual leave a year"),
+    )
+
+    assert result.attached and result.checked == 1 and result.removed == []
+
+
+def test_a_sentence_stating_a_number_the_quote_lacks_is_never_cited_by_it() -> None:
+    contradicts = check("SSP is paid for up to 52 weeks.", (2, "It's paid for up to 28 weeks"))
+    other = check(
+        "Full-time workers get 28 days paid leave. "
+        "Part-time workers on 3 days get 16.8 days a year.",
+        (1, "at least 28 days’ paid annual leave a year"),
+    )
+
+    assert not contradicts.attached and contradicts.checked == 0
+    assert other.answer.startswith("Full-time workers get 28 days paid leave [1].")
+    assert "16.8 days a year [1]" not in other.answer
+
+
+@pytest.mark.parametrize("ending", [".", ":", "…", ").", '."', "**"])
+def test_markers_go_before_closing_punctuation(ending: str) -> None:
+    result = check(
+        f"Workers get at least 28 days of paid annual leave a year{ending}",
+        (1, "at least 28 days’ paid annual leave a year"),
+    )
+
+    assert result.answer.startswith("Workers get at least 28 days of paid annual leave a year [1]")

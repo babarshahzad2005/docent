@@ -82,7 +82,7 @@ There are three known gaps:
 - **Some answers rank just below the top 5.** Two GitLab answers ranked 6th and 7th.
 - **The older guidance isn't retrieved.** The 2019 guidance is never retrieved alongside the 2024 reforms, which matters for the conflict work in #48.
 
-After #58, when an answer has no citation markers, its verified quotes are tied to the sentences they match. A run on 2026-11-20 over the same 10 answerable questions gave:
+After #58, when an answer has no citation markers, its verified quotes are tied to the sentences they match. A run on 2026-11-19 over the same 10 answerable questions gave:
 
 - answerable answered: 90% (9 of 10), up from 70%;
 - faithfulness: 100% (10 of 10 sentences);
