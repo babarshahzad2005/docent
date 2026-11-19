@@ -58,6 +58,8 @@ The metrics that depend on what the models write (answerable answered, faithfuln
 
 The issue (#46) asked for a 30-question subset on every pull request. Answers share Groq's free tier with production, about 200,000 tokens a day at roughly 4,500 tokens per answer. So pull requests answer 8 questions and retrieve all 50, only when the answer path changed, and the full set runs nightly (PRD decision log, 2026-11-19).
 
+A pull request that brings a database migration can't be measured against the live database, which only migrates once the change is merged. Its check passes with a note, and main's run after the merge measures it.
+
 The eval reads the Demo Collection as seeded. Changes to chunking or extraction are measured only after `docent-demo seed` has run with them.
 
 Secrets: `EVAL_DATABASE_URL` (the read-only user), `GEMINI_API_KEY`, `GROQ_API_KEY`.

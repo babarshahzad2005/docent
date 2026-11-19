@@ -31,6 +31,8 @@ export async function startUpload(
   sizeBytes: number,
   sha256: string,
   allowDuplicate = false,
+  /** The Document this file Replaces (GLOSSARY: Replace), if any. */
+  replaces?: string,
 ): Promise<
   | { ok: true; value: { document: DocumentSummary; upload: UploadTarget } }
   | { ok: false; message: string; duplicate: boolean }
@@ -45,6 +47,7 @@ export async function startUpload(
       size_bytes: sizeBytes,
       sha256,
       allow_duplicate: allowDuplicate,
+      replaces: replaces ?? null,
     },
   });
   if (data) return { ok: true, value: data };

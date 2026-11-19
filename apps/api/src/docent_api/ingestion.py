@@ -198,7 +198,8 @@ def _claim(conn: Connection[DictRow]) -> dict[str, Any] | None:
                 for update skip locked
                 limit 1
             )
-            returning id, collection_id, name, storage_path, status, attempts, claims
+            returning id, collection_id, name, storage_path, status, attempts, claims,
+                      replaces_id
             """,
             {"lease": LEASE_SECONDS},
         ).fetchone()
@@ -286,6 +287,74 @@ def _finish(
     return updated.rowcount > 0
 
 
+class _Gone(Exception):
+    """What a replacement was replacing, or the replacement itself, was deleted meanwhile."""
+
+
+def _replace(conn: Connection[DictRow], version_id: UUID, document_id: UUID) -> bool:
+    """Swap an indexed replacement in for the Document it replaces, within the caller's
+    transaction.
+
+    Both rows are locked first, the Document before its replacement (as delete_document
+    does, so the two never deadlock), and nothing changes unless both still exist. The old
+    passages stay as text, marked superseded and without vectors, so past Citations still
+    open them (ADR 0004); the new passages move to the Document, which takes the new file,
+    name, and size, and keeps its Effective Date; the replaced file is queued for removal.
+    Returns False, having changed nothing, if either was deleted meanwhile.
+    """
+    old = conn.execute(
+        "select storage_path from app.documents where id = %s for update", (document_id,)
+    ).fetchone()
+    version = conn.execute(
+        "select 1 from app.documents where id = %s and replaces_id = %s for update",
+        (version_id, document_id),
+    ).fetchone()
+    if old is None or version is None:
+        return False
+    conn.execute(
+        """
+        update app.chunks set superseded_at = now(), embedding = null, embedding_model = null
+        where document_id = %s and superseded_at is null
+        """,
+        (document_id,),
+    )
+    conn.execute(
+        "update app.chunks set document_id = %s where document_id = %s", (document_id, version_id)
+    )
+    new = conn.execute(
+        """
+        delete from app.documents where id = %s
+        returning name, size_bytes, storage_path, content_hash, uploaded_by
+        """,
+        (version_id,),
+    ).fetchone()
+    if new is None:
+        return False
+    conn.execute(
+        """
+        update app.documents
+        set name = %(name)s, size_bytes = %(size)s, storage_path = %(path)s,
+            content_hash = %(hash)s, uploaded_by = %(by)s,
+            status = 'indexed', failure_reason = null, failure_retryable = false,
+            locked_until = null, updated_at = now()
+        where id = %(id)s
+        """,
+        {
+            "name": new["name"],
+            "size": new["size_bytes"],
+            "path": new["storage_path"],
+            "hash": new["content_hash"],
+            "by": new["uploaded_by"],
+            "id": document_id,
+        },
+    )
+    conn.execute(
+        "insert into app.storage_deletions (path) values (%s) on conflict (path) do nothing",
+        (old["storage_path"],),
+    )
+    return True
+
+
 class _DocumentWorker:
     def __init__(
         self,
@@ -300,6 +369,8 @@ class _DocumentWorker:
         self.embedder = embedder
         self.document = document
         self.id: UUID = document["id"]
+        # A new version of this Document (GLOSSARY: Replace), or None.
+        self.replaces: UUID | None = document.get("replaces_id")
         self.budget = budget
         # Whether this claim saved any work. A Document that progresses is never given up on
         # for being picked up often: a large one legitimately takes many batches.
@@ -310,6 +381,14 @@ class _DocumentWorker:
             if self.document["status"] in ("queued", "parsing"):
                 self._parse()
             self._embed()
+            if self.replaces is not None:
+                with self.conn.transaction():
+                    if not _replace(self.conn, self.id, self.replaces):
+                        raise _Gone
+                # The replaced file goes once nothing points at it (storage_deletions).
+                return "indexed"
+        except _Gone:
+            return "deleted"  # the replacement or its Document was deleted meanwhile
         except _Unprocessable as problem:
             if not self._still_exists():
                 return "deleted"  # its file went with it, mid-batch
@@ -324,6 +403,12 @@ class _DocumentWorker:
             if not self._still_exists():
                 return "deleted"  # removed by its User mid-batch; nothing left to do
             return self._retry_later(error)
+        if self.replaces is not None:
+            with self.conn.transaction():
+                if not _replace(self.conn, self.id, self.replaces):
+                    return "deleted"
+            # The old version's file goes once nothing points at it (storage_deletions).
+            return "indexed"
         if not _finish(self.conn, self.id, "indexed", None):
             return "deleted"
         return "indexed"
@@ -431,7 +516,8 @@ class _DocumentWorker:
             self.progressed = True
 
     def _reuse_identical_embeddings(self) -> None:
-        """Repeated passages (a footer on every page, say) are embedded once per Document."""
+        """Repeated passages (a footer on every page, say) are embedded once per Document; a
+        new version reuses the vectors of passages the version it replaces already has."""
         self.conn.execute(
             """
             update app.chunks c
@@ -439,12 +525,13 @@ class _DocumentWorker:
             from (
                 select distinct on (content_hash) content_hash, embedding, embedding_model
                 from app.chunks
-                where document_id = %(id)s and embedding is not null
+                where document_id in (%(id)s, %(replaces)s) and embedding is not null
+                  and superseded_at is null
             ) done
             where c.document_id = %(id)s and c.embedding is null
               and c.content_hash = done.content_hash
             """,
-            {"id": self.id},
+            {"id": self.id, "replaces": self.replaces or self.id},
         )
 
     def _wait_or_pause(self, seconds: float) -> None:

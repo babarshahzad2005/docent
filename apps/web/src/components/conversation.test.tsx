@@ -281,6 +281,31 @@ const SAVED: Turn = {
 };
 
 describe("The source of a Citation", () => {
+  it("says when the document has been replaced since the answer", async () => {
+    screenWidth(true);
+    passages.getPassage.mockResolvedValue({
+      ok: true,
+      value: {
+        chunk_id: "k1",
+        document_id: "d1",
+        document_name: "leave.pdf",
+        heading_path: ["Leave"],
+        page: 9,
+        content: "Unused leave of up to 10 days carries over.",
+        before: null,
+        after: null,
+        replaced: true,
+      },
+    });
+    render(<Conversation conversationId="c1" initialTurns={[SAVED]} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Source 1, leave.pdf, page 9" }));
+
+    expect(await screen.findByText(/This document has been replaced since/)).toBeTruthy();
+    const pane = screen.getByRole("complementary", { name: "Source" });
+    expect(pane.querySelector("mark")?.textContent).toBe("Unused leave of up to 10 days carries over.");
+  });
+
   it("opens beside the answer on wide screens, highlighted in context, and closes with Escape", async () => {
     screenWidth(true);
     passages.getPassage.mockResolvedValue({

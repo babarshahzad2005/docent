@@ -395,6 +395,33 @@ def markdown(summary: dict[str, Any]) -> str:
 # --- The command --------------------------------------------------------------------------
 
 
+def schema_behind(conn: Connection[DictRow]) -> str | None:
+    """Why the database can't run this code's queries yet (it lacks a migration this code
+    brings, which production applies only once merged), or None if it can."""
+    from alembic.script import ScriptDirectory
+
+    from docent_api.migrate import alembic_config
+
+    scripts = ScriptDirectory.from_config(alembic_config())
+    head = scripts.get_current_head()
+    assert head is not None
+    row = conn.execute("select version_num from app.alembic_version").fetchone()
+    conn.rollback()
+    applied = row["version_num"] if row else None
+    # Behind only if the database is at an earlier revision of this code's own history; a
+    # database that is ahead (main merged a migration since) can still run older code.
+    earlier = [r.revision for r in scripts.walk_revisions("base", head) if r.revision != head]
+    if applied not in earlier:
+        return None
+    return (
+        f"The database is at migration {applied}, and this change brings {head}: it can't be "
+        "measured against the live Demo Collection until it is merged and migrated."
+    )
+
+
+SCHEMA_BEHIND = 3  # exit code: the database lacks this code's migrations (see schema_behind)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="docent-eval", description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -420,6 +447,10 @@ def main() -> None:
     with psycopg.connect(
         settings.database_url, prepare_threshold=None, row_factory=dict_row
     ) as conn:
+        behind = schema_behind(conn)
+        if behind is not None:
+            print(behind)
+            raise SystemExit(SCHEMA_BEHIND)
         results = asyncio.run(evaluate(conn, items, answer_ids, generator, judge))
     summary = report(results, settings)
     args.out.parent.mkdir(parents=True, exist_ok=True)

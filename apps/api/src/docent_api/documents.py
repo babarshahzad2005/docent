@@ -12,7 +12,7 @@ from pathlib import PurePosixPath
 from typing import Literal
 from uuid import UUID, uuid4
 
-from psycopg import Connection
+from psycopg import Connection, errors
 from psycopg.rows import DictRow
 from pydantic import BaseModel
 
@@ -35,6 +35,16 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 
+class ReplacementSummary(BaseModel):
+    """A new version on its way to replacing a Document (GLOSSARY: Replace)."""
+
+    id: UUID
+    name: str
+    status: DocumentStatus
+    failure_reason: str | None
+    can_retry: bool
+
+
 class DocumentSummary(BaseModel):
     id: UUID
     collection_id: UUID
@@ -50,6 +60,8 @@ class DocumentSummary(BaseModel):
     effective_date: date
     created_at: datetime
     updated_at: datetime
+    replacement: ReplacementSummary | None = None
+    """The new version being processed to replace this one; it answers until that's indexed."""
 
 
 class UploadRejected(Exception):
@@ -76,7 +88,15 @@ _SUMMARY_COLUMNS = """
     d.id, d.collection_id, d.name, d.size_bytes, d.status, d.failure_reason,
     d.status = 'failed' and d.failure_retryable as can_retry,
     d.source_url, d.source_credit, d.source_licence_url,
-    d.effective_date, d.created_at, d.updated_at
+    d.effective_date, d.created_at, d.updated_at,
+    (
+        select json_build_object(
+            'id', v.id, 'name', v.name, 'status', v.status,
+            'failure_reason', v.failure_reason,
+            'can_retry', v.status = 'failed' and v.failure_retryable
+        )
+        from app.documents v where v.replaces_id = d.id
+    ) as replacement
 """
 
 
@@ -88,6 +108,7 @@ def list_documents(conn: Connection[DictRow], user_id: UUID) -> list[DocumentSum
         from app.documents d
         join app.memberships m on m.collection_id = d.collection_id
         where m.user_id = %(user_id)s
+          and d.replaces_id is null  -- a replacement shows on the Document it replaces
         order by d.created_at desc, d.name
         """,
         {"user_id": user_id},
@@ -104,6 +125,7 @@ def start_upload(
     size_bytes: int,
     sha256: str | None = None,
     allow_duplicate: bool = False,
+    replaces: UUID | None = None,
 ) -> tuple[DocumentSummary, SignedUpload]:
     """Create the Document as `uploading` and return where the browser should send the file.
 
@@ -113,6 +135,11 @@ def start_upload(
     a Document already in the Collection, the upload is refused as a duplicate unless the User
     chose to keep both (`allow_duplicate`). Ingestion checks the stored file again (ingestion.py),
     so a browser that misreports the size or fingerprint gains nothing.
+
+    With `replaces`, the file is a new version of that Document (GLOSSARY: Replace): it is
+    processed as a hidden Document of its own while the current version keeps answering, and
+    takes its place once indexed (ingestion.py). One replacement at a time; a failed one is
+    discarded when the User replaces again.
     """
     name = clean_name(name)
     extension = PurePosixPath(name).suffix.lower()
@@ -134,6 +161,10 @@ def start_upload(
         raise UploadRejected(f"{name} couldn\u2019t be checked. Reload the page and try again.")
 
     _require_editor(conn, user_id, collection_id)
+    if replaces is not None:
+        current = _replaceable(conn, user_id, replaces, collection_id)
+        if sha256 is not None and current["content_hash"] == sha256:
+            raise UploadRejected(f"{name} is the same as the current version of {current['name']}.")
     used = storage_used(conn, user_id)
     if used + size_bytes > MAX_USER_BYTES:
         raise UploadRejected(
@@ -141,13 +172,14 @@ def start_upload(
             f"({megabytes(size_bytes)}) would go over the limit: delete documents you no longer "
             "need to make room."
         )
-    if sha256 is not None and not allow_duplicate:
+    if sha256 is not None and not allow_duplicate and replaces is None:
         # Failed attempts don't count: their file is gone or unusable (ingestion.py).
         existing = conn.execute(
             """
             select d.name, c.name as collection from app.documents d
             join app.collections c on c.id = d.collection_id
             where d.collection_id = %s and d.content_hash = %s and d.status <> 'failed'
+              and d.replaces_id is null  -- a replacement isn't a Document of its own
             order by d.created_at limit 1
             """,
             (collection_id, sha256),
@@ -161,13 +193,35 @@ def start_upload(
     document_id = uuid4()
     # Signing first keeps the network call out of the database transaction.
     upload = store.signed_upload(f"{collection_id}/{document_id}{extension}")
+    try:
+        row = _insert(
+            conn, document_id, collection_id, user_id, name, size_bytes, upload, sha256, replaces
+        )
+    except errors.UniqueViolation as error:  # another replacement started meanwhile
+        raise UploadRejected(f"{name}: this document is already being replaced.") from error
+    assert row is not None
+    return DocumentSummary.model_validate(row), upload
+
+
+def _insert(
+    conn: Connection[DictRow],
+    document_id: UUID,
+    collection_id: UUID,
+    user_id: UUID,
+    name: str,
+    size_bytes: int,
+    upload: SignedUpload,
+    sha256: str | None,
+    replaces: UUID | None,
+) -> DictRow | None:
     with conn.transaction():
-        row = conn.execute(
+        return conn.execute(
             f"""
             insert into app.documents as d
-                (id, collection_id, uploaded_by, name, size_bytes, storage_path, content_hash)
+                (id, collection_id, uploaded_by, name, size_bytes, storage_path, content_hash,
+                 replaces_id)
             values (%(id)s, %(collection_id)s, %(user_id)s, %(name)s, %(size)s, %(path)s,
-                    %(sha256)s)
+                    %(sha256)s, %(replaces)s)
             returning {_SUMMARY_COLUMNS}
             """,
             {
@@ -178,10 +232,38 @@ def start_upload(
                 "size": size_bytes,
                 "path": upload.path,
                 "sha256": sha256,
+                "replaces": replaces,
             },
         ).fetchone()
-    assert row is not None
-    return DocumentSummary.model_validate(row), upload
+
+
+def _replaceable(
+    conn: Connection[DictRow], user_id: UUID, document_id: UUID, collection_id: UUID
+) -> DictRow:
+    """The Document a new version will replace, checked: the User may change it, it is
+    indexed (so it can keep answering meanwhile), and no other replacement is under way.
+    A failed replacement is cleared out of the way (its file queued for removal)."""
+    current = _editable(conn, user_id, document_id)
+    if current["collection_id"] != collection_id or current["replaces_id"] is not None:
+        raise DocumentNotFound(document_id)
+    if current["status"] != "indexed":
+        raise UploadRejected(f"{current['name']} can be replaced once it has finished processing.")
+    pending = current["replacement"]
+    if pending is not None and pending["status"] != "failed":
+        raise UploadRejected(f"{current['name']} is already being replaced.")
+    if pending is not None:
+        with conn.transaction():
+            gone = conn.execute(
+                "delete from app.documents where id = %s returning storage_path",
+                (pending["id"],),
+            ).fetchone()
+            if gone is not None:
+                conn.execute(
+                    "insert into app.storage_deletions (path) values (%s) "
+                    "on conflict (path) do nothing",
+                    (gone["storage_path"],),
+                )
+    return current
 
 
 def storage_used(conn: Connection[DictRow], user_id: UUID) -> int:
@@ -269,23 +351,40 @@ def delete_document(
     _editable(conn, user_id, document_id)
     conn.commit()  # end the read above, so the block below is a transaction of its own
     with conn.transaction():
-        row = conn.execute(
-            "delete from app.documents where id = %s returning storage_path, status",
-            (document_id,),
+        # Lock the Document before any replacement of it, in the order the swap locks them
+        # (ingestion._replace), so a delete and a swap never wait on each other.
+        target = conn.execute(
+            "select replaces_id from app.documents where id = %s", (document_id,)
         ).fetchone()
-        if row is None:
-            return  # deleted meanwhile by another request
-        uploading = row["status"] == "uploading"
-        conn.execute(
+        first = target["replaces_id"] if target and target["replaces_id"] else document_id
+        conn.execute("select 1 from app.documents where id = %s for update", (first,))
+        conn.execute("select 1 from app.documents where replaces_id = %s for update", (first,))
+        # A replacement under way goes with it (by cascade), and so does its file.
+        rows = conn.execute(
             """
-            insert into app.storage_deletions (path, delete_after)
-            values (%(path)s, now() + make_interval(hours => %(wait)s))
-            on conflict (path) do nothing
+            delete from app.documents
+            where id = %(id)s or replaces_id = %(id)s
+            returning storage_path, status
             """,
-            {"path": row["storage_path"], "wait": UPLOAD_LINK_HOURS if uploading else 0},
-        )
-    if not uploading:
-        remove_files(conn, store, [row["storage_path"]])
+            {"id": document_id},
+        ).fetchall()
+        if not rows:
+            return  # deleted meanwhile by another request
+        for row in rows:
+            conn.execute(
+                """
+                insert into app.storage_deletions (path, delete_after)
+                values (%(path)s, now() + make_interval(hours => %(wait)s))
+                on conflict (path) do nothing
+                """,
+                {
+                    "path": row["storage_path"],
+                    "wait": UPLOAD_LINK_HOURS if row["status"] == "uploading" else 0,
+                },
+            )
+    stored = [row["storage_path"] for row in rows if row["status"] != "uploading"]
+    if stored:
+        remove_files(conn, store, stored)
 
 
 def remove_files(conn: Connection[DictRow], store: FileStore, paths: list[str]) -> bool:
@@ -307,7 +406,7 @@ def remove_files(conn: Connection[DictRow], store: FileStore, paths: list[str]) 
 def _editable(conn: Connection[DictRow], user_id: UUID, document_id: UUID) -> DictRow:
     row = conn.execute(
         f"""
-        select {_SUMMARY_COLUMNS}, m.role
+        select {_SUMMARY_COLUMNS}, m.role, d.content_hash, d.replaces_id
         from app.documents d
         join app.memberships m on m.collection_id = d.collection_id
         where d.id = %(id)s and m.user_id = %(user_id)s

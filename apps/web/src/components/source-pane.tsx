@@ -209,6 +209,12 @@ function SourceBody({
             This is the passage as it was when the answer was given.
           </p>
         )}
+        {loaded?.replaced && (
+          <p role="status" className="mb-4 text-meta text-muted-foreground">
+            This document has been replaced since. This is the passage as it was when the answer
+            was given.
+          </p>
+        )}
         {context.state === "failed" && (
           <p role="alert" className="mb-4 text-meta text-destructive">
             {context.message}

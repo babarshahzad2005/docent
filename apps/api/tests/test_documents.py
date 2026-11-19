@@ -1265,3 +1265,232 @@ def test_the_update_endpoint_sets_the_effective_date(
         client.patch(f"/documents/{uuid4()}", json={"effective_date": "2019-11-01"}).status_code
         == 404
     )
+
+
+# --- Replace (#47) ------------------------------------------------------------------------
+
+NEW_POLICY = b"# Leave\n\n## Carry-over\n\nUp to 5 days.\n\n## Footer\n\nCompany confidential.\n"
+
+
+def replace(
+    conn: Connection[DictRow],
+    store: FakeStore,
+    user: AuthUser,
+    document_id: UUID,
+    data: bytes,
+    name: str = "policy.md",
+) -> UUID:
+    import hashlib
+
+    version, target = start_upload(
+        conn,
+        store,
+        user.id,
+        personal(conn, user),
+        name,
+        len(data),
+        sha256=hashlib.sha256(data).hexdigest(),
+        replaces=document_id,
+    )
+    store.files[target.path] = data
+    finish_upload(conn, user.id, version.id)
+    conn.commit()
+    return version.id
+
+
+def current_texts(conn: Connection[DictRow], document_id: UUID) -> list[str]:
+    rows = conn.execute(
+        "select content from app.chunks where document_id = %s and superseded_at is null "
+        "order by ordinal",
+        (document_id,),
+    ).fetchall()
+    conn.commit()
+    return [row["content"] for row in rows]
+
+
+def test_a_replaced_document_answers_from_the_old_version_until_the_new_one_is_indexed(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    from docent_api.retrieval import passage_in_context
+
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    old_chunk = conn.execute(
+        "select id from app.chunks where document_id = %s and content = 'Up to 10 days.'",
+        (document_id,),
+    ).fetchone()["id"]  # type: ignore[index]
+    old_path = conn.execute(
+        "select storage_path from app.documents where id = %s", (document_id,)
+    ).fetchone()["storage_path"]  # type: ignore[index]
+    conn.commit()
+
+    version_id = replace(conn, store, user, document_id, NEW_POLICY)
+
+    # Meanwhile: one Document in the Library, still the old version, with its replacement.
+    listed = list_documents(conn, user.id)
+    conn.commit()
+    assert [d.id for d in listed] == [document_id]
+    assert listed[0].replacement is not None and listed[0].replacement.status == "queued"
+    assert current_texts(conn, document_id) == ["Up to 10 days.", "Company confidential."]
+
+    embedder = FakeEmbedder()
+    run_batch(conn, store, embedder, seconds=240)
+
+    assert current_texts(conn, document_id) == ["Up to 5 days.", "Company confidential."]
+    # The unchanged footer kept its vector: only the changed passage was embedded.
+    assert embedder.texts == ["Leave > Carry-over\n\nUp to 5 days."]
+    assert count_rows(conn, "documents", version_id) == 0
+    [document] = list_documents(conn, user.id)
+    conn.commit()
+    assert document.replacement is None and document.status == "indexed"
+    # The old passage still opens for past Citations, marked replaced, and isn't searched.
+    cited = passage_in_context(conn, user.id, old_chunk)
+    assert cited["content"] == "Up to 10 days." and cited["replaced"] is True
+    superseded = conn.execute(
+        "select embedding is null as no_vector from app.chunks where id = %s", (old_chunk,)
+    ).fetchone()
+    queued = conn.execute(
+        "select 1 from app.storage_deletions where path = %s", (old_path,)
+    ).fetchone()
+    conn.commit()
+    assert superseded is not None and superseded["no_vector"]
+    assert queued is not None or old_path not in store.files  # the old file goes
+
+
+def test_a_failed_replacement_leaves_the_document_answering_and_can_be_cancelled(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    import hashlib
+
+    version, target = start_upload(
+        conn,
+        store,
+        user.id,
+        personal(conn, user),
+        "policy.md",
+        5,
+        sha256=hashlib.sha256(b"\x00\x01").hexdigest(),
+        replaces=document_id,
+    )
+    store.files[target.path] = b"\x00\x01\x02\x03\x04"  # no text in it
+    finish_upload(conn, user.id, version.id)
+    conn.commit()
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    [document] = list_documents(conn, user.id)
+    conn.commit()
+    assert document.status == "indexed"
+    assert document.replacement is not None and document.replacement.status == "failed"
+    assert current_texts(conn, document_id) == ["Up to 10 days.", "Company confidential."]
+    delete_document(conn, store, user.id, version.id)  # Cancel
+    [document] = list_documents(conn, user.id)
+    conn.commit()
+    assert document.replacement is None
+
+
+def test_replace_is_refused_while_another_is_under_way_or_for_the_same_content(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    import hashlib
+
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    with pytest.raises(UploadRejected, match="the same as the current version"):
+        start_upload(
+            conn,
+            store,
+            user.id,
+            personal(conn, user),
+            "policy.md",
+            len(POLICY),
+            sha256=hashlib.sha256(POLICY).hexdigest(),
+            replaces=document_id,
+        )
+    conn.rollback()
+    replace(conn, store, user, document_id, NEW_POLICY)
+    with pytest.raises(UploadRejected, match="already being replaced"):
+        start_upload(
+            conn,
+            store,
+            user.id,
+            personal(conn, user),
+            "policy.md",
+            10,
+            sha256=hashlib.sha256(b"other").hexdigest(),
+            replaces=document_id,
+        )
+    conn.rollback()
+
+
+def test_deleting_a_document_takes_its_replacement_and_both_files(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    version_id = replace(conn, store, user, document_id, NEW_POLICY)
+
+    delete_document(conn, store, user.id, document_id)
+
+    assert count_rows(conn, "documents", document_id) == 0
+    assert count_rows(conn, "documents", version_id) == 0
+    assert store.files == {}
+
+
+def test_a_swap_whose_replacement_was_deleted_changes_nothing(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    from docent_api.ingestion import _replace
+
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    version_id = replace(conn, store, user, document_id, NEW_POLICY)
+    delete_document(conn, store, user.id, version_id)  # Dismissed in another tab
+
+    with conn.transaction():
+        swapped = _replace(conn, version_id, document_id)
+
+    assert swapped is False
+    # The Document still answers from all its passages, vectors included.
+    rows = conn.execute(
+        "select count(*) filter (where embedding is not null) as embedded, count(*) as current "
+        "from app.chunks where document_id = %s and superseded_at is null",
+        (document_id,),
+    ).fetchone()
+    conn.commit()
+    assert rows is not None and rows["current"] == 2 and rows["embedded"] == 2
+
+
+def test_replace_keeps_the_effective_date_and_each_version_keeps_its_own_context(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    from datetime import date
+
+    from docent_api.documents import set_effective_date
+    from docent_api.retrieval import passage_in_context
+
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    set_effective_date(conn, user.id, document_id, date(2024, 1, 1))
+    replace(conn, store, user, document_id, NEW_POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    third = NEW_POLICY.replace(b"5 days", b"3 days")
+    replace(conn, store, user, document_id, third)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    [document] = list_documents(conn, user.id)
+    conn.commit()
+    assert document.effective_date == date(2024, 1, 1)
+    assert current_texts(conn, document_id) == ["Up to 3 days.", "Company confidential."]
+    # The second version's passage opens with the second version's neighbours, not the third's.
+    second = conn.execute(
+        "select id from app.chunks where document_id = %s and content = 'Up to 5 days.'",
+        (document_id,),
+    ).fetchone()
+    conn.commit()
+    assert second is not None
+    cited = passage_in_context(conn, user.id, second["id"])
+    assert cited["replaced"] is True and cited["content"] == "Up to 5 days."

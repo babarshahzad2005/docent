@@ -31,7 +31,7 @@ Solid arrows: main path. Dotted: edge paths and the follow-up loop.
 
 - `uploading`: the browser is sending the file to storage; an upload never reported finished fails after an hour
 - Bad file fails alone; batch continues
-- Re-upload: chunk-hash diff, re-embed changed only; old version serves until new one is indexed
+- Replace (from the Document, or when an upload's name matches one): chunk-hash diff, re-embed changed only; the Document answers as it is until the replacement is indexed, then they swap; one replacement at a time, identical content refused; a failed replacement shows why, with retry or dismiss; the Effective Date stays
 - Delete: confirm → chunks + vectors purged together; old citations show “source removed”
 
 ## Share
