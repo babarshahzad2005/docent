@@ -426,3 +426,59 @@ def main() -> None:
     args.out.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     args.out.with_suffix(".md").write_text(markdown(summary), encoding="utf-8")
     print(markdown(summary))
+
+
+# --- Blocking regressions in CI -----------------------------------------------------------
+
+# PRD targets. A metric below its target fails CI only once main has reached it: until then
+# (hit@5 is 86% today) the 2-point regression rule protects it.
+TARGETS = {
+    "hit_at_5": 0.90,
+    "faithfulness": 0.95,
+    "unanswerable_declined": 0.90,
+}
+MAX_DROP = 0.02
+
+
+def regressions(baseline: dict[str, Any] | None, current: dict[str, Any]) -> list[str]:
+    """Why `current` should block a merge against `baseline` (main): a metric more than two
+    points lower, or one main meets that has fallen below its target."""
+    problems = []
+    for name, value in current["metrics"].items():
+        if value is None:
+            continue
+        rate = value["rate"]
+        before = (baseline or {}).get("metrics", {}).get(name)
+        # More than two points, and more than one item's worth: an answer model at temperature
+        # 0 still varies a little, and one question of eight is twelve points.
+        items_lost = (before["rate"] - rate) * value["of"] if before is not None else 0
+        if before is not None and rate < before["rate"] - MAX_DROP - 1e-9 and items_lost >= 1.5:
+            problems.append(f"{name} fell from {before['rate']:.1%} to {rate:.1%} on main's subset")
+        target = TARGETS.get(name)
+        if target is not None and rate < target and before is not None and before["rate"] >= target:
+            problems.append(
+                f"{name} is {rate:.1%}, below its {target:.0%} target, which main meets"
+            )
+    if current.get("errors"):
+        problems.append(f"questions that failed to run: {', '.join(current['errors'])}")
+    return problems
+
+
+def compare() -> None:
+    """`docent-eval-compare BASELINE CURRENT`: exit 1 when CURRENT regresses against main."""
+    parser = argparse.ArgumentParser(prog="docent-eval-compare", description=compare.__doc__)
+    parser.add_argument("baseline", type=Path, help="main's report (missing: no comparison)")
+    parser.add_argument("current", type=Path)
+    args = parser.parse_args()
+    current = json.loads(args.current.read_text(encoding="utf-8"))
+    baseline = (
+        json.loads(args.baseline.read_text(encoding="utf-8")) if args.baseline.is_file() else None
+    )
+    if baseline is None:
+        print("No report from main to compare with yet: this run becomes the first baseline.")
+    problems = regressions(baseline, current)
+    for problem in problems:
+        print(f"Regression: {problem}")
+    if not problems:
+        print("No regressions.")
+    raise SystemExit(1 if problems else 0)

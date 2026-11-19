@@ -3,7 +3,15 @@
 from collections import Counter
 from uuid import uuid4
 
-from docent_api.evaluation import Result, found, load, markdown, report, threshold_sweep
+from docent_api.evaluation import (
+    Result,
+    found,
+    load,
+    markdown,
+    regressions,
+    report,
+    threshold_sweep,
+)
 from docent_api.retrieval import Passage
 from docent_api.settings import Settings
 
@@ -101,3 +109,38 @@ def test_the_markdown_summary_is_a_table_of_rates() -> None:
 
     assert "| hit at 5 | 66.7% | 2 of 3 |" in text
     assert "judge `gemini:" in text
+
+
+def metrics(of: int = 100, **rates: float) -> dict[str, object]:
+    return {"metrics": {k: {"rate": v, "of": of, "count": 0} for k, v in rates.items()}}
+
+
+def test_a_drop_of_more_than_two_points_against_main_blocks() -> None:
+    main = metrics(hit_at_5=0.86, faithfulness=1.0)
+
+    assert regressions(main, metrics(hit_at_5=0.85, faithfulness=0.98)) == []
+    assert regressions(main, metrics(hit_at_5=0.83, faithfulness=1.0)) == [
+        "hit_at_5 fell from 86.0% to 83.0% on main's subset"
+    ]
+
+
+def test_falling_below_a_target_blocks_only_once_main_meets_it() -> None:
+    assert regressions(metrics(hit_at_5=0.86), metrics(hit_at_5=0.85)) == []  # not yet met
+    problems = regressions(metrics(faithfulness=0.96), metrics(faithfulness=0.945))
+    assert problems == ["faithfulness is 94.5%, below its 95% target, which main meets"]
+
+
+def test_without_a_baseline_nothing_blocks_but_failed_questions() -> None:
+    assert regressions(None, metrics(hit_at_5=0.5)) == []
+    assert regressions(None, {**metrics(), "errors": ["ssp-amount"]}) == [
+        "questions that failed to run: ssp-amount"
+    ]
+
+
+def test_one_item_changing_in_a_small_subset_does_not_block() -> None:
+    # One answer of eight is 12.5 points: the model's own variation, not a regression.
+    assert (
+        regressions(metrics(8, answerable_answered=0.75), metrics(8, answerable_answered=0.625))
+        == []
+    )
+    assert regressions(metrics(8, answerable_answered=0.75), metrics(8, answerable_answered=0.5))

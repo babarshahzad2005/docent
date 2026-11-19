@@ -1,0 +1,103 @@
+name: Eval
+
+# The Eval Set (evals/README.md) against the Demo Collection, read-only.
+# - Pull requests that touch the answer path: every question retrieved, 8 answered, compared
+#   with main's latest run; a regression fails the check.
+# - Main: the same subset, as the baseline pull requests compare with.
+# - Nightly: the full set, every answerable question answered.
+# Answers come from the free tiers shared with production, so runs are kept small and paced.
+
+on:
+  pull_request:
+    paths:
+      - apps/api/src/docent_api/answers.py
+      - apps/api/src/docent_api/retrieval.py
+      - apps/api/src/docent_api/verification.py
+      - apps/api/src/docent_api/rewriting.py
+      - apps/api/src/docent_api/evaluation.py
+      - apps/api/src/docent_api/settings.py
+      - apps/api/src/docent_api/providers/**
+      - evals/eval-set.jsonl
+      - .github/workflows/eval.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/api/src/docent_api/answers.py
+      - apps/api/src/docent_api/retrieval.py
+      - apps/api/src/docent_api/verification.py
+      - apps/api/src/docent_api/rewriting.py
+      - apps/api/src/docent_api/evaluation.py
+      - apps/api/src/docent_api/settings.py
+      - apps/api/src/docent_api/providers/**
+      - evals/eval-set.jsonl
+      - .github/workflows/eval.yml
+  schedule:
+    - cron: "17 3 * * *" # nightly, while production is quiet
+  workflow_dispatch:
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read # to download main's report
+
+jobs:
+  eval:
+    name: Eval Set (hit@5, faithfulness, declines)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      RUN: ${{ github.event_name == 'schedule' && 'full' || 'subset' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Skip without the eval secrets
+        id: secrets
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$GEMINI_API_KEY" ] || [ -z "$GROQ_API_KEY" ]; then
+            echo "The eval secrets aren't available here (a fork, Dependabot, or not set up yet): skipping." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: astral-sh/setup-uv@v7
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+        if: steps.secrets.outputs.ready == 'true'
+      - name: Run the Eval Set
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          if [ "$RUN" = full ]; then
+            uv run docent-eval --out ../../evals/results/eval.json
+          else
+            uv run docent-eval --answers 8 --out ../../evals/results/eval.json
+          fi
+          cat ../../evals/results/eval.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Fetch main's latest report
+        if: steps.secrets.outputs.ready == 'true' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow eval.yml --branch main \
+            --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -n "$run" ]; then
+            gh run download "$run" --repo "$GITHUB_REPOSITORY" --name eval-subset --dir ../../baseline || true
+          fi
+      - name: Block regressions against main
+        if: steps.secrets.outputs.ready == 'true' && github.event_name == 'pull_request'
+        run: uv run docent-eval-compare ../../baseline/eval.json ../../evals/results/eval.json | tee -a "$GITHUB_STEP_SUMMARY"; exit "${PIPESTATUS[0]}"
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.secrets.outputs.ready == 'true'
+        with:
+          name: eval-${{ env.RUN }}
+          path: evals/results/
+          retention-days: 90
