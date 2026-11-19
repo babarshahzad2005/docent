@@ -90,6 +90,8 @@ After #58, when an answer has no citation markers, its verified quotes are tied 
 
 The one question not answered is a retrieval miss (holiday-part-time).
 
+With at most 3 passages per Document (#48), retrieval brings both versions for 2 of the 3 conflict questions, up from 0, and hit@5 stays at 86.1%. A cap of 2 gave hit@5 88.9% but both versions for only 1 of 3.
+
 ### The weak-retrieval threshold
 
 The weak-retrieval threshold (`DECLINE_BELOW_SIMILARITY`) was chosen from each question's best passage similarity. These are the shares at each candidate threshold:

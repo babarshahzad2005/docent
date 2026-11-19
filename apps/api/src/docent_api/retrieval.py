@@ -11,6 +11,7 @@ results afterwards (PRD principles): a passage the User can't read never leaves 
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 from uuid import UUID
 
 from psycopg import Connection
@@ -18,6 +19,9 @@ from psycopg.rows import DictRow
 
 CANDIDATES = 30  # how many each search contributes before fusion
 PASSAGES = 8  # how many passages an answer is given
+# At most this many passages from one Document, so one long Document can't crowd out the
+# others: when Documents disagree (#48), the answer needs to see each of them.
+PER_DOCUMENT = 3
 RRF_K = 60  # the usual reciprocal-rank-fusion constant; damps the advantage of rank 1
 
 # The passages a User may read: indexed Documents in their Collections, within the Scope.
@@ -44,6 +48,8 @@ class Passage:
     similarity: float | None = None
     """How close in meaning to the question (cosine similarity, 1 is identical); None when
     the passage was found by keywords alone or embeddings were unavailable."""
+    effective_date: date | None = None
+    """The date its Document's content applies from (GLOSSARY: Effective Date)."""
 
     @property
     def source(self) -> str:
@@ -124,8 +130,24 @@ def retrieve(
             params,
         ).fetchall()
     ]
-    fused = _fuse(vector_ids, keyword_ids)[:limit]
-    return _details(conn, fused, vector_ids, keyword_ids, similarity)
+    fused = _fuse(vector_ids, keyword_ids)
+    found = _details(conn, fused, vector_ids, keyword_ids, similarity)
+    return _spread(found, limit)
+
+
+def _spread(passages: list[Passage], limit: int) -> list[Passage]:
+    """The best `limit` passages, at most PER_DOCUMENT from any one Document; if there aren't
+    enough other Documents to fill the rest, the best of the remainder."""
+    chosen: list[Passage] = []
+    per: dict[UUID, int] = {}
+    for passage in passages:
+        if per.get(passage.document_id, 0) < PER_DOCUMENT:
+            chosen.append(passage)
+            per[passage.document_id] = per.get(passage.document_id, 0) + 1
+        if len(chosen) == limit:
+            return chosen
+    rest = [p for p in passages if p not in chosen]
+    return (chosen + rest)[:limit]
 
 
 def _fuse(*rankings: list[UUID]) -> list[tuple[UUID, float]]:
@@ -147,7 +169,7 @@ def _details(
         return []
     rows = conn.execute(
         """
-        select c.id, c.document_id, d.name, c.heading_path, c.page, c.content
+        select c.id, c.document_id, d.name, c.heading_path, c.page, c.content, d.effective_date
         from app.chunks c join app.documents d on d.id = c.document_id
         where c.id = any(%s)
         """,
@@ -171,6 +193,7 @@ def _details(
                 vector_rank=_rank(vector_ids, chunk_id),
                 keyword_rank=_rank(keyword_ids, chunk_id),
                 similarity=similarity.get(chunk_id),
+                effective_date=row["effective_date"],
             )
         )
     return passages
