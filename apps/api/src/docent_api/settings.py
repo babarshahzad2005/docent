@@ -23,9 +23,9 @@ class Settings(BaseSettings):
     # Judges faithfulness in the Eval Set (#46): never the answer model judging itself.
     judge_model: str = "gemini:gemini-3.5-flash-lite"
     # Below this similarity of the best passage, a question is declined without asking the
-    # answer model (#43). Chosen on the Eval Set (#46, evals/README.md): at 0.68, 13 of 14
-    # unanswerable questions are declined here and all 36 answerable ones reach the model;
-    # the model declines the rest itself.
+    # answer model (#43). Chosen on the Eval Set (#46, evals/README.md): at 0.68, all 14
+    # unanswerable questions are declined here and all 36 answerable ones reach the model
+    # (the lowest scores 0.686); the model can still decline what gets through.
     decline_below_similarity: float = 0.68
 
     @property

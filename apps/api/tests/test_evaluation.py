@@ -15,6 +15,7 @@ def test_the_eval_set_has_50_items_with_at_least_12_unanswerable_and_some_confli
     assert len(items) == 50
     assert kinds["unanswerable"] >= 12 and kinds["conflict"] >= 3
     assert len({item.id for item in items}) == len(items)
+    assert all(item.reviewed for item in items)  # every item checked by the maintainer
     for item in items:
         assert item.question.strip()
         if item.kind == "unanswerable":
@@ -64,6 +65,35 @@ def test_the_threshold_sweep_shows_what_each_threshold_would_decline() -> None:
     assert rows[0.69]["unanswerable_declined"]["count"] == 2
     assert rows[0.69]["answerable_let_through"]["count"] == 3  # 0.70, 0.72, 0.75
     assert rows[0.71]["answerable_let_through"]["count"] == 2
+
+
+def test_judge_failures_are_counted_not_left_out() -> None:
+    rows = [
+        *results(),
+        Result("f", "answerable", 0.74, hit_at_5=True, answered=True, judge_failed=True),
+    ]
+
+    metrics = report(rows, Settings())["metrics"]
+
+    assert metrics["answers_judged"] == {"rate": 0.6667, "of": 3, "count": 2}  # "f" unjudged
+
+
+def test_questions_naming_an_identifier_reach_the_model_at_any_threshold() -> None:
+    rows = [Result("form", "answerable", 0.55, bypasses_threshold=True)]
+
+    sweep = threshold_sweep(rows)
+
+    assert all(row["answerable_let_through"]["count"] == 1 for row in sweep)
+
+
+def test_the_judges_verdicts_are_read_from_prose_and_strings() -> None:
+    from docent_api.evaluation import _verdicts
+
+    assert _verdicts('Here you go {"supported": [true, "false", "True"]} (done {ok})') == [
+        True,
+        False,
+        True,
+    ]
 
 
 def test_the_markdown_summary_is_a_table_of_rates() -> None:

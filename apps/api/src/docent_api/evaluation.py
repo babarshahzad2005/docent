@@ -38,6 +38,7 @@ from psycopg import Connection
 from psycopg.rows import DictRow, dict_row
 
 from docent_api.answers import (
+    _IDENTIFIER,
     DECLINE,
     MAX_ANSWER_TOKENS,
     SYSTEM_PROMPT,
@@ -82,6 +83,7 @@ class Item:
     question: str
     kind: str  # "answerable", "conflict", or "unanswerable"
     expected: list[dict[str, str]]
+    reviewed: bool = False
 
 
 @dataclass
@@ -96,6 +98,10 @@ class Result:
     answer: str | None = None
     claims: int = 0
     supported: int | None = None
+    judge_failed: bool = False
+    # The question names an identifier keyword search found: it reaches the model whatever
+    # its similarity (answers._weak_retrieval).
+    bypasses_threshold: bool = False
     notes: list[str] = field(default_factory=list)
 
 
@@ -104,7 +110,15 @@ def load(path: Path = EVAL_SET) -> list[Item]:
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip():
             data = json.loads(line)
-            items.append(Item(data["id"], data["question"], data["kind"], data["expected"]))
+            items.append(
+                Item(
+                    data["id"],
+                    data["question"],
+                    data["kind"],
+                    data["expected"],
+                    data.get("reviewed", False),
+                )
+            )
     return items
 
 
@@ -136,12 +150,20 @@ async def evaluate(
         conn.rollback()
         similarities = [p.similarity for p in passages if p.similarity is not None]
         result = Result(item.id, item.kind, max(similarities) if similarities else None)
+        result.bypasses_threshold = bool(
+            _IDENTIFIER.search(item.question) and any(p.keyword_rank for p in passages)
+        )
         if item.kind != "unanswerable":
             result.hit_at_5 = any(found(e, passages[:HIT_AT]) for e in item.expected)
         if item.kind == "conflict":
             result.both_versions = all(found(e, passages) for e in item.expected)
         if item.id in answer_ids:
-            await _answer(result, item, passages, generator, judge, pace)
+            try:
+                await _answer(result, item, passages, generator, judge, pace)
+            except ProviderError as error:
+                # One failed question is recorded, not allowed to lose the whole run.
+                result.answered, result.outcome = None, "error"
+                result.notes.append(f"answer failed: {error!r}")
         results.append(result)
         print(f"  {item.id}: {_line(result)}", file=sys.stderr)
     return results
@@ -202,10 +224,10 @@ async def _generate(generator: Generator, prompt: str, attempts: int = 4) -> str
                 if isinstance(event, TextDelta):
                     raw += event.text
             return raw
-        except RateLimited:
+        except RateLimited as error:
             if attempt == attempts - 1:
                 raise
-            await asyncio.sleep(30 * (attempt + 1))
+            await asyncio.sleep(max(getattr(error, "retry_after", 0) or 0, 30 * (attempt + 1)))
     raise AssertionError("unreachable")
 
 
@@ -219,21 +241,40 @@ async def _judge(result: Result, answer: str, passages: list[Passage], judge: Ge
     sentences = [text.strip() for text, _ in _claims(answer) if text.strip()]
     numbered = "\n".join(f"{n}. {text}" for n, text in enumerate(sentences, start=1))
     prompt = f"Passages:\n\n{quoted}\n\nAnswer, by sentence:\n\n{numbered}"
-    try:
-        reply = ""
-        async for event in judge.generate(
-            JUDGE_PROMPT, [Message("user", prompt)], max_output_tokens=600, temperature=0
-        ):
-            if isinstance(event, TextDelta):
-                reply += event.text
-        verdicts = json.loads(reply[reply.find("{") : reply.rfind("}") + 1])["supported"]
-        if len(verdicts) != len(sentences):
-            raise ValueError(f"{len(verdicts)} verdicts for {len(sentences)} sentences")
-    except (ProviderError, ValueError, KeyError, TypeError) as error:
-        result.notes.append(f"judge failed: {error!r}")
-        return
     result.claims = len(sentences)
-    result.supported = sum(verdict is True for verdict in verdicts)
+    for attempt in range(2):
+        try:
+            reply = ""
+            async for event in judge.generate(
+                JUDGE_PROMPT, [Message("user", prompt)], max_output_tokens=600, temperature=0
+            ):
+                if isinstance(event, TextDelta):
+                    reply += event.text
+            verdicts = _verdicts(reply)
+            if len(verdicts) != len(sentences):
+                raise ValueError(f"{len(verdicts)} verdicts for {len(sentences)} sentences")
+            result.supported = sum(verdicts)
+            return
+        except RateLimited:
+            if attempt == 0:
+                await asyncio.sleep(30)
+                continue
+            result.notes.append("judge failed: rate limited")
+        except (ProviderError, ValueError, KeyError, TypeError) as error:
+            result.notes.append(f"judge failed: {error!r}")
+        break
+    result.judge_failed = True  # counted in the report, never silently left out
+
+
+def _verdicts(reply: str) -> list[bool]:
+    """The judge's verdicts from its reply: the first JSON object in it, as true or false."""
+    start = reply.find("{")
+    if start < 0:
+        raise ValueError("no JSON in the judge's reply")
+    data, _ = json.JSONDecoder().raw_decode(reply[start:])
+    return [
+        v is True or (isinstance(v, str) and v.strip().lower() == "true") for v in data["supported"]
+    ]
 
 
 def _demo_reader(conn: Connection[DictRow]) -> tuple[UUID, UUID]:
@@ -273,6 +314,7 @@ def report(results: Sequence[Result], settings: Settings) -> dict[str, Any]:
     should_decline = [r for r in answered if r.kind == "unanswerable"]
     judged = [r for r in answered if r.supported is not None and r.claims]
     claims = sum(r.claims for r in judged)
+    to_judge = [r for r in answered if r.answered]
     metrics = {
         "hit_at_5": _rate(sum(bool(r.hit_at_5) for r in retrievable), len(retrievable)),
         "conflicts_both_retrieved": _rate(
@@ -285,6 +327,7 @@ def report(results: Sequence[Result], settings: Settings) -> dict[str, Any]:
             sum(bool(r.answered) for r in should_answer), len(should_answer)
         ),
         "faithfulness": _rate(sum(r.supported or 0 for r in judged), claims),
+        "answers_judged": _rate(len(judged), len(to_judge)),
     }
     return {
         "models": {
@@ -295,6 +338,7 @@ def report(results: Sequence[Result], settings: Settings) -> dict[str, Any]:
         "decline_below_similarity": settings.decline_below_similarity,
         "questions": len(results),
         "answered_in_run": len(answered),
+        "errors": [r.id for r in results if r.outcome == "error"],
         "metrics": metrics,
         "threshold_sweep": threshold_sweep(results),
         "results": [asdict(r) for r in results],
@@ -307,9 +351,14 @@ def threshold_sweep(results: Sequence[Result]) -> list[dict[str, Any]]:
     rows = []
     unanswerable = [r for r in results if r.kind == "unanswerable" and r.best_similarity]
     answerable = [r for r in results if r.kind != "unanswerable" and r.best_similarity]
+
+    def through(result: Result, threshold: float) -> bool:
+        assert result.best_similarity is not None
+        return result.bypasses_threshold or result.best_similarity >= threshold
+
     for threshold in THRESHOLDS:
-        declined = sum(r.best_similarity < threshold for r in unanswerable)  # type: ignore[operator]
-        let_through = sum(r.best_similarity >= threshold for r in answerable)  # type: ignore[operator]
+        declined = sum(not through(r, threshold) for r in unanswerable)
+        let_through = sum(through(r, threshold) for r in answerable)
         rows.append(
             {
                 "threshold": threshold,
@@ -348,13 +397,18 @@ def markdown(summary: dict[str, Any]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="docent-eval", description=__doc__.splitlines()[0])
-    parser.add_argument("--answers", type=int, default=None, help="answer only the first N")
+    parser.add_argument(
+        "--answers", type=int, default=None, help="answer only the first N answerable questions"
+    )
     parser.add_argument("--out", type=Path, default=REPO / "evals" / "results" / "latest.json")
     args = parser.parse_args()
+    if args.answers is not None and args.answers < 0:
+        parser.error("--answers must be 0 or more")
     settings = get_settings()
     items = load()
+    answerable = [item for item in items if item.kind != "unanswerable"]
     answer_ids = (
-        {item.id for item in items[: args.answers]}
+        {item.id for item in answerable[: args.answers]}
         if args.answers is not None
         else {item.id for item in items}
     )
