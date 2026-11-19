@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Fragment, useEffect, useId, useRef, useState } from "react";
 
 import { AskBox } from "@/components/ask-box";
+import { type CollectionChoice, ScopeChips, scopeNames } from "@/components/scope-chips";
 import { CITATION_CHIP, type CitedSource, SourceMeta, SourcePane } from "@/components/source-pane";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +26,8 @@ export type Turn = {
   status: "streaming" | "complete" | "declined" | "interrupted" | "failed";
   messageId?: string;
   error?: string;
+  /** The Collections it was answered from. */
+  scope?: string[];
   /** How it ended, once finished; a Decline's `cited` are its closest passages. */
   outcome?: Outcome;
   /** The Citations were checked against their passages (ADR 0007). */
@@ -45,14 +48,20 @@ export function Conversation({
   conversationId: initialId,
   initialTurns,
   startQuestion,
-  scope,
+  scope: initialScope,
+  collections = [],
 }: {
   conversationId: string | null;
   initialTurns: Turn[];
   startQuestion?: string;
-  /** The Collections to answer from; follow-up questions keep it. Unset: every readable one. */
+  /** The Collections to answer from; follow-ups keep it unless the User changes it. */
   scope?: string[];
+  /** The User's Collections, to choose the Scope from and name it. */
+  collections?: CollectionChoice[];
 }) {
+  const [scope, setScope] = useState(
+    initialScope ?? collections.map((collection) => collection.id),
+  );
   const [turns, setTurns] = useState(initialTurns);
   const [announcement, setAnnouncement] = useState("");
   const conversationId = useRef(initialId);
@@ -73,7 +82,7 @@ export function Conversation({
     asking.current = true;
     setTurns((current) => [
       ...current,
-      { question, answer: "", sources: [], cited: [], status: "streaming" },
+      { question, answer: "", sources: [], cited: [], status: "streaming", scope },
     ]);
     setAnnouncement("");
     answerSoFar.current = "";
@@ -180,6 +189,7 @@ export function Conversation({
             turn={turn}
             first={index === 0}
             canRetry={!streaming}
+            collections={collections}
             onRetry={() => void ask(turn.question)}
             onOpenSource={(source, opener) => {
               openedBy.current = opener;
@@ -190,7 +200,8 @@ export function Conversation({
         <p aria-live="polite" className="sr-only">
           {announcement}
         </p>
-        <div className="sticky bottom-4 mt-auto">
+        <div className="sticky bottom-4 mt-auto flex flex-col gap-2 bg-background pt-2">
+          <ScopeChips collections={collections} value={scope} onChange={setScope} />
           <AskBox
             label="Ask a follow-up question"
             placeholder="Ask a follow-up…"
@@ -208,16 +219,19 @@ function TurnView({
   turn,
   first,
   canRetry,
+  collections,
   onRetry,
   onOpenSource,
 }: {
   turn: Turn;
   first: boolean;
   canRetry: boolean;
+  collections: CollectionChoice[];
   onRetry: () => void;
   onOpenSource: (source: CitedSource, opener: HTMLElement) => void;
 }) {
   const Heading = first ? "h1" : "h2";
+  const asked = turn.scope ? scopeNames(turn.scope, collections) : null;
   const closestId = useId();
   const available = new Set(turn.sources.map((source) => source.number));
   const cited = turn.sources.filter((source) => turn.cited.includes(source.number));
@@ -242,7 +256,10 @@ function TurnView({
 
   return (
     <section className="flex flex-col gap-4">
-      <Heading className="font-serif text-question font-medium text-balance">{turn.question}</Heading>
+      <div className="flex flex-col gap-1">
+        <Heading className="font-serif text-question font-medium text-balance">{turn.question}</Heading>
+        {asked && <p className="text-meta text-muted-foreground">Asked of {asked}</p>}
+      </div>
       <div
         className="font-serif text-answer whitespace-pre-wrap text-pretty"
         aria-busy={turn.status === "streaming"}

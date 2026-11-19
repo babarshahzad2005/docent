@@ -142,6 +142,31 @@
         "title": "ConversationOut",
         "type": "object"
       },
+      "ConversationSummary": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "updated_at"
+        ],
+        "title": "ConversationSummary",
+        "type": "object"
+      },
       "DocumentSummary": {
         "properties": {
           "can_retry": {
@@ -738,6 +763,37 @@
           }
         ],
         "summary": "Ask",
+        "tags": [
+          "answers"
+        ]
+      }
+    },
+    "/conversations": {
+      "get": {
+        "description": "The User's Conversations, most recently active first (the latest 50).",
+        "operationId": "listConversations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConversationSummary"
+                  },
+                  "title": "Response Listconversations",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Conversations",
         "tags": [
           "answers"
         ]

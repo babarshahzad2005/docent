@@ -605,6 +605,19 @@ def _title(question: str) -> str:
 # --- Reading a saved Conversation ---------------------------------------------------------
 
 
+def list_conversations(
+    conn: Connection[DictRow], user_id: UUID, limit: int = 50
+) -> list[dict[str, Any]]:
+    """The User's Conversations, most recently active first."""
+    return conn.execute(
+        """
+        select id, title, updated_at from app.conversations
+        where user_id = %s order by updated_at desc limit %s
+        """,
+        (user_id, limit),
+    ).fetchall()
+
+
 def load_conversation(
     conn: Connection[DictRow], user_id: UUID, conversation_id: UUID
 ) -> dict[str, Any]:

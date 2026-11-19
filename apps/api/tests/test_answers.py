@@ -29,6 +29,7 @@ from docent_api.answers import (
     build_prompt,
     cited_numbers,
     is_decline,
+    list_conversations,
     load_conversation,
     normalize_citations,
     start_turn,
@@ -847,3 +848,17 @@ def test_a_first_question_is_not_rewritten(conn: Connection[DictRow], reader: Au
     ).fetchone()
     conn.commit()
     assert log is not None and log["rewritten_question"] is None
+
+
+def test_conversations_are_listed_for_their_owner_latest_first(
+    conn: Connection[DictRow], reader: AuthUser
+) -> None:
+    ask(reader, "How much leave carries over?", ScriptedModel(["10 days [1].", QUOTES]))
+    second = ask(reader, "What is form HR-27?", ScriptedModel(["Long leave [1].", QUOTE_FORM]))
+
+    listed = list_conversations(conn, reader.id)
+    conn.commit()
+
+    assert [c["title"] for c in listed] == ["What is form HR-27?", "How much leave carries over?"]
+    assert listed[0]["id"] == UUID(second[0].conversation_id)  # type: ignore[union-attr]
+    assert list_conversations(conn, make_user(conn, "other@example.com").id) == []

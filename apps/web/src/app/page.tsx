@@ -37,7 +37,8 @@ async function Library() {
 
   return (
     <LibraryHome
-      collectionId={personal.id}
+      collections={me.collections}
+      defaultScope={me.collections.map((collection) => collection.id)}
       label="Ask a question about your documents"
     >
       <LibraryDocuments

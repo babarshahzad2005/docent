@@ -5,21 +5,25 @@ import { type ReactNode, useState } from "react";
 
 import { AskBox } from "@/components/ask-box";
 import { Conversation } from "@/components/conversation";
+import { type CollectionChoice, ScopeChips } from "@/components/scope-chips";
 
 /**
- * A Collection's page with a question box above it; asking opens a new Conversation in its
- * place, answered from that Collection only (its Scope).
+ * A page with a question box above it; asking opens a new Conversation in its place,
+ * answered from the Collections chosen as its Scope (`defaultScope` to start with).
  */
 export function LibraryHome({
-  collectionId,
+  collections,
+  defaultScope,
   label,
   children,
 }: {
-  collectionId: string;
+  collections: CollectionChoice[];
+  defaultScope: string[];
   label: string;
   children: ReactNode;
 }) {
   const [question, setQuestion] = useState<string | null>(null);
+  const [scope, setScope] = useState(defaultScope);
   const pathname = usePathname();
 
   // Asking moves the address to the new Conversation; coming back to this page (its link,
@@ -37,13 +41,15 @@ export function LibraryHome({
         conversationId={null}
         initialTurns={[]}
         startQuestion={question}
-        scope={[collectionId]}
+        scope={scope}
+        collections={collections}
       />
     );
   }
   return (
     <>
-      <div className="mx-auto w-full max-w-3xl px-4 pt-8 sm:px-6">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 pt-8 sm:px-6">
+        <ScopeChips collections={collections} value={scope} onChange={setScope} />
         <AskBox
           label={label}
           placeholder={`${label}…`}
