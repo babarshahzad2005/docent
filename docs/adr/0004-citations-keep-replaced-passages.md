@@ -1,3 +1,5 @@
 # Citations keep the passage text they were based on
 
 When a Document is Replaced, the text of its old chunks is retained (their embeddings are not) so that every past Citation still shows the exact passage the answer used, labelled as replaced. Re-pointing Citations to the new version would silently make old answers unverifiable or contradictory. The cost is storing superseded chunk text indefinitely; it is excluded from retrieval and purged only when the Document itself is deleted, at which point Citations show the source as removed.
+
+**How it is built (#47, November 2026).** A replacement is processed as a hidden Document of its own (`documents.replaces_id`). Once it is indexed, one transaction marks the Document's passages superseded (`chunks.superseded_at`, vectors dropped), moves the replacement's passages to the Document, and queues the replaced file for removal. Superseded passages stay on the same Document, so its deletion purges them with the rest. A cited superseded passage opens with neighbouring passages from its own version, labelled replaced.

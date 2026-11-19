@@ -287,18 +287,29 @@ def _finish(
     return updated.rowcount > 0
 
 
-def _replace(conn: Connection[DictRow], version_id: UUID, document_id: UUID) -> bool:
-    """Swap an indexed new version in for the Document it replaces, in one transaction.
+class _Gone(Exception):
+    """What a replacement was replacing, or the replacement itself, was deleted meanwhile."""
 
-    The old passages stay as text, marked superseded and without vectors, so past Citations
-    still open them (ADR 0004); the new passages move to the Document, which takes the new
-    version's file, name, size, and Effective Date; the old file is queued for removal.
-    Returns False if either was deleted meanwhile.
+
+def _replace(conn: Connection[DictRow], version_id: UUID, document_id: UUID) -> bool:
+    """Swap an indexed replacement in for the Document it replaces, within the caller's
+    transaction.
+
+    Both rows are locked first, the Document before its replacement (as delete_document
+    does, so the two never deadlock), and nothing changes unless both still exist. The old
+    passages stay as text, marked superseded and without vectors, so past Citations still
+    open them (ADR 0004); the new passages move to the Document, which takes the new file,
+    name, and size, and keeps its Effective Date; the replaced file is queued for removal.
+    Returns False, having changed nothing, if either was deleted meanwhile.
     """
     old = conn.execute(
         "select storage_path from app.documents where id = %s for update", (document_id,)
     ).fetchone()
-    if old is None:
+    version = conn.execute(
+        "select 1 from app.documents where id = %s and replaces_id = %s for update",
+        (version_id, document_id),
+    ).fetchone()
+    if old is None or version is None:
         return False
     conn.execute(
         """
@@ -313,7 +324,7 @@ def _replace(conn: Connection[DictRow], version_id: UUID, document_id: UUID) -> 
     new = conn.execute(
         """
         delete from app.documents where id = %s
-        returning name, size_bytes, storage_path, content_hash, effective_date, uploaded_by
+        returning name, size_bytes, storage_path, content_hash, uploaded_by
         """,
         (version_id,),
     ).fetchone()
@@ -323,7 +334,7 @@ def _replace(conn: Connection[DictRow], version_id: UUID, document_id: UUID) -> 
         """
         update app.documents
         set name = %(name)s, size_bytes = %(size)s, storage_path = %(path)s,
-            content_hash = %(hash)s, effective_date = %(effective)s, uploaded_by = %(by)s,
+            content_hash = %(hash)s, uploaded_by = %(by)s,
             status = 'indexed', failure_reason = null, failure_retryable = false,
             locked_until = null, updated_at = now()
         where id = %(id)s
@@ -371,6 +382,14 @@ class _DocumentWorker:
             if self.document["status"] in ("queued", "parsing"):
                 self._parse()
             self._embed()
+            if self.replaces is not None:
+                with self.conn.transaction():
+                    if not _replace(self.conn, self.id, self.replaces):
+                        raise _Gone
+                # The replaced file goes once nothing points at it (storage_deletions).
+                return "indexed"
+        except _Gone:
+            return "deleted"  # the replacement or its Document was deleted meanwhile
         except _Unprocessable as problem:
             if not self._still_exists():
                 return "deleted"  # its file went with it, mid-batch

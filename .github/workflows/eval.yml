@@ -97,9 +97,10 @@ jobs:
           fi
           code=$?
           set -e
-          if [ "$code" = 3 ] && [ "${{ github.event_name }}" = pull_request ]; then
-            # A migration this change brings isn't live yet: main's run after merging measures it.
-            echo "This change brings a database migration that isn't live yet, so it's measured on main once merged." | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$code" = 3 ]; then
+            # A migration this code brings isn't live yet (production migrates as it deploys):
+            # the next run after it is live measures it.
+            echo "This code brings a database migration that isn't live yet, so it isn't measured in this run." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "measured=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

@@ -105,6 +105,14 @@ export function LibraryDocuments({
     new Map(initialDocuments.map((d) => [d.id, d.status])),
   );
   const wasEmpty = useRef(initialDocuments.length === 0);
+  // Each Document's replacement status as last seen, to announce when one finishes or fails.
+  const replacements = useRef(
+    new Map(
+      initialDocuments.flatMap((d) =>
+        d.replacement ? [[d.id, { status: d.replacement.status }] as const] : [],
+      ),
+    ),
+  );
   // Documents this page is uploading right now (their status is still "uploading").
   const [sending, setSending] = useState<Set<string>>(new Set());
   const busy = useRef(0);
@@ -164,17 +172,28 @@ export function LibraryDocuments({
       (d) => isSettled(d.status) && previous.current.get(d.id) !== d.status,
     );
     previous.current = new Map(documents.map((d) => [d.id, d.status]));
-    if (finished.length > 0) {
-      setAnnouncement(
-        finished
-          .map((d) =>
-            d.status === "indexed"
-              ? `${d.name} is ready.`
-              : `${d.name} failed.`,
-          )
-          .join(" "),
-      );
+    // A replacement finishing (it disappears from its Document) or failing.
+    const replaced: string[] = [];
+    for (const d of documents) {
+      const before = replacements.current.get(d.id);
+      const now = d.replacement;
+      if (before && before.status !== "failed" && !now)
+        replaced.push(`${d.name} has been replaced.`);
+      else if (before && before.status !== "failed" && now?.status === "failed")
+        replaced.push(`${now.name} couldn’t replace ${d.name}.`);
     }
+    replacements.current = new Map(
+      documents.flatMap((d) =>
+        d.replacement ? [[d.id, { status: d.replacement.status }] as const] : [],
+      ),
+    );
+    const messages = [
+      ...finished.map((d) =>
+        d.status === "indexed" ? `${d.name} is ready.` : `${d.name} failed.`,
+      ),
+      ...replaced,
+    ];
+    if (messages.length > 0) setAnnouncement(messages.join(" "));
   }, [documents]);
 
   // The first upload swaps the empty state for the list; keep focus on the upload button.
@@ -276,7 +295,7 @@ export function LibraryDocuments({
       return;
     }
     // A file named like a Document already here is probably its new version: ask.
-    const namesake = documents.find((d) => d.name === file.name);
+    const namesake = documents.find((d) => d.name === file.name && d.status !== "failed");
     if (!replaces && !allowDuplicate && namesake) {
       // Replace is offered when the Document can take a new version now.
       const replaceable =
@@ -363,7 +382,7 @@ export function LibraryDocuments({
           replacement: asReplacement(finished.value.status),
         }));
         setAnnouncement(
-          `${replaces.name} is being replaced by ${file.name}. It answers from the current version until the new one is ready.`,
+          `${replaces.name} is being replaced by ${file.name}. Answers use ${replaces.name} as it is until then.`,
         );
       } else {
         setDocuments((current) =>
@@ -442,7 +461,7 @@ export function LibraryDocuments({
                         void uploadOne(file, { replaces: replaceable });
                       }}
                     >
-                      Replace the current version
+                      Replace with this file
                     </Button>
                   )}
                   <Button
@@ -635,7 +654,7 @@ export function LibraryDocuments({
               );
               if (!cancelled?.ok) {
                 setErrors([
-                  `The replacement of ${document.name} couldn't be cancelled. Try again.`,
+                  `The failed replacement of ${document.name} couldn't be dismissed. Try again.`,
                 ]);
                 return;
               }
@@ -645,7 +664,7 @@ export function LibraryDocuments({
                 ),
               );
               setAnnouncement(
-                `The replacement of ${document.name} was cancelled.`,
+                `The failed replacement of ${document.name} was dismissed.`,
               );
             }}
             onRetryReplacement={async () => {
@@ -825,7 +844,13 @@ function DocumentRow({
         </span>
         <span className="flex items-center gap-1">
           {canReplace && (
-            <ReplaceDocument name={document.name} onFile={onReplace} />
+            <ReplaceDocument
+              name={document.name}
+              onFile={(file) => {
+                onReplace(file);
+                requestAnimationFrame(() => row.current?.focus());
+              }}
+            />
           )}
           {canDelete && (
             <DeleteDocument
@@ -838,8 +863,10 @@ function DocumentRow({
       </div>
       {document.replacement && (
         <Replacement
+          name={document.name}
           replacement={document.replacement}
           canChange={canDelete}
+          onSettled={() => row.current?.focus()}
           onCancel={onCancelReplacement}
           onRetry={onRetryReplacement}
         />
@@ -912,13 +939,18 @@ function ReplaceDocument({
 
 /** The new version on its way: its progress, or why it failed and what to do. */
 function Replacement({
+  name,
   replacement,
   canChange,
+  onSettled,
   onCancel,
   onRetry,
 }: {
+  name: string;
   replacement: NonNullable<DocumentSummary["replacement"]>;
   canChange: boolean;
+  /** Its buttons go once used: focus moves to the Document's row. */
+  onSettled: () => void;
   onCancel: () => Promise<void>;
   onRetry: () => Promise<void>;
 }) {
@@ -927,24 +959,24 @@ function Replacement({
     setBusy(true);
     await action();
     setBusy(false);
+    onSettled();
   };
   if (replacement.status !== "failed") {
     return (
       <p className="text-meta text-muted-foreground">
         Replacing with {replacement.name}:{" "}
-        {REPLACEMENT_PROGRESS[replacement.status]}. The current version answers
-        until then.
+        {REPLACEMENT_PROGRESS[replacement.status]}. Until then, answers use {name} as it is.
       </p>
     );
   }
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-meta text-destructive">
-        {replacement.name} couldn’t replace it
+        {replacement.name} couldn’t replace {name}
         {replacement.failure_reason
           ? `: ${replacement.failure_reason}`
           : "."}{" "}
-        The current version still answers.
+        {name} still answers as it is.
       </p>
       {canChange && (
         <span className="flex gap-2">
@@ -954,6 +986,7 @@ function Replacement({
               size="sm"
               disabled={busy}
               onClick={run(onRetry)}
+              aria-label={`Retry replacing ${name}`}
             >
               Retry
             </Button>
@@ -963,6 +996,7 @@ function Replacement({
             size="sm"
             disabled={busy}
             onClick={run(onCancel)}
+            aria-label={`Dismiss the failed replacement of ${name}`}
           >
             Dismiss
           </Button>

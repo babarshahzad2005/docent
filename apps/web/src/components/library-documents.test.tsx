@@ -506,7 +506,7 @@ describe("Replacing a Document", () => {
     const prompt = await screen.findByRole("list", { name: "Already in this collection" });
     expect(prompt.textContent).toContain("policy.pdf is already in this collection. Replace it");
     expect(actions.startUpload).not.toHaveBeenCalled();
-    await userEvent.click(within(prompt).getByRole("button", { name: "Replace the current version" }));
+    await userEvent.click(within(prompt).getByRole("button", { name: "Replace with this file" }));
     await waitFor(() => expect(actions.startUpload).toHaveBeenCalled());
     expect(actions.startUpload.mock.calls[0][5]).toBe("d1");
   });
@@ -530,10 +530,10 @@ describe("Replacing a Document", () => {
       />,
     );
 
-    expect(screen.getByText(/policy-2025.pdf couldn’t replace it: This PDF is scanned./)).toBeTruthy();
-    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.getByText(/policy-2025.pdf couldn’t replace policy.pdf: This PDF is scanned./)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss the failed replacement of policy.pdf" }));
 
     expect(actions.deleteDocument).toHaveBeenCalledWith("v1");
-    await waitFor(() => expect(screen.queryByText(/couldn’t replace it/)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/couldn’t replace/)).toBeNull());
   });
 });

@@ -12,7 +12,7 @@ from pathlib import PurePosixPath
 from typing import Literal
 from uuid import UUID, uuid4
 
-from psycopg import Connection
+from psycopg import Connection, errors
 from psycopg.rows import DictRow
 from pydantic import BaseModel
 
@@ -179,6 +179,7 @@ def start_upload(
             select d.name, c.name as collection from app.documents d
             join app.collections c on c.id = d.collection_id
             where d.collection_id = %s and d.content_hash = %s and d.status <> 'failed'
+              and d.replaces_id is null  -- a replacement isn't a Document of its own
             order by d.created_at limit 1
             """,
             (collection_id, sha256),
@@ -192,8 +193,29 @@ def start_upload(
     document_id = uuid4()
     # Signing first keeps the network call out of the database transaction.
     upload = store.signed_upload(f"{collection_id}/{document_id}{extension}")
+    try:
+        row = _insert(
+            conn, document_id, collection_id, user_id, name, size_bytes, upload, sha256, replaces
+        )
+    except errors.UniqueViolation as error:  # another replacement started meanwhile
+        raise UploadRejected(f"{name}: this document is already being replaced.") from error
+    assert row is not None
+    return DocumentSummary.model_validate(row), upload
+
+
+def _insert(
+    conn: Connection[DictRow],
+    document_id: UUID,
+    collection_id: UUID,
+    user_id: UUID,
+    name: str,
+    size_bytes: int,
+    upload: SignedUpload,
+    sha256: str | None,
+    replaces: UUID | None,
+) -> DictRow | None:
     with conn.transaction():
-        row = conn.execute(
+        return conn.execute(
             f"""
             insert into app.documents as d
                 (id, collection_id, uploaded_by, name, size_bytes, storage_path, content_hash,
@@ -213,8 +235,6 @@ def start_upload(
                 "replaces": replaces,
             },
         ).fetchone()
-    assert row is not None
-    return DocumentSummary.model_validate(row), upload
 
 
 def _replaceable(
@@ -331,6 +351,14 @@ def delete_document(
     _editable(conn, user_id, document_id)
     conn.commit()  # end the read above, so the block below is a transaction of its own
     with conn.transaction():
+        # Lock the Document before any replacement of it, in the order the swap locks them
+        # (ingestion._replace), so a delete and a swap never wait on each other.
+        target = conn.execute(
+            "select replaces_id from app.documents where id = %s", (document_id,)
+        ).fetchone()
+        first = target["replaces_id"] if target and target["replaces_id"] else document_id
+        conn.execute("select 1 from app.documents where id = %s for update", (first,))
+        conn.execute("select 1 from app.documents where replaces_id = %s for update", (first,))
         # A replacement under way goes with it (by cascade), and so does its file.
         rows = conn.execute(
             """

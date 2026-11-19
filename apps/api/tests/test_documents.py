@@ -1438,3 +1438,59 @@ def test_deleting_a_document_takes_its_replacement_and_both_files(
     assert count_rows(conn, "documents", document_id) == 0
     assert count_rows(conn, "documents", version_id) == 0
     assert store.files == {}
+
+
+def test_a_swap_whose_replacement_was_deleted_changes_nothing(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    from docent_api.ingestion import _replace
+
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    version_id = replace(conn, store, user, document_id, NEW_POLICY)
+    delete_document(conn, store, user.id, version_id)  # Dismissed in another tab
+
+    with conn.transaction():
+        swapped = _replace(conn, version_id, document_id)
+
+    assert swapped is False
+    # The Document still answers from all its passages, vectors included.
+    rows = conn.execute(
+        "select count(*) filter (where embedding is not null) as embedded, count(*) as current "
+        "from app.chunks where document_id = %s and superseded_at is null",
+        (document_id,),
+    ).fetchone()
+    conn.commit()
+    assert rows is not None and rows["current"] == 2 and rows["embedded"] == 2
+
+
+def test_replace_keeps_the_effective_date_and_each_version_keeps_its_own_context(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    from datetime import date
+
+    from docent_api.documents import set_effective_date
+    from docent_api.retrieval import passage_in_context
+
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    set_effective_date(conn, user.id, document_id, date(2024, 1, 1))
+    replace(conn, store, user, document_id, NEW_POLICY)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+    third = NEW_POLICY.replace(b"5 days", b"3 days")
+    replace(conn, store, user, document_id, third)
+    run_batch(conn, store, FakeEmbedder(), seconds=240)
+
+    [document] = list_documents(conn, user.id)
+    conn.commit()
+    assert document.effective_date == date(2024, 1, 1)
+    assert current_texts(conn, document_id) == ["Up to 3 days.", "Company confidential."]
+    # The second version's passage opens with the second version's neighbours, not the third's.
+    second = conn.execute(
+        "select id from app.chunks where document_id = %s and content = 'Up to 5 days.'",
+        (document_id,),
+    ).fetchone()
+    conn.commit()
+    assert second is not None
+    cited = passage_in_context(conn, user.id, second["id"])
+    assert cited["replaced"] is True and cited["content"] == "Up to 5 days."

@@ -402,11 +402,16 @@ def schema_behind(conn: Connection[DictRow]) -> str | None:
 
     from docent_api.migrate import alembic_config
 
-    head = ScriptDirectory.from_config(alembic_config()).get_current_head()
+    scripts = ScriptDirectory.from_config(alembic_config())
+    head = scripts.get_current_head()
+    assert head is not None
     row = conn.execute("select version_num from app.alembic_version").fetchone()
     conn.rollback()
     applied = row["version_num"] if row else None
-    if applied == head:
+    # Behind only if the database is at an earlier revision of this code's own history; a
+    # database that is ahead (main merged a migration since) can still run older code.
+    earlier = [r.revision for r in scripts.walk_revisions("base", head) if r.revision != head]
+    if applied not in earlier:
         return None
     return (
         f"The database is at migration {applied}, and this change brings {head}: it can't be "

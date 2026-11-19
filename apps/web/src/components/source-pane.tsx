@@ -1,13 +1,7 @@
 "use client";
 
 import { XIcon } from "lucide-react";
-import {
-  type RefObject,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { type RefObject, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { getPassage, type PassageInContext } from "@/app/passages-actions";
 import { Button } from "@/components/ui/button";
@@ -30,13 +24,7 @@ export const CITATION_CHIP =
   "inline-flex min-w-5 items-center justify-center rounded-sm border-b-2 border-mark-edge bg-mark px-1 font-sans text-cite font-semibold text-mark-text";
 
 /** A source's section and page, as shown under its name. */
-export function SourceMeta({
-  headingPath,
-  page,
-}: {
-  headingPath: string[];
-  page: number | null;
-}) {
+export function SourceMeta({ headingPath, page }: { headingPath: string[]; page: number | null }) {
   return (
     <span className="flex flex-wrap gap-x-3 text-meta text-muted-foreground">
       {headingPath.length > 0 && <span>{headingPath.join(" › ")}</span>}
@@ -64,15 +52,10 @@ export function SourcePane({
   onClose: () => void;
 }) {
   const wide = useMediaQuery(WIDE);
-  if (wide)
-    return <InlinePane source={source} returnTo={returnTo} onClose={onClose} />;
+  if (wide) return <InlinePane source={source} returnTo={returnTo} onClose={onClose} />;
   return (
     <Sheet open={source !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent
-        side="right"
-        finalFocus={returnTo}
-        className="w-full max-w-md gap-0 p-0"
-      >
+      <SheetContent side="right" finalFocus={returnTo} className="w-full max-w-md gap-0 p-0">
         {source && <SourceBody key={source.openedAt} source={source} inSheet />}
       </SheetContent>
     </Sheet>
@@ -112,8 +95,7 @@ function InlinePane({
     if (source === null) return;
     const close = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (document.querySelector('[role="dialog"], [role="alertdialog"]'))
-        return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       onClose();
       returnTo.current?.focus();
     };
@@ -169,14 +151,11 @@ function SourceBody({
     getPassage(source.chunk_id)
       .then((result) => {
         if (!current) return;
-        if (!result.ok)
-          setContext({ state: "failed", message: result.message });
+        if (!result.ok) setContext({ state: "failed", message: result.message });
         else if (result.value === null) setContext({ state: "unavailable" });
         else setContext({ state: "loaded", passage: result.value });
       })
-      .catch(
-        () => current && setContext({ state: "failed", message: CONNECTION }),
-      );
+      .catch(() => current && setContext({ state: "failed", message: CONNECTION }));
     return () => {
       current = false;
     };
@@ -192,10 +171,7 @@ function SourceBody({
   useEffect(() => {
     if (!ready || !mark.current) return;
     const reduced = window.matchMedia(REDUCED_MOTION).matches;
-    mark.current.scrollIntoView?.({
-      block: "center",
-      behavior: reduced ? "auto" : "smooth",
-    });
+    mark.current.scrollIntoView?.({ block: "center", behavior: reduced ? "auto" : "smooth" });
     const timer = setTimeout(() => setMarked(true), reduced ? 0 : SCROLL_MS);
     return () => clearTimeout(timer);
   }, [ready]);
@@ -206,13 +182,9 @@ function SourceBody({
 
   return (
     <>
-      <header
-        className={`flex items-start gap-3 border-b border-border p-6 ${inSheet ? "pr-14" : ""}`}
-      >
+      <header className={`flex items-start gap-3 border-b border-border p-6 ${inSheet ? "pr-14" : ""}`}>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="text-meta text-muted-foreground tabular-nums">
-            Source {source.number}
-          </p>
+          <p className="text-meta text-muted-foreground tabular-nums">Source {source.number}</p>
           <Title
             ref={inSheet ? undefined : heading}
             tabIndex={-1}
@@ -223,12 +195,7 @@ function SourceBody({
           <SourceMeta headingPath={source.heading_path} page={source.page} />
         </div>
         {onClose && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Close source"
-            onClick={onClose}
-          >
+          <Button variant="ghost" size="icon" aria-label="Close source" onClick={onClose}>
             <XIcon aria-hidden="true" />
           </Button>
         )}
@@ -244,8 +211,8 @@ function SourceBody({
         )}
         {loaded?.replaced && (
           <p role="status" className="mb-4 text-meta text-muted-foreground">
-            This document has been replaced since. This is the passage as it was
-            when the answer was given.
+            This document has been replaced since. This is the passage as it was when the answer
+            was given.
           </p>
         )}
         {context.state === "failed" && (
@@ -254,9 +221,7 @@ function SourceBody({
           </p>
         )}
         <div className="flex max-w-[34em] flex-col gap-4 font-serif text-source text-pretty">
-          {loaded?.before && (
-            <p className="text-text-context">{loaded.before}</p>
-          )}
+          {loaded?.before && <p className="text-text-context">{loaded.before}</p>}
           {passage && (
             <p>
               <mark
@@ -269,10 +234,7 @@ function SourceBody({
             </p>
           )}
           {!passage && context.state === "loading" && (
-            <p
-              role="status"
-              className="font-sans text-ui text-muted-foreground"
-            >
+            <p role="status" className="font-sans text-ui text-muted-foreground">
               Loading the passage…
             </p>
           )}
@@ -283,8 +245,7 @@ function SourceBody({
   );
 }
 
-const CONNECTION =
-  "The source couldn’t be loaded. Check your connection and open it again.";
+const CONNECTION = "The source couldn’t be loaded. Check your connection and open it again.";
 // Roughly how long a smooth scroll to the passage takes before the highlight appears.
 const SCROLL_MS = 300;
 
