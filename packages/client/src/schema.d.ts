@@ -105,7 +105,11 @@ export interface paths {
         delete: operations["deleteDocument"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update
+         * @description Change a Document's Effective Date (Owners and Editors).
+         */
+        patch: operations["updateDocument"];
         trace?: never;
     };
     "/documents/{document_id}/retry": {
@@ -320,6 +324,14 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** DocumentChanges */
+        DocumentChanges: {
+            /**
+             * Effective Date
+             * Format: date
+             */
+            effective_date: string;
         };
         /** DocumentSummary */
         DocumentSummary: {
@@ -731,6 +743,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentChanges"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentSummary"];
+                };
             };
             /** @description Validation Error */
             422: {

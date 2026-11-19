@@ -1217,3 +1217,51 @@ def test_the_scheduler_processes_waiting_documents(
 
     assert response.json() == {"indexed": 1, "failed": 0, "remaining": 0, "ran": True}
     assert status(conn, document_id) == ("indexed", None)
+
+
+# --- Effective Date (#47) -----------------------------------------------------------------
+
+
+def test_owners_set_the_effective_date_and_viewers_cannot(
+    conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    from datetime import date
+
+    from docent_api.documents import set_effective_date
+
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+    viewer = AuthUser(id=uuid4(), email="viewer@example.com")
+    ensure_user(conn, viewer)
+    conn.execute(
+        "insert into app.memberships (collection_id, user_id, role) values (%s, %s, 'viewer')",
+        (personal(conn, user), viewer.id),
+    )
+    conn.commit()
+
+    summary = set_effective_date(conn, user.id, document_id, date(2024, 1, 1))
+
+    assert summary.effective_date == date(2024, 1, 1)
+    with pytest.raises(NotAllowed):
+        set_effective_date(conn, viewer.id, document_id, date(2020, 1, 1))
+    conn.rollback()
+    row = conn.execute("select effective_date from app.documents where id = %s", (document_id,))
+    assert str(row.fetchone()["effective_date"]) == "2024-01-01"  # type: ignore[index]
+    conn.commit()
+
+
+def test_the_update_endpoint_sets_the_effective_date(
+    client: TestClient, conn: Connection[DictRow], store: FakeStore, user: AuthUser
+) -> None:
+    document_id = upload(conn, store, user, "policy.md", POLICY)
+
+    changed = client.patch(f"/documents/{document_id}", json={"effective_date": "2019-11-01"})
+
+    assert changed.status_code == 200 and changed.json()["effective_date"] == "2019-11-01"
+    path = f"/documents/{document_id}"
+    # Not a date, or out of range: it orders Documents that disagree, so a typo mustn't win.
+    for bad in ("soon", "9999-12-31", "0001-01-01"):
+        assert client.patch(path, json={"effective_date": bad}).status_code == 422, bad
+    assert (
+        client.patch(f"/documents/{uuid4()}", json={"effective_date": "2019-11-01"}).status_code
+        == 404
+    )

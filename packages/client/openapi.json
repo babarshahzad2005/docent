@@ -167,6 +167,20 @@
         "title": "ConversationSummary",
         "type": "object"
       },
+      "DocumentChanges": {
+        "properties": {
+          "effective_date": {
+            "format": "date",
+            "title": "Effective Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "effective_date"
+        ],
+        "title": "DocumentChanges",
+        "type": "object"
+      },
       "DocumentSummary": {
         "properties": {
           "can_retry": {
@@ -991,6 +1005,63 @@
           }
         ],
         "summary": "Delete",
+        "tags": [
+          "documents"
+        ]
+      },
+      "patch": {
+        "description": "Change a Document's Effective Date (Owners and Editors).",
+        "operationId": "updateDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentChanges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update",
         "tags": [
           "documents"
         ]

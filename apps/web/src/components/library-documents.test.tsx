@@ -11,6 +11,7 @@ const actions = vi.hoisted(() => ({
   finishUpload: vi.fn(),
   listDocuments: vi.fn(),
   retryDocument: vi.fn(),
+  setEffectiveDate: vi.fn(),
   startUpload: vi.fn(),
 }));
 vi.mock("@/app/documents-actions", () => actions);
@@ -275,6 +276,52 @@ describe("Many Documents at once", () => {
     fireEvent.dragEnter(window, { dataTransfer: files("a.md") });
 
     expect(screen.queryByText(/Drop files to add them/)).toBeNull();
+  });
+});
+
+describe("The Effective Date", () => {
+  it("is shown, and Owners change it", async () => {
+    actions.setEffectiveDate.mockResolvedValue({
+      ok: true,
+      value: aDocument({ effective_date: "2024-01-01" }),
+    });
+    render(<LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />);
+
+    expect(screen.getByText(/Effective 17 November 2026/)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Change the effective date of policy.pdf" }));
+    const input = screen.getByLabelText("Effective from");
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "2024-01-01" } });
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(actions.setEffectiveDate).toHaveBeenCalledWith("d1", "2024-01-01");
+    expect(await screen.findByText(/Effective 1 January 2024/)).toBeTruthy();
+  });
+
+  it("keeps the form open with the reason when saving fails, and Escape cancels", async () => {
+    actions.setEffectiveDate.mockResolvedValue({ ok: false, message: "You can’t change this." });
+    render(<LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Change the effective date/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("You can’t change this.");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByLabelText("Effective from")).toBeNull();
+    // Opened again, it starts without the old message.
+    await userEvent.click(screen.getByRole("button", { name: /Change the effective date/ }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("can't be changed by Viewers", () => {
+    render(
+      <LibraryDocuments
+        collection={{ ...PERSONAL, role: "viewer" }}
+        initialDocuments={[aDocument()]}
+      />,
+    );
+
+    expect(screen.getByText(/Effective 17 November 2026/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Change the effective date/ })).toBeNull();
   });
 });
 

@@ -232,6 +232,28 @@ def retry_document(conn: Connection[DictRow], user_id: UUID, document_id: UUID) 
     )
 
 
+def set_effective_date(
+    conn: Connection[DictRow], user_id: UUID, document_id: UUID, effective: date
+) -> DocumentSummary:
+    """Set the date a Document's content applies from (GLOSSARY: Effective Date).
+
+    Owners and Editors of its Collection only; Viewers get NotAllowed.
+    """
+    _editable(conn, user_id, document_id)
+    row = conn.execute(
+        f"""
+        update app.documents d set effective_date = %s, updated_at = now()
+        where d.id = %s
+        returning {_SUMMARY_COLUMNS}
+        """,
+        (effective, document_id),
+    ).fetchone()
+    conn.commit()
+    if row is None:
+        raise DocumentNotFound(document_id)  # deleted meanwhile
+    return DocumentSummary.model_validate(row)
+
+
 def delete_document(
     conn: Connection[DictRow], store: FileStore, user_id: UUID, document_id: UUID
 ) -> None:
