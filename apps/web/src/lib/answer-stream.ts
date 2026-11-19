@@ -12,6 +12,13 @@ export type Source = {
   passage?: string;
 };
 
+/**
+ * How a finished answer ended. "declined": the Documents don't contain the answer;
+ * "unverified": nothing in it could be checked, so it isn't shown; "no_documents": there was
+ * nothing in Scope to search.
+ */
+export type Outcome = "answered" | "declined" | "unverified" | "no_documents";
+
 /** A claim removed because its Citations couldn't be checked against their passages. */
 export type RemovedClaim = { text: string; reason: string; original: string };
 
@@ -21,8 +28,8 @@ export type AnswerEvent =
   | {
       event: "done";
       message_id: string;
-      /** "unverified": nothing in the answer could be checked, so it isn't shown. */
-      outcome: "answered" | "declined" | "unverified";
+      outcome: Outcome;
+      /** The passages the answer cites; for a Decline, the closest passages. */
       cited: number[];
       /** The answer once its Citations were checked: replaces the streamed text. */
       answer: string;

@@ -131,6 +131,8 @@ class MessageOut(BaseModel):
     status: Literal["streaming", "complete", "interrupted", "failed"]
     scope: list[UUID]
     """The Collections the question was answered from."""
+    outcome: Literal["answered", "declined", "unverified", "no_documents"] | None
+    """How a finished answer ended; for a Decline, its Citations are the closest passages."""
     verified: bool
     """The answer's Citations were checked against their passages (ADR 0007)."""
     removed: list[RemovedClaim]

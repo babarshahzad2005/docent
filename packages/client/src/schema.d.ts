@@ -382,6 +382,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Outcome */
+            outcome: ("answered" | "declined" | "unverified" | "no_documents") | null;
             /** Removed */
             removed: components["schemas"]["RemovedClaim"][];
             /**

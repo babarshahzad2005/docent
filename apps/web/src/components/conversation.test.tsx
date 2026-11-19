@@ -120,6 +120,62 @@ describe("Conversation", () => {
     expect(screen.getByText("“Unused days are paid out.”")).toBeTruthy();
   });
 
+  it("follows a Decline with the closest passages, each openable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        sse(
+          ["start", START],
+          ["delta", { text: "I couldn’t find that in your documents." }],
+          [
+            "done",
+            {
+              message_id: "m1",
+              outcome: "declined",
+              cited: [1],
+              answer: "I couldn’t find that in your documents.",
+              verified: false,
+              removed: [],
+            },
+          ],
+        ),
+      ),
+    );
+    render(<Conversation conversationId={null} initialTurns={[]} startQuestion="Parking?" />);
+
+    const closest = await screen.findByRole("list", { name: "Closest passages" });
+    expect(closest.textContent).toContain("leave.pdf");
+    expect(screen.getByText("The closest passages in your documents:")).toBeTruthy();
+    expect(screen.queryByText(/checked against/)).toBeNull();
+  });
+
+  it("asks for documents when there are none to search", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        sse(
+          ["start", { ...START, sources: [] }],
+          ["delta", { text: "There are no documents to search here yet." }],
+          [
+            "done",
+            {
+              message_id: "m1",
+              outcome: "no_documents",
+              cited: [],
+              answer: "There are no documents to search here yet.",
+              verified: false,
+              removed: [],
+            },
+          ],
+        ),
+      ),
+    );
+    render(<Conversation conversationId={null} initialTurns={[]} startQuestion="Leave?" />);
+
+    const link = await screen.findByRole("link", { name: "Go to your library to upload documents" });
+    expect(link.getAttribute("href")).toBe("/");
+  });
+
   it("marks an answer cut off without an ending, and lets the User ask again", async () => {
     vi.stubGlobal(
       "fetch",
