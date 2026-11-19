@@ -361,6 +361,7 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            replacement?: components["schemas"]["ReplacementSummary"] | null;
             /** Size Bytes */
             size_bytes: number;
             /** Source Credit */
@@ -462,6 +463,8 @@ export interface components {
             collection_id: string;
             /** Name */
             name: string;
+            /** Replaces */
+            replaces?: string | null;
             /** Sha256 */
             sha256: string;
             /** Size Bytes */
@@ -491,6 +494,11 @@ export interface components {
             heading_path: string[];
             /** Page */
             page: number | null;
+            /**
+             * Replaced
+             * @default false
+             */
+            replaced: boolean;
         };
         /** Question */
         Question: {
@@ -509,6 +517,28 @@ export interface components {
             reason: string;
             /** Text */
             text: string;
+        };
+        /**
+         * ReplacementSummary
+         * @description A new version on its way to replacing a Document (GLOSSARY: Replace).
+         */
+        ReplacementSummary: {
+            /** Can Retry */
+            can_retry: boolean;
+            /** Failure Reason */
+            failure_reason: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "uploading" | "queued" | "parsing" | "embedding" | "indexed" | "failed";
         };
         /** StartedUpload */
         StartedUpload: {

@@ -222,6 +222,16 @@
             "title": "Name",
             "type": "string"
           },
+          "replacement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplacementSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "size_bytes": {
             "title": "Size Bytes",
             "type": "integer"
@@ -485,6 +495,18 @@
             "title": "Name",
             "type": "string"
           },
+          "replaces": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaces"
+          },
           "sha256": {
             "title": "Sha256",
             "type": "string"
@@ -562,6 +584,11 @@
               }
             ],
             "title": "Page"
+          },
+          "replaced": {
+            "default": false,
+            "title": "Replaced",
+            "type": "boolean"
           }
         },
         "required": [
@@ -640,6 +667,56 @@
           "original"
         ],
         "title": "RemovedClaim",
+        "type": "object"
+      },
+      "ReplacementSummary": {
+        "description": "A new version on its way to replacing a Document (GLOSSARY: Replace).",
+        "properties": {
+          "can_retry": {
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "uploading",
+              "queued",
+              "parsing",
+              "embedding",
+              "indexed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "failure_reason",
+          "can_retry"
+        ],
+        "title": "ReplacementSummary",
         "type": "object"
       },
       "StartedUpload": {

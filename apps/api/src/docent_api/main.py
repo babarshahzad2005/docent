@@ -77,6 +77,8 @@ class NewDocument(BaseModel):
     """The file's SHA-256 in hex, to notice the same file uploaded twice."""
     allow_duplicate: bool = False
     """Keep both when the Collection already has a Document with the same content."""
+    replaces: UUID | None = None
+    """Replace this Document with the file: it keeps answering until the new one is indexed."""
 
 
 class UploadTarget(BaseModel):
@@ -153,6 +155,8 @@ class PassageOut(BaseModel):
     before: str | None
     """The passage just before, in the same Document and section, for context."""
     after: str | None
+    replaced: bool = False
+    """The Document has been Replaced since: this is the passage as it was (ADR 0004)."""
 
 
 class ConversationSummary(BaseModel):
@@ -223,6 +227,7 @@ def new_document(body: NewDocument, user: User, conn: Db, files: Files) -> Start
             body.size_bytes,
             sha256=body.sha256,
             allow_duplicate=body.allow_duplicate,
+            replaces=body.replaces,
         )
     except UploadRejected as rejected:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(rejected)) from None
@@ -230,6 +235,8 @@ def new_document(body: NewDocument, user: User, conn: Db, files: Files) -> Start
         raise HTTPException(status.HTTP_409_CONFLICT, str(duplicate)) from None
     except NotAllowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_EDIT) from None
+    except DocumentNotFound:  # the Document to replace
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That document doesn’t exist.") from None
     except StorageError:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,

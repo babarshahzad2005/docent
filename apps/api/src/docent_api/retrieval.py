@@ -24,8 +24,9 @@ RRF_K = 60  # the usual reciprocal-rank-fusion constant; damps the advantage of 
 _READABLE = """
     from app.chunks c
     join app.documents d on d.id = c.document_id and d.status = 'indexed'
+        and d.replaces_id is null
     join app.memberships m on m.collection_id = c.collection_id and m.user_id = %(user_id)s
-    where c.collection_id = any(%(scope)s)
+    where c.collection_id = any(%(scope)s) and c.superseded_at is null
 """
 
 
@@ -217,7 +218,8 @@ def passage_in_context(
     row = conn.execute(
         """
         select c.id as chunk_id, c.document_id, d.name as document_name, c.heading_path,
-               c.page, c.content, c.ordinal
+               c.page, c.content, c.ordinal, c.superseded_at is not null as replaced,
+               c.superseded_at
         from app.chunks c
         join app.documents d on d.id = c.document_id and d.status = 'indexed'
         join app.memberships m on m.collection_id = c.collection_id and m.user_id = %s
@@ -234,6 +236,7 @@ def passage_in_context(
             select ordinal, content from app.chunks
             where document_id = %(document)s and ordinal in (%(before)s, %(after)s)
               and heading_path = %(path)s and page is not distinct from %(page)s
+              and superseded_at is not distinct from %(superseded)s  -- the same version
             """,
             {
                 "document": row["document_id"],
@@ -241,11 +244,12 @@ def passage_in_context(
                 "after": row["ordinal"] + 1,
                 "path": row["heading_path"],
                 "page": row["page"],
+                "superseded": row["superseded_at"],
             },
         ).fetchall()
     }
     return {
-        **{key: value for key, value in row.items() if key != "ordinal"},
+        **{key: value for key, value in row.items() if key not in ("ordinal", "superseded_at")},
         "before": neighbours.get(row["ordinal"] - 1),
         "after": neighbours.get(row["ordinal"] + 1),
     }
