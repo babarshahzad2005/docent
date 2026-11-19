@@ -434,6 +434,7 @@ def test_follow_ups_join_the_conversation_and_others_cant(
         "And the rest?",
         ScriptedModel(["Forfeited [1].", QUOTE_REST_ONLY]),
         conversation_id=conversation_id,
+        rewriter=ScriptedModel(["What happens to the rest of unused leave?"]),
     )
 
     assert len(load_conversation(conn, reader.id, conversation_id)["messages"]) == 4

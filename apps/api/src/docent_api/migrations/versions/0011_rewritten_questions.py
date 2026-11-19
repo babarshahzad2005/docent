@@ -1,7 +1,8 @@
 """Follow-up rewriting (#44).
 
 `answer_logs.rewritten_question` is the follow-up as rewritten to stand on its own, which is
-what was retrieved and answered; null for a first question, or when the rewrite failed.
+what was retrieved and answered; null for a first question, when the follow-up already
+stood on its own, or when the rewrite failed.
 
 Revision ID: 0011
 Revises: 0010
