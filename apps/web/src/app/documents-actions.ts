@@ -83,6 +83,22 @@ export async function deleteDocument(documentId: string): Promise<Result<null>> 
   return { ok: false, message: detail(error) ?? problem(response.status) };
 }
 
+/** Set the date a Document's content applies from (Owners and Editors). */
+export async function setEffectiveDate(
+  documentId: string,
+  effectiveDate: string,
+): Promise<Result<DocumentSummary>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { data, response } = await caller.api.PATCH("/documents/{document_id}", {
+    headers: caller.headers,
+    params: { path: { document_id: documentId } },
+    body: { effective_date: effectiveDate },
+  });
+  if (!data) return { ok: false, message: problem(response.status) };
+  return { ok: true, value: data };
+}
+
 /** Queue a failed Document again and start processing it. */
 export async function retryDocument(documentId: string): Promise<Result<DocumentSummary>> {
   const caller = await apiAsUser();

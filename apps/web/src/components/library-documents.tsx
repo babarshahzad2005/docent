@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CheckIcon, UploadIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import {
   deleteDocument,
@@ -10,6 +10,7 @@ import {
   finishUpload,
   listDocuments,
   retryDocument,
+  setEffectiveDate,
   startUpload,
 } from "@/app/documents-actions";
 import {
@@ -437,6 +438,8 @@ export function LibraryDocuments({
               afterDelete={button}
               onDelete={async () => null}
               onRetry={async () => false}
+              canDate={false}
+              onDate={async () => null}
             />
           ))}
         </ul>
@@ -515,6 +518,22 @@ export function LibraryDocuments({
                 return `${document.name} couldn't be deleted. Check your connection and try again.`;
               }
             }}
+            canDate={canEdit && !sending.has(document.id)}
+            onDate={async (date) => {
+              try {
+                const changed = await setEffectiveDate(document.id, date);
+                if (!changed.ok) return changed.message;
+                setDocuments((current) =>
+                  current.map((d) => (d.id === document.id ? changed.value : d)),
+                );
+                setAnnouncement(
+                  `${document.name} now applies from ${formatDate(changed.value.effective_date)}.`,
+                );
+                return null;
+              } catch {
+                return "The date couldn’t be saved. Check your connection and try again.";
+              }
+            }}
             onRetry={async () => {
               try {
                 const retried = await retryDocument(document.id);
@@ -552,10 +571,16 @@ function DocumentRow({
   afterDelete,
   onRetry,
   onDelete,
+  canDate,
+  onDate,
 }: {
   document: DocumentSummary;
   canRetry: boolean;
   canDelete: boolean;
+  /** Whether the User may change the Effective Date. */
+  canDate: boolean;
+  /** Resolves to null once saved, or to a message saying why it wasn't. */
+  onDate: (date: string) => Promise<string | null>;
   /** Where focus goes once the Document (and so its row) is gone. */
   afterDelete: React.RefObject<HTMLButtonElement | null>;
   /** Resolves to whether the Document was queued again. */
@@ -618,8 +643,14 @@ function DocumentRow({
         </span>
       </div>
       <div className="flex items-center justify-between gap-4">
-        <span className="text-meta text-muted-foreground tabular-nums">
-          {formatSize(document.size_bytes)}
+        <span className="flex flex-wrap items-center gap-x-3 text-meta text-muted-foreground tabular-nums">
+          <span>{formatSize(document.size_bytes)}</span>
+          <EffectiveDate
+            name={document.name}
+            date={document.effective_date}
+            canChange={canDate}
+            onChange={onDate}
+          />
         </span>
         {canDelete && (
           <DeleteDocument
@@ -657,6 +688,113 @@ function DocumentRow({
       )}
     </li>
   );
+}
+
+/** "Effective 1 January 2024", and for Owners and Editors a way to change it. */
+function EffectiveDate({
+  name,
+  date,
+  canChange,
+  onChange,
+}: {
+  name: string;
+  date: string;
+  canChange: boolean;
+  onChange: (date: string) => Promise<string | null>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(date);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const change = useRef<HTMLButtonElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const inputId = useId();
+
+  useEffect(() => {
+    if (editing) input.current?.focus();
+  }, [editing]);
+
+  const close = () => {
+    setEditing(false);
+    setProblem(null);
+    // Focus returns to the button that opened the form, once it is back.
+    requestAnimationFrame(() => change.current?.focus());
+  };
+
+  if (!editing) {
+    return (
+      <span className="flex items-center gap-1">
+        Effective {formatDate(date)}
+        {canChange && (
+          <Button
+            ref={change}
+            variant="ghost"
+            size="sm"
+            aria-label={`Change the effective date of ${name}`}
+            onClick={() => {
+              setValue(date);
+              setEditing(true);
+            }}
+          >
+            Change
+          </Button>
+        )}
+      </span>
+    );
+  }
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (!value) return;
+        setSaving(true);
+        const message = await onChange(value);
+        setSaving(false);
+        if (message) setProblem(message);
+        else close();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          close();
+        }
+      }}
+    >
+      <label htmlFor={inputId}>Effective from</label>
+      <input
+        ref={input}
+        id={inputId}
+        type="date"
+        required
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        className="h-8 rounded-md border border-border-strong bg-surface px-2 text-foreground pointer-coarse:h-11"
+      />
+      <Button type="submit" size="sm" disabled={saving || !value}>
+        {saving ? "Saving…" : "Save"}
+      </Button>
+      <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={close}>
+        Cancel
+      </Button>
+      {problem && (
+        <p role="alert" className="w-full text-destructive">
+          {problem}
+        </p>
+      )}
+    </form>
+  );
+}
+
+/** A date as people write it: "1 January 2024". */
+function formatDate(iso: string): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 /** Delete, after a confirmation that names the Document. */

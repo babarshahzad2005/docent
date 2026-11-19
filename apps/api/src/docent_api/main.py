@@ -1,7 +1,7 @@
 """HTTP entry point for the Docent API."""
 
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -34,6 +34,7 @@ from docent_api.documents import (
     finish_upload,
     list_documents,
     retry_document,
+    set_effective_date,
     start_upload,
 )
 from docent_api.ingestion import run_batch
@@ -263,6 +264,24 @@ def delete(document_id: UUID, user: User, conn: Db, files: Files) -> None:
         delete_document(conn, files, user.id, document_id)
     except DocumentNotFound:
         return  # already gone
+    except NotAllowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_CHANGE) from None
+
+
+class DocumentChanges(BaseModel):
+    effective_date: date
+    """The date the Document's content applies from (GLOSSARY: Effective Date)."""
+
+
+@app.patch("/documents/{document_id}", operation_id="updateDocument", tags=["documents"])
+def update(document_id: UUID, changes: DocumentChanges, user: User, conn: Db) -> DocumentSummary:
+    """Change a Document's Effective Date (Owners and Editors)."""
+    try:
+        return set_effective_date(conn, user.id, document_id, changes.effective_date)
+    except DocumentNotFound:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "That document doesn\u2019t exist."
+        ) from None
     except NotAllowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_CHANGE) from None
 
