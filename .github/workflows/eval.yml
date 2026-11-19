@@ -1,43 +1,25 @@
 name: Eval
 
 # The Eval Set (evals/README.md) against the Demo Collection, read-only.
-# - Pull requests that touch the answer path: every question retrieved, 8 answered, compared
-#   with main's latest run; a regression fails the check.
-# - Main: the same subset, as the baseline pull requests compare with.
-# - Nightly: the full set, every answerable question answered.
+# - Pull requests: when the answer path changed, every question is retrieved and 8 answered,
+#   then compared with main's latest run; a regression fails the check. Otherwise the check
+#   passes at once, so it can be a required check without holding other pull requests up.
+# - Main: the same subset when the answer path changed; the baseline pull requests use.
+# - Nightly, or by hand: the full set, every answerable question answered.
 # Answers come from the free tiers shared with production, so runs are kept small and paced.
 
 on:
   pull_request:
-    paths:
-      - apps/api/src/docent_api/answers.py
-      - apps/api/src/docent_api/retrieval.py
-      - apps/api/src/docent_api/verification.py
-      - apps/api/src/docent_api/rewriting.py
-      - apps/api/src/docent_api/evaluation.py
-      - apps/api/src/docent_api/settings.py
-      - apps/api/src/docent_api/providers/**
-      - evals/eval-set.jsonl
-      - .github/workflows/eval.yml
   push:
     branches: [main]
-    paths:
-      - apps/api/src/docent_api/answers.py
-      - apps/api/src/docent_api/retrieval.py
-      - apps/api/src/docent_api/verification.py
-      - apps/api/src/docent_api/rewriting.py
-      - apps/api/src/docent_api/evaluation.py
-      - apps/api/src/docent_api/settings.py
-      - apps/api/src/docent_api/providers/**
-      - evals/eval-set.jsonl
-      - .github/workflows/eval.yml
   schedule:
     - cron: "17 3 * * *" # nightly, while production is quiet
   workflow_dispatch:
 
 concurrency:
-  group: eval-${{ github.ref }}
-  cancel-in-progress: true
+  # Per event, so a merge never cancels the nightly run; superseded pull request runs stop.
+  group: eval-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -52,20 +34,46 @@ jobs:
       run:
         working-directory: apps/api
     env:
-      DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      RUN: ${{ github.event_name == 'schedule' && 'full' || 'subset' }}
+      RUN: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'full' || 'subset' }}
     steps:
       - uses: actions/checkout@v7
-      - name: Skip without the eval secrets
-        id: secrets
+        with:
+          fetch-depth: 0
+      - name: Did the answer path change?
+        id: changed
+        working-directory: .
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
-          if [ -z "$DATABASE_URL" ] || [ -z "$GEMINI_API_KEY" ] || [ -z "$GROQ_API_KEY" ]; then
-            echo "The eval secrets aren't available here (a fork, Dependabot, or not set up yet): skipping." | tee -a "$GITHUB_STEP_SUMMARY"
+          # What a change must touch to alter answers. Chunking and extraction aren't here:
+          # the eval reads the Demo Collection as seeded, so they're measured after a reseed.
+          pattern='^(apps/api/src/docent_api/(answers|retrieval|verification|rewriting|evaluation|settings)\.py|apps/api/src/docent_api/providers/|apps/api/(pyproject\.toml|uv\.lock)|evals/(eval-set\.jsonl|demo/)|\.github/workflows/eval\.yml)'
+          if [ "$RUN" = full ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ -z "$BASE" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"  # unknown base: measure to be safe
+          elif git diff --name-only "$BASE" HEAD | grep -qE "$pattern"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "The answer path didn't change: nothing to measure." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Check the eval secrets
+        id: secrets
+        if: steps.changed.outputs.run == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          if [ -n "$DATABASE_URL" ] && [ -n "$GEMINI_API_KEY" ] && [ -n "$GROQ_API_KEY" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = pull_request ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "$GITHUB_REPOSITORY" -o "${{ github.actor }}" = "dependabot[bot]" ]; then
+            echo "No eval secrets for forks and Dependabot: skipping." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "::error::The eval secrets (EVAL_DATABASE_URL, GEMINI_API_KEY, GROQ_API_KEY) are missing."
+            exit 1
           fi
       - uses: astral-sh/setup-uv@v7
         if: steps.secrets.outputs.ready == 'true'
@@ -75,6 +83,10 @@ jobs:
         if: steps.secrets.outputs.ready == 'true'
       - name: Run the Eval Set
         if: steps.secrets.outputs.ready == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           if [ "$RUN" = full ]; then
             uv run docent-eval --out ../../evals/results/eval.json
@@ -83,18 +95,30 @@ jobs:
           fi
           cat ../../evals/results/eval.md >> "$GITHUB_STEP_SUMMARY"
       - name: Fetch main's latest report
+        id: baseline
         if: steps.secrets.outputs.ready == 'true' && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow eval.yml --branch main \
-            --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+            --event push --status success --limit 20 --json databaseId --jq '.[].databaseId' |
+            while read -r id; do
+              if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts" --jq '.artifacts[].name' | grep -qx eval-subset; then
+                echo "$id"; break
+              fi
+            done)
           if [ -n "$run" ]; then
-            gh run download "$run" --repo "$GITHUB_REPOSITORY" --name eval-subset --dir ../../baseline || true
+            gh run download "$run" --repo "$GITHUB_REPOSITORY" --name eval-subset --dir ../../baseline
+            echo "required=--require-baseline" >> "$GITHUB_OUTPUT"
+          else
+            echo "Main has no Eval report yet: only failed questions are checked." | tee -a "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Block regressions against main
-        if: steps.secrets.outputs.ready == 'true' && github.event_name == 'pull_request'
-        run: uv run docent-eval-compare ../../baseline/eval.json ../../evals/results/eval.json | tee -a "$GITHUB_STEP_SUMMARY"; exit "${PIPESTATUS[0]}"
+      - name: Block regressions (and, on main, a run with failed questions)
+        if: steps.secrets.outputs.ready == 'true' && env.RUN == 'subset'
+        run: |
+          set -o pipefail
+          uv run docent-eval-compare ${{ steps.baseline.outputs.required }} \
+            ../../baseline/eval.json ../../evals/results/eval.json | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: always() && steps.secrets.outputs.ready == 'true'
         with:

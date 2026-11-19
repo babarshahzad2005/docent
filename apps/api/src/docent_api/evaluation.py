@@ -440,22 +440,32 @@ TARGETS = {
 MAX_DROP = 0.02
 
 
+# Metrics that depend on what the answer and judge models write: at temperature 0 they still
+# vary a little, and one question of eight is twelve points, so these block only when more
+# than one item's worth is lost. Retrieval metrics are deterministic and get no allowance.
+MODEL_METRICS = {"answerable_answered", "faithfulness", "answers_judged"}
+
+
 def regressions(baseline: dict[str, Any] | None, current: dict[str, Any]) -> list[str]:
     """Why `current` should block a merge against `baseline` (main): a metric more than two
-    points lower, or one main meets that has fallen below its target."""
+    points lower, one main meets that has fallen below its target, a metric main has that
+    this run lacks, or questions that failed to run."""
     problems = []
+    before_metrics = (baseline or {}).get("metrics", {})
+    for name, before in before_metrics.items():
+        if before is not None and current["metrics"].get(name) is None:
+            problems.append(f"{name} is missing from this run (main has {before['rate']:.1%})")
     for name, value in current["metrics"].items():
-        if value is None:
+        before = before_metrics.get(name)
+        if value is None or before is None:
             continue
-        rate = value["rate"]
-        before = (baseline or {}).get("metrics", {}).get(name)
-        # More than two points, and more than one item's worth: an answer model at temperature
-        # 0 still varies a little, and one question of eight is twelve points.
-        items_lost = (before["rate"] - rate) * value["of"] if before is not None else 0
-        if before is not None and rate < before["rate"] - MAX_DROP - 1e-9 and items_lost >= 1.5:
-            problems.append(f"{name} fell from {before['rate']:.1%} to {rate:.1%} on main's subset")
+        rate, was = value["rate"], before["rate"]
+        lost = (was - rate) * min(value["of"], before["of"])
+        tolerated = name in MODEL_METRICS and lost < 1.5
+        if rate < was - MAX_DROP - 1e-9 and not tolerated:
+            problems.append(f"{name} fell from {was:.1%} to {rate:.1%}")
         target = TARGETS.get(name)
-        if target is not None and rate < target and before is not None and before["rate"] >= target:
+        if target is not None and rate < target <= was and not tolerated:
             problems.append(
                 f"{name} is {rate:.1%}, below its {target:.0%} target, which main meets"
             )
@@ -469,13 +479,21 @@ def compare() -> None:
     parser = argparse.ArgumentParser(prog="docent-eval-compare", description=compare.__doc__)
     parser.add_argument("baseline", type=Path, help="main's report (missing: no comparison)")
     parser.add_argument("current", type=Path)
+    parser.add_argument(
+        "--require-baseline",
+        action="store_true",
+        help="fail when the baseline is missing (main has run, so it should exist)",
+    )
     args = parser.parse_args()
     current = json.loads(args.current.read_text(encoding="utf-8"))
     baseline = (
         json.loads(args.baseline.read_text(encoding="utf-8")) if args.baseline.is_file() else None
     )
+    if baseline is None and args.require_baseline:
+        print("Regression check impossible: main has run, but its report couldn't be fetched.")
+        raise SystemExit(1)
     if baseline is None:
-        print("No report from main to compare with yet: this run becomes the first baseline.")
+        print("No report from main to compare with: only failed questions are checked.")
     problems = regressions(baseline, current)
     for problem in problems:
         print(f"Regression: {problem}")
