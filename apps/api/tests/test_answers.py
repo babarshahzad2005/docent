@@ -17,6 +17,8 @@ from psycopg.rows import DictRow, dict_row
 from docent_api import main
 from docent_api.answers import (
     DECLINE,
+    NO_DOCUMENTS,
+    STILL_PROCESSING,
     AnswerEvent,
     Completed,
     ConversationNotFound,
@@ -26,6 +28,7 @@ from docent_api.answers import (
     answer,
     build_prompt,
     cited_numbers,
+    is_decline,
     load_conversation,
     normalize_citations,
     start_turn,
@@ -142,6 +145,15 @@ class MemoryStore:
     def delete(self, paths: Sequence[str]) -> None:
         for path in paths:
             self.files.pop(path, None)
+
+
+@pytest.fixture(autouse=True)
+def _no_weak_retrieval_decline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The test embeddings are bags of words, far less similar than real ones; tests of the
+    threshold set it themselves."""
+    from docent_api.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "decline_below_similarity", 0.0)
 
 
 @pytest.fixture(autouse=True)
@@ -403,19 +415,6 @@ def test_an_answer_cut_off_mid_way_keeps_its_text(
     assert isinstance(start, Started)
     reply = load_conversation(conn, reader.id, UUID(start.conversation_id))["messages"][1]
     assert (reply["status"], reply["content"]) == ("interrupted", "Up to 10 ")
-
-
-def test_with_nothing_to_search_it_declines_without_the_model(
-    conn: Connection[DictRow],
-) -> None:
-    empty = make_user(conn, "empty@example.com")
-    model = ScriptedModel(["should not be called"])
-
-    events = ask(empty, "Anything?", model)
-
-    assert model.prompts == []
-    assert isinstance(events[-1], Completed) and events[-1].outcome == "declined"
-    assert "".join(e.text for e in events if isinstance(e, Delta)) == DECLINE
 
 
 def test_a_model_decline_is_recorded_as_one(conn: Connection[DictRow], reader: AuthUser) -> None:
@@ -686,3 +685,116 @@ def test_an_answer_with_no_verifiable_claim_is_not_shown(
     assert isinstance(done, Completed) and done.outcome == "unverified"
     assert done.answer.startswith("Docent couldn’t check this answer")
     assert done.cited == [] and len(done.removed) == 1
+
+
+# --- Declines (#43) -----------------------------------------------------------------------
+
+
+def test_weak_retrieval_declines_without_asking_the_model(
+    conn: Connection[DictRow], reader: AuthUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docent_api.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "decline_below_similarity", 0.99)
+    model = ScriptedModel(["Should not be asked [1]."])
+
+    events = ask(reader, "What is the capital of Australia?", model)
+
+    start, done = events[0], events[-1]
+    assert isinstance(start, Started) and isinstance(done, Completed)
+    assert model.prompts == []  # the quota is saved
+    assert (done.outcome, done.answer) == ("declined", DECLINE)
+    assert done.cited == list(range(1, min(3, len(start.sources)) + 1))  # closest passages
+    log = conn.execute(
+        "select decline_reason, prompt, retrieved from app.answer_logs where message_id = %s",
+        (UUID(done.message_id),),
+    ).fetchone()
+    conn.commit()
+    assert log is not None and log["decline_reason"] == "weak_retrieval" and log["prompt"] == ""
+    assert log["retrieved"][0]["similarity"] is not None
+    reply = load_conversation(conn, reader.id, UUID(start.conversation_id))["messages"][1]
+    assert reply["outcome"] == "declined"
+    assert [c["number"] for c in reply["citations"]] == done.cited
+
+
+def test_a_model_declining_in_its_own_words_is_a_decline(
+    conn: Connection[DictRow], reader: AuthUser
+) -> None:
+    model = ScriptedModel(["The passages don\u2019t mention a parking policy for visitors."])
+
+    events = ask(reader, "What is the parking policy for visitors?", model)
+
+    done = events[-1]
+    assert isinstance(done, Completed)
+    assert (done.outcome, done.answer) == ("declined", DECLINE)
+    assert done.cited and not done.removed
+    log = conn.execute(
+        "select decline_reason from app.answer_logs where message_id = %s",
+        (UUID(done.message_id),),
+    ).fetchone()
+    conn.commit()
+    assert log is not None and log["decline_reason"] == "model"
+
+
+def test_with_no_indexed_documents_in_scope_the_user_is_asked_to_upload(
+    conn: Connection[DictRow],
+) -> None:
+    newcomer = make_user(conn, "newcomer@example.com")
+    model = ScriptedModel(["Should not be asked."])
+
+    events = ask(newcomer, "How much leave carries over?", model)
+
+    done = events[-1]
+    assert isinstance(done, Completed)
+    assert (done.outcome, done.answer, done.cited) == ("no_documents", NO_DOCUMENTS, [])
+    assert model.prompts == []
+
+
+def test_documents_still_being_prepared_are_waited_for_not_uploaded_again(
+    conn: Connection[DictRow],
+) -> None:
+    newcomer = make_user(conn, "waiting@example.com")
+    add(conn, newcomer, "leave.md", LEAVE)
+    conn.execute("update app.documents set status = 'embedding'")
+    conn.commit()
+
+    events = ask(newcomer, "How much leave carries over?", ScriptedModel(["Not asked."]))
+
+    done = events[-1]
+    assert isinstance(done, Completed)
+    assert (done.outcome, done.answer) == ("no_documents", STILL_PROCESSING)
+
+
+def test_a_named_identifier_found_by_keywords_reaches_the_model_despite_low_similarity(
+    conn: Connection[DictRow], reader: AuthUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docent_api.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "decline_below_similarity", 0.99)
+    model = ScriptedModel(["Leave over five days [1].", QUOTE_FORM])
+
+    events = ask(reader, "What is form HR-27 for?", model)
+
+    assert model.prompts  # asked, not declined early
+    assert isinstance(events[-1], Completed) and events[-1].outcome == "answered"
+
+
+@pytest.mark.parametrize(
+    ("reply", "declines"),
+    [
+        (DECLINE, True),
+        ("I couldn't find that in your documents.", True),  # a straight apostrophe
+        ("The passages don’t contain any information about parking.", True),
+        ("I cannot find details of a dress code in these passages.", True),
+        ("There is no information about this in the documents provided.", True),
+        ("Up to 10 days carry over [1].", False),
+        ("You do not need to give notice if the baby is early [2].", False),  # cites
+        ("Workers get 28 days of paid leave a year.", False),  # uncited, but an answer
+        ("No, the policy does not cover contractors.", False),
+        ("Staff do not need to answer emails while on leave.", False),
+        ("The passages don’t mention parking, but staff may use the car park.", False),
+        (f"{DECLINE} However, staff get 28 days [1].", False),  # it answers, citing
+    ],
+)
+def test_declines_are_recognised_in_the_models_own_words(reply: str, declines: bool) -> None:
+    assert is_decline(reply) is declines

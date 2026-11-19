@@ -1,13 +1,15 @@
 "use client";
 
 import { CheckIcon } from "lucide-react";
-import { Fragment, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 
 import { AskBox } from "@/components/ask-box";
 import { CITATION_CHIP, type CitedSource, SourceMeta, SourcePane } from "@/components/source-pane";
 import { Button } from "@/components/ui/button";
 import {
   normalizeCitations,
+  type Outcome,
   readAnswerEvents,
   type RemovedClaim,
   segments,
@@ -23,6 +25,8 @@ export type Turn = {
   status: "streaming" | "complete" | "declined" | "interrupted" | "failed";
   messageId?: string;
   error?: string;
+  /** How it ended, once finished; a Decline's `cited` are its closest passages. */
+  outcome?: Outcome;
   /** The Citations were checked against their passages (ADR 0007). */
   verified?: boolean;
   removed?: RemovedClaim[];
@@ -115,6 +119,7 @@ export function Conversation({
             answer: event.answer || turn.answer,
             status: event.outcome === "answered" ? "complete" : "declined",
             cited: event.cited,
+            outcome: event.outcome,
             verified: event.verified,
             removed: event.removed,
             fading: undefined,
@@ -213,6 +218,7 @@ function TurnView({
   onOpenSource: (source: CitedSource, opener: HTMLElement) => void;
 }) {
   const Heading = first ? "h1" : "h2";
+  const closestId = useId();
   const available = new Set(turn.sources.map((source) => source.number));
   const cited = turn.sources.filter((source) => turn.cited.includes(source.number));
   const byNumber = new Map(turn.sources.map((source) => [source.number, source]));
@@ -276,6 +282,16 @@ function TurnView({
           <span aria-hidden="true" className="ml-0.5 inline-block h-[1em] w-0.5 translate-y-0.5 bg-foreground" />
         )}
       </div>
+      {turn.outcome === "no_documents" && (
+        <p>
+          <Link
+            href="/"
+            className="text-brand underline underline-offset-2 [@media(hover:hover)_and_(pointer:fine)]:hover:text-brand-strong"
+          >
+            Go to your library to upload documents
+          </Link>
+        </p>
+      )}
       {turn.verified && turn.status !== "streaming" && (
         <VerificationLine
           checked={citationCount(turn.answer, available)}
@@ -290,8 +306,18 @@ function TurnView({
           </Button>
         </div>
       )}
+      {cited.length > 0 && turn.outcome === "declined" && (
+        // DESIGN.md › Writing: a Decline is followed by the closest passages.
+        <p id={closestId} className="text-meta text-text-secondary">
+          The closest passages in your documents:
+        </p>
+      )}
       {cited.length > 0 && (
-        <ol aria-label="Sources" className="flex flex-col gap-1 border-t border-border pt-4">
+        <ol
+          aria-label={turn.outcome === "declined" ? undefined : "Sources"}
+          aria-labelledby={turn.outcome === "declined" ? closestId : undefined}
+          className="flex flex-col gap-1 border-t border-border pt-4"
+        >
           {cited.map((source) => (
             <li key={source.number}>
               <button

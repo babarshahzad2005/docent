@@ -360,6 +360,23 @@
             "title": "Id",
             "type": "string"
           },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "answered",
+                  "declined",
+                  "unverified",
+                  "no_documents"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
           "removed": {
             "items": {
               "$ref": "#/components/schemas/RemovedClaim"
@@ -404,6 +421,7 @@
           "content",
           "status",
           "scope",
+          "outcome",
           "verified",
           "removed",
           "created_at",

@@ -40,6 +40,9 @@ class Passage:
     score: float
     vector_rank: int | None
     keyword_rank: int | None
+    similarity: float | None = None
+    """How close in meaning to the question (cosine similarity, 1 is identical); None when
+    the passage was found by keywords alone or embeddings were unavailable."""
 
     @property
     def source(self) -> str:
@@ -79,29 +82,29 @@ def retrieve(
     """
     params = {"user_id": user_id, "scope": list(scope), "k": CANDIDATES, "question": question}
     vector_ids: list[UUID] = []
+    similarity: dict[UUID, float] = {}
     if question_vector is not None:
         with conn.transaction():
             # The vector index finds nearest neighbours first and filters by permission after;
             # an iterative scan keeps looking until enough readable passages are found, so a
             # User with a small share of all passages still gets a full set.
             conn.execute("set local hnsw.iterative_scan = relaxed_order")
-            vector_ids = [
-                row["id"]
-                for row in conn.execute(
-                    f"""
-                    with nearest as materialized (
-                        select c.id,
-                               c.embedding operator(extensions.<=>) %(vector)s::extensions.vector
-                                   as distance
-                        {_READABLE} and c.embedding is not null
-                        order by distance
-                        limit %(k)s
-                    )
-                    select id from nearest order by distance
-                    """,
-                    {**params, "vector": _vector_literal(question_vector)},
-                ).fetchall()
-            ]
+            nearest = conn.execute(
+                f"""
+                with nearest as materialized (
+                    select c.id,
+                           c.embedding operator(extensions.<=>) %(vector)s::extensions.vector
+                               as distance
+                    {_READABLE} and c.embedding is not null
+                    order by distance
+                    limit %(k)s
+                )
+                select id, distance from nearest order by distance
+                """,
+                {**params, "vector": _vector_literal(question_vector)},
+            ).fetchall()
+            vector_ids = [row["id"] for row in nearest]
+            similarity = {row["id"]: 1.0 - float(row["distance"]) for row in nearest}
     keyword_ids = [
         row["id"]
         for row in conn.execute(
@@ -121,7 +124,7 @@ def retrieve(
         ).fetchall()
     ]
     fused = _fuse(vector_ids, keyword_ids)[:limit]
-    return _details(conn, fused, vector_ids, keyword_ids)
+    return _details(conn, fused, vector_ids, keyword_ids, similarity)
 
 
 def _fuse(*rankings: list[UUID]) -> list[tuple[UUID, float]]:
@@ -137,6 +140,7 @@ def _details(
     fused: list[tuple[UUID, float]],
     vector_ids: list[UUID],
     keyword_ids: list[UUID],
+    similarity: dict[UUID, float],
 ) -> list[Passage]:
     if not fused:
         return []
@@ -165,9 +169,30 @@ def _details(
                 score=score,
                 vector_rank=_rank(vector_ids, chunk_id),
                 keyword_rank=_rank(keyword_ids, chunk_id),
+                similarity=similarity.get(chunk_id),
             )
         )
     return passages
+
+
+def documents_state(conn: Connection[DictRow], user_id: UUID, scope: Sequence[UUID]) -> str:
+    """What the User can search in `scope`: "indexed" (some Document is ready), "processing"
+    (none is ready, but some is still on its way), or "none"."""
+    row = conn.execute(
+        """
+        select bool_or(d.status = 'indexed') as indexed,
+               bool_or(d.status not in ('indexed', 'failed')) as processing
+        from app.documents d
+        join app.memberships m on m.collection_id = d.collection_id and m.user_id = %(user_id)s
+        where d.collection_id = any(%(scope)s::uuid[])
+        """,
+        {"user_id": user_id, "scope": list(scope)},
+    ).fetchone()
+    if row is not None and row["indexed"]:
+        return "indexed"
+    if row is not None and row["processing"]:
+        return "processing"
+    return "none"
 
 
 def _rank(ranking: list[UUID], chunk_id: UUID) -> int | None:
