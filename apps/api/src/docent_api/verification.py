@@ -135,6 +135,9 @@ class Verification:
     answer: str  # what the reader sees: unsupported Claims and Citations removed
     claims: list[Claim]
     removed: list[Removed]
+    # The model wrote no Citation markers, so its verified quotes were tied to the sentences
+    # they match (_attach_citations); recorded in the Answer Log.
+    attached: bool = False
 
     @property
     def checked(self) -> int:
@@ -147,6 +150,7 @@ class Verification:
             "claims": [asdict(claim) for claim in self.claims if claim.citations],
             "removed": len(self.removed),
             "verified": self.checked,
+            "citations_attached": self.attached,
         }
 
 
@@ -159,6 +163,7 @@ NO_PASSAGE = "it cited a source that wasn’t found"
 
 def verify(answer: str, quotes: Sequence[tuple[int, str]], passages: Sequence[str]) -> Verification:
     """Check every Citation in `answer` against its quotes and passage (1-based numbers)."""
+    answer, attached = _attach_citations(answer, quotes, passages)
     given: dict[int, list[str]] = {}
     for number, quote in quotes:
         given.setdefault(number, []).append(quote)
@@ -192,7 +197,112 @@ def verify(answer: str, quotes: Sequence[tuple[int, str]], passages: Sequence[st
         else:
             pieces.append(_keep_verified(sentence, claim.citations) + separator)
         line_start = "\n" in separator or (line_start and not pieces[-1])
-    return Verification(_tidy("".join(pieces)), claims, removed)
+    return Verification(_tidy("".join(pieces)), claims, removed, attached)
+
+
+# Words too common to tie a sentence to a quote.
+_COMMON = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "can",
+        "for",
+        "from",
+        "has",
+        "have",
+        "if",
+        "in",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "or",
+        "that",
+        "the",
+        "their",
+        "there",
+        "they",
+        "this",
+        "to",
+        "was",
+        "were",
+        "will",
+        "with",
+        "you",
+        "your",
+        "may",
+        "must",
+        "not",
+        "up",
+        "any",
+        "all",
+        "per",
+        "each",
+    }
+)
+
+
+def _content_words(text: str) -> set[str]:
+    return {w for w in _words(text).split() if w not in _COMMON and (len(w) > 2 or w.isdigit())}
+
+
+def _attach_citations(
+    answer: str, quotes: Sequence[tuple[int, str]], passages: Sequence[str]
+) -> tuple[str, bool]:
+    """An answer written without any Citation markers, with each verified quote's passage
+    number added to the sentence that quote matches best (#58).
+
+    Models sometimes give correct quotes but leave the markers out, which would leave nothing
+    to check. A quote is attached only if it is in its passage and shares at least two
+    content words with the sentence (one, for a sentence of three content words or fewer), so
+    a sentence is only ever cited by a passage that says what it says. Answers that cite
+    anything are left as they are.
+    """
+    if _CITATION.search(answer) or not quotes:
+        return answer, False
+    verified = [
+        (number, quote)
+        for number, quote in quotes
+        if 1 <= number <= len(passages)
+        and _quote_fails(quote, _words(passages[number - 1])) is None
+    ]
+    if not verified:
+        return answer, False
+    claims = _claims(answer)
+    words = [_content_words(sentence) for sentence, _ in claims]
+    cited: list[list[int]] = [[] for _ in claims]
+    for number, quote in verified:
+        quoted = _content_words(quote)
+        scores = [len(quoted & sentence) for sentence in words]
+        # Most shared words; on a tie, the sentence they make up most of.
+        best = max(
+            range(len(claims)),
+            key=lambda i: (scores[i], scores[i] / max(len(words[i]), 1)),
+            default=None,
+        )
+        if best is None:
+            continue
+        needed = 1 if len(words[best]) <= 3 else 2
+        if scores[best] >= needed and number not in cited[best]:
+            cited[best].append(number)
+    if not any(cited):
+        return answer, False
+    pieces = []
+    for (sentence, separator), numbers in zip(claims, cited, strict=True):
+        if numbers:
+            markers = "".join(f"[{n}]" for n in numbers)
+            body = sentence.rstrip()
+            end = len(body) - len(body.rstrip(".!?"))
+            sentence = f"{body[: len(body) - end]} {markers}{body[len(body) - end :]}"
+        pieces.append(sentence + separator)
+    return "".join(pieces), True
 
 
 def _check(number: int, quotes: list[str], passages: Sequence[str]) -> CitationCheck:

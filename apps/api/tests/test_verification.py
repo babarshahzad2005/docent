@@ -251,3 +251,51 @@ def test_a_failing_quote_is_not_rescued_by_another_quote_for_the_same_passage() 
 
     assert result.answer == "You get 28 days [1]."
     assert result.removed[0].reason == NOT_FOUND
+
+
+# --- Answers written without Citation markers (#58) ---------------------------------------
+
+
+def test_verified_quotes_are_tied_to_an_uncited_answer_sentence_they_match() -> None:
+    result = check(
+        "Most workers on a 5-day week get at least 28 days' paid leave a year. SSP is weekly.",
+        (1, "must receive at least 28 days’ paid annual leave a year"),
+        (2, "Statutory Sick Pay (SSP) is £118.75 a week"),
+    )
+
+    assert result.attached
+    assert result.answer == (
+        "Most workers on a 5-day week get at least 28 days' paid leave a year [1]. "
+        "SSP is weekly [2]."
+    )
+    assert result.checked == 2 and result.removed == []
+
+
+def test_a_quote_not_in_its_passage_is_never_attached() -> None:
+    result = check(
+        "SSP is paid for up to 40 weeks.",
+        (2, "paid for up to 40 weeks"),  # the passage says 28
+    )
+
+    assert not result.attached and result.checked == 0
+    assert result.answer == "SSP is paid for up to 40 weeks."
+
+
+def test_a_quote_is_attached_only_to_a_sentence_sharing_its_words() -> None:
+    result = check(
+        "Here is what I found. The rules differ by employer.",
+        (1, "must receive at least 28 days’ paid annual leave a year"),
+    )
+
+    assert not result.attached and result.checked == 0
+
+
+def test_an_answer_that_cites_anything_is_left_as_written() -> None:
+    result = check(
+        "You get 28 days [1]. That is 5.6 weeks of holiday.",
+        (1, "at least 28 days’ paid annual leave"),
+        (1, "the equivalent of 5.6 weeks of holiday"),
+    )
+
+    assert not result.attached
+    assert result.answer == "You get 28 days [1]. That is 5.6 weeks of holiday."
