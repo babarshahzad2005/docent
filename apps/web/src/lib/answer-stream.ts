@@ -23,7 +23,14 @@ export type Outcome = "answered" | "declined" | "unverified" | "no_documents";
 export type RemovedClaim = { text: string; reason: string; original: string };
 
 export type AnswerEvent =
-  | { event: "start"; conversation_id: string; message_id: string; sources: Source[] }
+  | {
+      event: "start";
+      conversation_id: string;
+      message_id: string;
+      sources: Source[];
+      /** The Collections it is answered from, as recorded (only those the User can read). */
+      scope?: string[];
+    }
   | { event: "delta"; text: string }
   | {
       event: "done";

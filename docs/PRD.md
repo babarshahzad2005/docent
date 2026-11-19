@@ -159,6 +159,7 @@ No fixed deadline; each milestone has a target duration to keep scope honest. Ea
 | 2026-11-15 | Citations keep the passage they were based on, even after Replace | [ADR 0004](./adr/0004-citations-keep-replaced-passages.md) |
 | 2026-11-15 | Losing access hides cited passage text in past Conversations; answer text stays | Revocation applies from now on; what was read can't be unread |
 | 2026-11-15 | Scope can change mid-Conversation; each answer records its Scope | Matches user expectation; keeps the Answer Log accurate |
+| 2026-11-19 | A new question's default Scope is the User's own Collections; the Demo Collection is offered under "Add a collection", and chosen by default only when it is all they have | The Demo is something every User can ask, not one of theirs: mixing its passages into answers about their own Documents would surprise them |
 | 2026-11-15 | Personal Collection is always private; Documents can be Moved between Collections | Sharing happens through regular Collections |
 | 2026-11-15 | Anonymous traffic: per-IP limits plus a global daily cap; signed-in users keep reserved quota | Protects the free model quota from bots |
 | 2026-11-15 | Conflicting Documents handled in the answer prompt, measured with ≥ 5 conflict questions | Cheap and measurable; upgrade to a dedicated check if scores are poor |

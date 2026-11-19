@@ -5,7 +5,12 @@ import Link from "next/link";
 import { Fragment, useEffect, useId, useRef, useState } from "react";
 
 import { AskBox } from "@/components/ask-box";
-import { type CollectionChoice, ScopeChips, scopeNames } from "@/components/scope-chips";
+import {
+  type CollectionChoice,
+  defaultScope,
+  ScopeChips,
+  scopeNames,
+} from "@/components/scope-chips";
 import { CITATION_CHIP, type CitedSource, SourceMeta, SourcePane } from "@/components/source-pane";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,9 +64,7 @@ export function Conversation({
   /** The User's Collections, to choose the Scope from and name it. */
   collections?: CollectionChoice[];
 }) {
-  const [scope, setScope] = useState(
-    initialScope ?? collections.map((collection) => collection.id),
-  );
+  const [scope, setScope] = useState(() => usableScope(initialScope, collections));
   const [turns, setTurns] = useState(initialTurns);
   const [announcement, setAnnouncement] = useState("");
   const conversationId = useRef(initialId);
@@ -109,7 +112,12 @@ export function Conversation({
             // (Pushed, so Back returns to the Library.)
             window.history.pushState(null, "", `/conversations/${event.conversation_id}`);
           }
-          update((turn) => ({ ...turn, sources: event.sources, messageId: event.message_id }));
+          update((turn) => ({
+            ...turn,
+            sources: event.sources,
+            messageId: event.message_id,
+            scope: event.scope ?? turn.scope,
+          }));
         } else if (event.event === "delta") {
           answerSoFar.current += event.text;
           update((turn) => ({ ...turn, answer: turn.answer + event.text }));
@@ -425,4 +433,14 @@ function VerificationLine({ checked, removed }: { checked: number; removed: Remo
       )}
     </div>
   );
+}
+
+/**
+ * The Scope to start from: the one given, less any Collection the User can no longer ask;
+ * if nothing is left, all of their own Collections (never an empty Scope).
+ */
+function usableScope(scope: string[] | undefined, collections: CollectionChoice[]): string[] {
+  const ids = new Set(collections.map((collection) => collection.id));
+  const usable = (scope ?? []).filter((id) => ids.has(id));
+  return usable.length > 0 ? usable : defaultScope(collections);
 }

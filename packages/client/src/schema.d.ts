@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * Conversations
-         * @description The User's Conversations, most recently active first (the latest 50).
+         * @description The User's Conversations, most recently active first.
          */
         get: operations["listConversations"];
         put?: never;
@@ -587,7 +587,9 @@ export interface operations {
     };
     listConversations: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -601,6 +603,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

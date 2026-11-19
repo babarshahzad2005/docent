@@ -110,6 +110,7 @@ class Started:
     conversation_id: str
     message_id: str
     sources: list[SourceInfo]
+    scope: list[str] = field(default_factory=list)  # the Collections it is answered from
     event: str = "start"
 
 
@@ -243,6 +244,7 @@ async def answer(
             conversation_id=str(turn.conversation_id),
             message_id=str(turn.message_id),
             sources=[_source(number, p) for number, p in enumerate(turn.passages, start=1)],
+            scope=[str(collection) for collection in turn.scope],
         )
         weak = _weak_retrieval(question, turn.passages)
         state = "indexed" if turn.passages else await asyncio.to_thread(_documents_state, turn)

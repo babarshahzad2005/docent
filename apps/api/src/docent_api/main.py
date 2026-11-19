@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection
@@ -355,9 +355,11 @@ async def ask(body: Question, user: User) -> StreamingResponse:
 
 
 @app.get("/conversations", operation_id="listConversations", tags=["answers"])
-def conversations(user: User, conn: Db) -> list[ConversationSummary]:
-    """The User's Conversations, most recently active first (the latest 50)."""
-    return [ConversationSummary.model_validate(c) for c in list_conversations(conn, user.id)]
+def conversations(
+    user: User, conn: Db, limit: Annotated[int, Query(ge=1, le=100)] = 50
+) -> list[ConversationSummary]:
+    """The User's Conversations, most recently active first."""
+    return [ConversationSummary.model_validate(c) for c in list_conversations(conn, user.id, limit)]
 
 
 @app.get("/conversations/{conversation_id}", operation_id="getConversation", tags=["answers"])

@@ -1,9 +1,19 @@
 "use client";
 
 import { PlusIcon, XIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
-export type CollectionChoice = { id: string; name: string };
+export type CollectionChoice = { id: string; name: string; is_demo?: boolean };
+
+/**
+ * The Scope a new question starts with: the User's own Collections. The Demo Collection is
+ * one they can ask, not one of theirs, so it is offered under "Add a collection" (PRD
+ * decision log, 2026-11-19) unless it is all they have.
+ */
+export function defaultScope(collections: CollectionChoice[]): string[] {
+  const own = collections.filter((collection) => !collection.is_demo);
+  return (own.length > 0 ? own : collections).map((collection) => collection.id);
+}
 
 /**
  * The Scope of the next question, as chips (DESIGN.md › Answer): the Collections it will be
@@ -20,25 +30,39 @@ export function ScopeChips({
 }) {
   const [adding, setAdding] = useState(false);
   const listId = useId();
+  const group = useRef<HTMLDivElement>(null);
+  // The button just used disappears with its choice: keep focus in the chips.
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    const next = group.current?.querySelector<HTMLElement>("[data-chip-action]");
+    (next ?? group.current)?.focus();
+  }, [value]);
+  const choose = (scope: string[]) => {
+    refocus.current = true;
+    onChange(scope);
+  };
   const chosen = collections.filter((collection) => value.includes(collection.id));
   const others = collections.filter((collection) => !value.includes(collection.id));
   if (collections.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div ref={group} tabIndex={-1} className="flex flex-col gap-2 outline-none">
       <ul aria-label="Collections to ask" className="flex flex-wrap items-center gap-2">
         {chosen.map((collection) => (
           <li
             key={collection.id}
-            className="flex h-8 items-center gap-1 rounded-full bg-brand-subtle pr-1 pl-3 text-meta font-medium text-brand-subtle-text"
+            className="flex h-8 items-center gap-1 rounded-full bg-brand-subtle pr-1 pl-3 text-meta font-medium text-brand-subtle-text pointer-coarse:h-11"
           >
             {collection.name}
             {chosen.length > 1 && (
               <button
                 type="button"
                 aria-label={`Don’t ask ${collection.name}`}
-                onClick={() => onChange(value.filter((id) => id !== collection.id))}
-                className="flex size-6 cursor-pointer items-center justify-center rounded-full pointer-coarse:size-8 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-brand-subtle-text/10"
+                data-chip-action
+                onClick={() => choose(value.filter((id) => id !== collection.id))}
+                className="flex size-6 cursor-pointer items-center justify-center rounded-full pointer-coarse:size-11 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-brand-subtle-text/10"
               >
                 <XIcon aria-hidden="true" className="size-3.5" />
               </button>
@@ -50,7 +74,8 @@ export function ScopeChips({
             <button
               type="button"
               aria-expanded={adding}
-              aria-controls={listId}
+              aria-controls={adding ? listId : undefined}
+              data-chip-action
               onClick={() => setAdding((open) => !open)}
               className="flex h-8 cursor-pointer items-center gap-1 rounded-full border border-dashed border-border-strong px-3 text-meta text-text-secondary pointer-coarse:h-11 [@media(hover:hover)_and_(pointer:fine)]:hover:border-brand"
             >
@@ -67,7 +92,7 @@ export function ScopeChips({
               <button
                 type="button"
                 onClick={() => {
-                  onChange([...value, collection.id]);
+                  choose([...value, collection.id]);
                   setAdding(false);
                 }}
                 className="h-8 cursor-pointer rounded-full border border-border px-3 text-meta pointer-coarse:h-11 [@media(hover:hover)_and_(pointer:fine)]:hover:border-brand"

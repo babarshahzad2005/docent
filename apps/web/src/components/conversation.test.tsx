@@ -225,6 +225,19 @@ describe("Conversation", () => {
     expect(screen.getByText("Asked of Personal")).toBeTruthy(); // the first answer keeps its Scope
   });
 
+  it("never starts from a Scope the User can no longer ask", () => {
+    render(
+      <Conversation
+        conversationId="c1"
+        initialTurns={[]}
+        scope={["left-long-ago"]}
+        collections={[{ id: "p", name: "Personal" }]}
+      />,
+    );
+
+    expect(screen.getByRole("list", { name: "Collections to ask" }).textContent).toBe("Personal");
+  });
+
   it("marks an answer cut off without an ending, and lets the User ask again", async () => {
     vi.stubGlobal(
       "fetch",
