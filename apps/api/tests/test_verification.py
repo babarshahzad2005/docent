@@ -251,3 +251,83 @@ def test_a_failing_quote_is_not_rescued_by_another_quote_for_the_same_passage() 
 
     assert result.answer == "You get 28 days [1]."
     assert result.removed[0].reason == NOT_FOUND
+
+
+# --- Answers written without Citation markers (#58) ---------------------------------------
+
+
+def test_verified_quotes_are_tied_to_an_uncited_answer_sentence_they_match() -> None:
+    result = check(
+        "Most workers get at least 28 days' paid leave a year. SSP is £118.75 a week.",
+        (1, "must receive at least 28 days’ paid annual leave a year"),
+        (2, "Statutory Sick Pay (SSP) is £118.75 a week"),
+    )
+
+    assert result.attached
+    assert result.answer == (
+        "Most workers get at least 28 days' paid leave a year [1]. SSP is £118.75 a week [2]."
+    )
+    assert result.checked == 2 and result.removed == []
+
+
+def test_a_quote_not_in_its_passage_is_never_attached() -> None:
+    result = check(
+        "SSP is paid for up to 40 weeks.",
+        (2, "paid for up to 40 weeks"),  # the passage says 28
+    )
+
+    assert not result.attached and result.checked == 0
+    assert result.answer == "SSP is paid for up to 40 weeks."
+
+
+def test_a_quote_is_attached_only_to_a_sentence_sharing_its_words() -> None:
+    result = check(
+        "Here is what I found. The rules differ by employer.",
+        (1, "must receive at least 28 days’ paid annual leave a year"),
+    )
+
+    assert not result.attached and result.checked == 0
+
+
+def test_an_answer_that_cites_anything_is_left_as_written() -> None:
+    result = check(
+        "You get 28 days [1]. That is 5.6 weeks of holiday.",
+        (1, "at least 28 days’ paid annual leave"),
+        (1, "the equivalent of 5.6 weeks of holiday"),
+    )
+
+    assert not result.attached
+    assert result.answer == "You get 28 days [1]. That is 5.6 weeks of holiday."
+
+
+def test_an_attached_citation_is_checked_against_the_quote_it_was_attached_for() -> None:
+    result = check(
+        "Workers get at least 28 days of paid annual leave a year.",
+        (1, "you get 40 days of leave"),  # not in the passage
+        (1, "at least 28 days’ paid annual leave a year"),
+    )
+
+    assert result.attached and result.checked == 1 and result.removed == []
+
+
+def test_a_sentence_stating_a_number_the_quote_lacks_is_never_cited_by_it() -> None:
+    contradicts = check("SSP is paid for up to 52 weeks.", (2, "It's paid for up to 28 weeks"))
+    other = check(
+        "Full-time workers get 28 days paid leave. "
+        "Part-time workers on 3 days get 16.8 days a year.",
+        (1, "at least 28 days’ paid annual leave a year"),
+    )
+
+    assert not contradicts.attached and contradicts.checked == 0
+    assert other.answer.startswith("Full-time workers get 28 days paid leave [1].")
+    assert "16.8 days a year [1]" not in other.answer
+
+
+@pytest.mark.parametrize("ending", [".", ":", "…", ").", '."', "**"])
+def test_markers_go_before_closing_punctuation(ending: str) -> None:
+    result = check(
+        f"Workers get at least 28 days of paid annual leave a year{ending}",
+        (1, "at least 28 days’ paid annual leave a year"),
+    )
+
+    assert result.answer.startswith("Workers get at least 28 days of paid annual leave a year [1]")

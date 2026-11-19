@@ -272,9 +272,10 @@ def _verdicts(reply: str) -> list[bool]:
     if start < 0:
         raise ValueError("no JSON in the judge's reply")
     data, _ = json.JSONDecoder().raw_decode(reply[start:])
-    return [
-        v is True or (isinstance(v, str) and v.strip().lower() == "true") for v in data["supported"]
-    ]
+    verdicts = data["supported"]
+    if not isinstance(verdicts, list):
+        verdicts = [verdicts]  # a one-sentence answer is sometimes judged with a bare verdict
+    return [v is True or (isinstance(v, str) and v.strip().lower() == "true") for v in verdicts]
 
 
 def _demo_reader(conn: Connection[DictRow]) -> tuple[UUID, UUID]:

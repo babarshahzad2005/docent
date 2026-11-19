@@ -104,6 +104,12 @@ def test_the_judges_verdicts_are_read_from_prose_and_strings() -> None:
     ]
 
 
+def test_a_bare_verdict_for_a_one_sentence_answer_is_read() -> None:
+    from docent_api.evaluation import _verdicts
+
+    assert _verdicts('{"supported": true}') == [True]
+
+
 def test_the_markdown_summary_is_a_table_of_rates() -> None:
     text = markdown(report(results(), Settings()))
 
