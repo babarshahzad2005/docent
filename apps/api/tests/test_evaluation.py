@@ -3,7 +3,15 @@
 from collections import Counter
 from uuid import uuid4
 
-from docent_api.evaluation import Result, found, load, markdown, report, threshold_sweep
+from docent_api.evaluation import (
+    Result,
+    found,
+    load,
+    markdown,
+    regressions,
+    report,
+    threshold_sweep,
+)
 from docent_api.retrieval import Passage
 from docent_api.settings import Settings
 
@@ -101,3 +109,58 @@ def test_the_markdown_summary_is_a_table_of_rates() -> None:
 
     assert "| hit at 5 | 66.7% | 2 of 3 |" in text
     assert "judge `gemini:" in text
+
+
+def metrics(of: int = 100, **rates: float) -> dict[str, object]:
+    return {"metrics": {k: {"rate": v, "of": of, "count": 0} for k, v in rates.items()}}
+
+
+def test_a_drop_of_more_than_two_points_against_main_blocks() -> None:
+    main = metrics(hit_at_5=0.86, faithfulness=1.0)
+
+    assert regressions(main, metrics(hit_at_5=0.85, faithfulness=0.98)) == []
+    assert regressions(main, metrics(hit_at_5=0.83, faithfulness=1.0)) == [
+        "hit_at_5 fell from 86.0% to 83.0%"
+    ]
+
+
+def test_one_lost_retrieval_question_blocks_since_retrieval_doesnt_vary() -> None:
+    # One question of 36 is 2.8 points: retrieval is deterministic, so no allowance.
+    assert regressions(metrics(36, hit_at_5=31 / 36), metrics(36, hit_at_5=30 / 36))
+
+
+def test_a_metric_main_has_but_this_run_lacks_blocks() -> None:
+    current = {"metrics": {"hit_at_5": {"rate": 0.86, "of": 36, "count": 31}, "faithfulness": None}}
+
+    assert regressions(metrics(faithfulness=1.0, hit_at_5=0.86), current) == [
+        "faithfulness is missing from this run (main has 100.0%)"
+    ]
+
+
+def test_one_unsupported_sentence_below_target_is_tolerated_two_are_not() -> None:
+    main = metrics(15, faithfulness=1.0)
+
+    assert regressions(main, metrics(15, faithfulness=14 / 15)) == []
+    assert regressions(main, metrics(15, faithfulness=13 / 15))
+
+
+def test_falling_below_a_target_blocks_only_once_main_meets_it() -> None:
+    assert regressions(metrics(hit_at_5=0.86), metrics(hit_at_5=0.85)) == []  # not yet met
+    problems = regressions(metrics(faithfulness=0.96), metrics(faithfulness=0.935))
+    assert "faithfulness is 93.5%, below its 95% target, which main meets" in problems
+
+
+def test_without_a_baseline_nothing_blocks_but_failed_questions() -> None:
+    assert regressions(None, metrics(hit_at_5=0.5)) == []
+    assert regressions(None, {**metrics(), "errors": ["ssp-amount"]}) == [
+        "questions that failed to run: ssp-amount"
+    ]
+
+
+def test_one_item_changing_in_a_small_subset_does_not_block() -> None:
+    # One answer of eight is 12.5 points: the model's own variation, not a regression.
+    assert (
+        regressions(metrics(8, answerable_answered=0.75), metrics(8, answerable_answered=0.625))
+        == []
+    )
+    assert regressions(metrics(8, answerable_answered=0.75), metrics(8, answerable_answered=0.5))

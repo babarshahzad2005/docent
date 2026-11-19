@@ -25,6 +25,7 @@ docent-measure-models = "docent_api.measure_models:main"
 docent-setup-storage = "docent_api.storage:main"
 docent-setup-scheduler = "docent_api.scheduler:main"
 docent-eval = "docent_api.evaluation:main"
+docent-eval-compare = "docent_api.evaluation:compare"
 docent-demo = "docent_api.demo:main"
 
 [build-system]

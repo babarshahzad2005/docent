@@ -37,6 +37,31 @@ The judge is `gemini-3.5-flash-lite`, never the answer model (`gpt-oss-120b` on 
 
 Faithfulness is measured on what the reader sees, by sentence. The PRD's wording ("citations whose passage supports the claim") is close: verification has already removed every claim whose quote isn't in its passage, so the judge measures the gap quote matching leaves (ADR 0007).
 
+## In CI
+
+`.github/workflows/eval.yml` runs the harness against the Demo Collection, as a read-only database user (`docent_eval`).
+
+- **On every pull request** the check runs.
+  - If the change touches the answer path, every question is retrieved and the first 8 answerable ones are answered. The answer path is answers, retrieval, verification, rewriting, providers, settings, the harness, the set, the Demo Documents, or the dependencies. The result is compared with main's latest run.
+  - Otherwise the check passes at once, so it can be a required check.
+- **On main**, the same subset runs after such a change. It becomes the baseline that pull requests are compared with, and a run with failed questions fails, so it is never used as one.
+- **Nightly** (03:17 UTC, or by hand), the full set runs, with every answerable question answered.
+
+A pull request is blocked when any of these happens:
+
+- a metric is more than 2 points below main's;
+- a metric that main meets falls below its PRD target;
+- a metric main reports is missing from the run;
+- a question fails to run.
+
+The metrics that depend on what the models write (answerable answered, faithfulness, answers judged) get an allowance of one item: at temperature 0 they still vary a little, and one answer of 8 is 12.5 points. Retrieval metrics get no allowance, because they don't vary.
+
+The issue (#46) asked for a 30-question subset on every pull request. Answers share Groq's free tier with production, about 200,000 tokens a day at roughly 4,500 tokens per answer. So pull requests answer 8 questions and retrieve all 50, only when the answer path changed, and the full set runs nightly (PRD decision log, 2026-11-19).
+
+The eval reads the Demo Collection as seeded. Changes to chunking or extraction are measured only after `docent-demo seed` has run with them.
+
+Secrets: `EVAL_DATABASE_URL` (the read-only user), `GEMINI_API_KEY`, `GROQ_API_KEY`.
+
 ## Results
 
 These results come from the first run on 2026-11-19 against the production Demo Collection, with 10 answerable questions answered. One answer of the 7 went unjudged (the judge's reply couldn't be read, since fixed), so faithfulness here is over 6 answers.
