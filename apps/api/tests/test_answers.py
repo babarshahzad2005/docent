@@ -203,9 +203,10 @@ def ask(
     model: ScriptedModel,
     embedder: WordsEmbedder | None = None,
     conversation_id: UUID | None = None,
+    rewriter: ScriptedModel | None = None,
 ) -> list[AnswerEvent]:
     turn = asyncio.run(start_turn(user.id, question, conversation_id, None))
-    return collect(answer(turn, embedder or WordsEmbedder(), model))
+    return collect(answer(turn, embedder or WordsEmbedder(), model, rewriter=rewriter))
 
 
 @pytest.fixture
@@ -433,6 +434,7 @@ def test_follow_ups_join_the_conversation_and_others_cant(
         "And the rest?",
         ScriptedModel(["Forfeited [1].", QUOTE_REST_ONLY]),
         conversation_id=conversation_id,
+        rewriter=ScriptedModel(["What happens to the rest of unused leave?"]),
     )
 
     assert len(load_conversation(conn, reader.id, conversation_id)["messages"]) == 4
@@ -798,3 +800,50 @@ def test_a_named_identifier_found_by_keywords_reaches_the_model_despite_low_simi
 )
 def test_declines_are_recognised_in_the_models_own_words(reply: str, declines: bool) -> None:
     assert is_decline(reply) is declines
+
+
+# --- Follow-ups (#44) ---------------------------------------------------------------------
+
+
+def test_a_follow_up_is_rewritten_retrieved_answered_and_logged(
+    conn: Connection[DictRow], reader: AuthUser
+) -> None:
+    first = ask(reader, "How much leave carries over?", ScriptedModel(["10 days [1].", QUOTES]))
+    conversation_id = UUID(first[0].conversation_id)  # type: ignore[union-attr]
+    rewriter = ScriptedModel(["What happens to unused annual leave beyond 10 days?"])
+    model = ScriptedModel(["The rest is forfeited [1].", QUOTE_REST_ONLY])
+
+    events = ask(reader, "And the rest?", model, conversation_id=conversation_id, rewriter=rewriter)
+
+    assert "10 days" in rewriter.prompts[0] and "And the rest?" in rewriter.prompts[0]
+    assert "Question: What happens to unused annual leave beyond 10 days?" in model.prompts[0]
+    done = events[-1]
+    assert isinstance(done, Completed) and done.outcome == "answered"
+    log = conn.execute(
+        "select question, rewritten_question from app.answer_logs where message_id = %s",
+        (UUID(done.message_id),),
+    ).fetchone()
+    conn.commit()
+    assert log == {
+        "question": "And the rest?",
+        "rewritten_question": "What happens to unused annual leave beyond 10 days?",
+    }
+
+
+def test_a_first_question_is_not_rewritten(conn: Connection[DictRow], reader: AuthUser) -> None:
+    rewriter = ScriptedModel(["unused"])
+
+    events = ask(
+        reader,
+        "How much leave carries over?",
+        ScriptedModel(["10 days [1].", QUOTES]),
+        rewriter=rewriter,
+    )
+
+    assert rewriter.prompts == []
+    log = conn.execute(
+        "select rewritten_question from app.answer_logs where message_id = %s",
+        (UUID(events[-1].message_id),),  # type: ignore[union-attr]
+    ).fetchone()
+    conn.commit()
+    assert log is not None and log["rewritten_question"] is None

@@ -1,6 +1,7 @@
 """Answering a question from the User's Documents, streamed, with numbered Citations.
 
-    question → Conversation + messages saved → query embedded → passages retrieved (hybrid,
+    question → Conversation + messages saved → a follow-up rewritten to stand on its own →
+    query embedded → passages retrieved (hybrid,
     permission-filtered) → answer model streams, citing passages as [n] → each Citation's quote
     checked against its passage, unsupported claims removed (ADR 0007) → Citations, message,
     and Answer Log entry saved
@@ -39,6 +40,7 @@ from docent_api.providers.base import (
     Usage,
 )
 from docent_api.retrieval import Passage, documents_state, readable_scope, retrieve
+from docent_api.rewriting import HISTORY_TURNS, EarlierTurn, standalone_question
 from docent_api.settings import get_settings
 from docent_api.verification import INSTRUCTIONS, QuoteFilter, Verification, split_answer, verify
 
@@ -199,6 +201,13 @@ class Turn:
     verification: Verification | None = None
     cited: list[int] = field(default_factory=list)  # as in Completed
     decline_reason: str | None = None  # "weak_retrieval", "model", or "no_documents"
+    history: list[EarlierTurn] = field(default_factory=list)  # earlier turns, oldest first
+    rewritten: str | None = None  # a follow-up, rewritten to stand on its own
+
+    @property
+    def standalone(self) -> str:
+        """The question as retrieved and answered."""
+        return self.rewritten or self.question
 
 
 async def start_turn(
@@ -212,17 +221,21 @@ async def start_turn(
 
 
 async def answer(
-    turn: Turn, embedder: Embedder, generator: Generator
+    turn: Turn, embedder: Embedder, generator: Generator, rewriter: Generator | None = None
 ) -> AsyncIterator[AnswerEvent]:
     """Answer the turn's question, yielding a start event, text deltas, then done (or error).
 
     Every stream ends with done or error, whatever goes wrong, and the turn is saved.
     """
-    question = turn.question
     start = time.perf_counter()
     status, outcome, usage = "failed", "failed", None
     started = False
     try:
+        # A follow-up ("and for part-time workers?") is rewritten with the earlier turns.
+        turn.rewritten = await standalone_question(
+            rewriter or generator, turn.history, turn.question
+        )
+        question = turn.standalone
         vector = await _embed_question(embedder, question)
         turn.passages = await asyncio.to_thread(_retrieve, turn, vector)
         started = True
@@ -419,6 +432,7 @@ def _begin(
             conversation_id = row["id"]
         elif not _owns(conn, user_id, conversation_id):
             raise ConversationNotFound(conversation_id)
+        history = _history(conn, conversation_id)
         conn.execute(
             """
             insert into app.messages (conversation_id, role, content, scope)
@@ -437,14 +451,36 @@ def _begin(
         conn.execute(
             "update app.conversations set updated_at = now() where id = %s", (conversation_id,)
         )
-        return Turn(user_id, question, readable, conversation_id, row["id"])
+        return Turn(user_id, question, readable, conversation_id, row["id"], history=history)
+
+
+def _history(conn: Connection[DictRow], conversation_id: UUID) -> list[EarlierTurn]:
+    """The Conversation's latest answered turns, oldest first, for rewriting a follow-up."""
+    rows = conn.execute(
+        """
+        select role, content, status from app.messages
+        where conversation_id = %s
+        order by created_at desc, role desc  -- each answer, then its question
+        limit %s
+        """,
+        (conversation_id, HISTORY_TURNS * 2),
+    ).fetchall()
+    turns: list[EarlierTurn] = []
+    answer: str | None = None
+    for row in rows:
+        if row["role"] == "assistant":
+            answer = row["content"] if row["status"] == "complete" else None
+        elif answer is not None:
+            turns.append(EarlierTurn(row["content"], answer))
+            answer = None
+    return turns[::-1]
 
 
 def _retrieve(turn: Turn, vector: list[float] | None) -> list[Passage]:
     if not turn.scope:
         return []
     with get_pool().connection() as conn:
-        return retrieve(conn, turn.user_id, turn.scope, turn.question, vector)
+        return retrieve(conn, turn.user_id, turn.scope, turn.standalone, vector)
 
 
 def _finish(
@@ -479,11 +515,12 @@ def _finish(
             insert into app.answer_logs
                 (message_id, user_id, question, scope, retrieved, prompt, answer, outcome,
                  model, model_version, fell_back_from, latency_ms, first_token_ms,
-                 input_tokens, output_tokens, raw_answer, verification, decline_reason)
+                 input_tokens, output_tokens, raw_answer, verification, decline_reason,
+                 rewritten_question)
             values (%(message_id)s, %(user_id)s, %(question)s, %(scope)s, %(retrieved)s,
                     %(prompt)s, %(answer)s, %(outcome)s, %(model)s, %(version)s,
                     %(fell_back_from)s, %(latency)s, %(first_token)s, %(input)s, %(output)s,
-                    %(raw)s, %(verification)s, %(decline_reason)s)
+                    %(raw)s, %(verification)s, %(decline_reason)s, %(rewritten)s)
             """,
             {
                 "message_id": turn.message_id,
@@ -507,6 +544,7 @@ def _finish(
                 "raw": turn.raw or None,
                 "verification": Jsonb(verification.log()) if verification else None,
                 "decline_reason": turn.decline_reason,
+                "rewritten": turn.rewritten,
             },
         )
 

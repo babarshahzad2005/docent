@@ -335,7 +335,8 @@ async def ask(body: Question, user: User) -> StreamingResponse:
         ) from None
 
     async def events() -> AsyncIterator[str]:
-        async for event in answer(turn, embedder(), answer_generator()):
+        generator = answer_generator()
+        async for event in answer(turn, embedder(), generator, rewriter=generator):
             yield to_sse(event)
 
     return StreamingResponse(
