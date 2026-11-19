@@ -175,18 +175,24 @@ def _details(
     return passages
 
 
-def has_indexed_documents(conn: Connection[DictRow], user_id: UUID, scope: Sequence[UUID]) -> bool:
-    """Whether the User can read any indexed Document in `scope`."""
+def documents_state(conn: Connection[DictRow], user_id: UUID, scope: Sequence[UUID]) -> str:
+    """What the User can search in `scope`: "indexed" (some Document is ready), "processing"
+    (none is ready, but some is still on its way), or "none"."""
     row = conn.execute(
         """
-        select 1 from app.documents d
+        select bool_or(d.status = 'indexed') as indexed,
+               bool_or(d.status not in ('indexed', 'failed')) as processing
+        from app.documents d
         join app.memberships m on m.collection_id = d.collection_id and m.user_id = %(user_id)s
-        where d.collection_id = any(%(scope)s::uuid[]) and d.status = 'indexed'
-        limit 1
+        where d.collection_id = any(%(scope)s::uuid[])
         """,
         {"user_id": user_id, "scope": list(scope)},
     ).fetchone()
-    return row is not None
+    if row is not None and row["indexed"]:
+        return "indexed"
+    if row is not None and row["processing"]:
+        return "processing"
+    return "none"
 
 
 def _rank(ranking: list[UUID], chunk_id: UUID) -> int | None:

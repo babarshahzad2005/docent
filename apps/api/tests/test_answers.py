@@ -18,6 +18,7 @@ from docent_api import main
 from docent_api.answers import (
     DECLINE,
     NO_DOCUMENTS,
+    STILL_PROCESSING,
     AnswerEvent,
     Completed,
     ConversationNotFound,
@@ -416,19 +417,6 @@ def test_an_answer_cut_off_mid_way_keeps_its_text(
     assert (reply["status"], reply["content"]) == ("interrupted", "Up to 10 ")
 
 
-def test_with_nothing_to_search_it_declines_without_the_model(
-    conn: Connection[DictRow],
-) -> None:
-    empty = make_user(conn, "empty@example.com")
-    model = ScriptedModel(["should not be called"])
-
-    events = ask(empty, "Anything?", model)
-
-    assert model.prompts == []
-    assert isinstance(events[-1], Completed) and events[-1].outcome == "declined"
-    assert "".join(e.text for e in events if isinstance(e, Delta)) == DECLINE
-
-
 def test_a_model_decline_is_recorded_as_one(conn: Connection[DictRow], reader: AuthUser) -> None:
     events = ask(reader, "Who founded the company?", ScriptedModel([DECLINE]))
 
@@ -762,6 +750,35 @@ def test_with_no_indexed_documents_in_scope_the_user_is_asked_to_upload(
     assert model.prompts == []
 
 
+def test_documents_still_being_prepared_are_waited_for_not_uploaded_again(
+    conn: Connection[DictRow],
+) -> None:
+    newcomer = make_user(conn, "waiting@example.com")
+    add(conn, newcomer, "leave.md", LEAVE)
+    conn.execute("update app.documents set status = 'embedding'")
+    conn.commit()
+
+    events = ask(newcomer, "How much leave carries over?", ScriptedModel(["Not asked."]))
+
+    done = events[-1]
+    assert isinstance(done, Completed)
+    assert (done.outcome, done.answer) == ("no_documents", STILL_PROCESSING)
+
+
+def test_a_named_identifier_found_by_keywords_reaches_the_model_despite_low_similarity(
+    conn: Connection[DictRow], reader: AuthUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docent_api.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "decline_below_similarity", 0.99)
+    model = ScriptedModel(["Leave over five days [1].", QUOTE_FORM])
+
+    events = ask(reader, "What is form HR-27 for?", model)
+
+    assert model.prompts  # asked, not declined early
+    assert isinstance(events[-1], Completed) and events[-1].outcome == "answered"
+
+
 @pytest.mark.parametrize(
     ("reply", "declines"),
     [
@@ -773,6 +790,10 @@ def test_with_no_indexed_documents_in_scope_the_user_is_asked_to_upload(
         ("Up to 10 days carry over [1].", False),
         ("You do not need to give notice if the baby is early [2].", False),  # cites
         ("Workers get 28 days of paid leave a year.", False),  # uncited, but an answer
+        ("No, the policy does not cover contractors.", False),
+        ("Staff do not need to answer emails while on leave.", False),
+        ("The passages don’t mention parking, but staff may use the car park.", False),
+        (f"{DECLINE} However, staff get 28 days [1].", False),  # it answers, citing
     ],
 )
 def test_declines_are_recognised_in_the_models_own_words(reply: str, declines: bool) -> None:

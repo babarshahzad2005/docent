@@ -38,7 +38,7 @@ from docent_api.providers.base import (
     TextDelta,
     Usage,
 )
-from docent_api.retrieval import Passage, has_indexed_documents, readable_scope, retrieve
+from docent_api.retrieval import Passage, documents_state, readable_scope, retrieve
 from docent_api.settings import get_settings
 from docent_api.verification import INSTRUCTIONS, QuoteFilter, Verification, split_answer, verify
 
@@ -58,18 +58,27 @@ needs its citation: an answer without them is thrown away.
 - Answer briefly in plain prose. Short bullet lists starting with "- " are fine; don't use \
 headings, tables, or bold text.
 {INSTRUCTIONS}"""
-NO_DOCUMENTS = (
-    "There are no documents to search here yet. Upload some, and ask again once they’re ready."
+NO_DOCUMENTS = "There are no documents to search here yet. Upload some, then ask again."
+STILL_PROCESSING = (
+    "Your documents are still being prepared, so there’s nothing to search yet. Ask again "
+    "once they’re ready."
 )
 CLOSEST = 3  # passages shown with a Decline
-# A model declining in its own words: a short reply, citing nothing, saying the passages
-# don't answer.
+# A model declining in its own words: a short reply, citing nothing, that says the passages
+# (or documents, or information given) don't answer, and doesn't go on to answer anyway.
 _OWN_WORDS_DECLINE = re.compile(
     r"\b(?:couldn['’]?t|could not|can['’]?t|cannot|unable to|don['’]?t|do not|doesn['’]?t|"
     r"does not|didn['’]?t|did not|no)\b.{0,60}?\b(?:find|found|contain|contains|mention|"
     r"mentions|cover|covers|say|says|information|answer|details?)\b",
     re.IGNORECASE | re.DOTALL,
 )
+_ABOUT_THE_SOURCES = re.compile(
+    r"\b(?:passages?|documents?|sources?|information|provided|given)\b", re.IGNORECASE
+)
+_GOES_ON = re.compile(r"\b(?:but|however|although|though)\b", re.IGNORECASE)
+# Part numbers, clause numbers, form codes: exact words that keyword search finds and
+# meaning (vector similarity) may not ("form HR-27", "clause 7.3").
+_IDENTIFIER = re.compile(r"\b[\w-]*\d[\w.-]*\b")
 NOTHING_VERIFIED = (
     "Docent couldn’t check this answer against your documents, so it isn’t shown. "
     "Try asking in a different way."
@@ -222,12 +231,13 @@ async def answer(
             message_id=str(turn.message_id),
             sources=[_source(number, p) for number, p in enumerate(turn.passages, start=1)],
         )
-        weak = _weak_retrieval(turn.passages)
+        weak = _weak_retrieval(question, turn.passages)
+        state = "indexed" if turn.passages else await asyncio.to_thread(_documents_state, turn)
         if not turn.passages or weak:
             # Declined before asking the model: nothing to read, or nothing close enough.
-            if not turn.passages and not await asyncio.to_thread(_has_documents, turn):
-                turn.answer, outcome = NO_DOCUMENTS, "no_documents"
-                turn.decline_reason = "no_documents"
+            if state != "indexed":
+                turn.answer = STILL_PROCESSING if state == "processing" else NO_DOCUMENTS
+                outcome, turn.decline_reason = "no_documents", "no_documents"
             else:
                 turn.answer, outcome, turn.decline_reason = DECLINE, "declined", "weak_retrieval"
             status = "complete"
@@ -262,7 +272,7 @@ async def answer(
             status = "complete"
         verification = turn.verification
         turn.cited = (
-            list(range(1, min(CLOSEST, len(turn.passages)) + 1))
+            _closest(turn.passages)
             if outcome == "declined"
             else cited_numbers(turn.answer, len(turn.passages))
         )
@@ -298,33 +308,50 @@ async def answer(
         )
 
 
-def _weak_retrieval(passages: Sequence[Passage]) -> bool:
+def _weak_retrieval(question: str, passages: Sequence[Passage]) -> bool:
     """No passage is close enough in meaning to be worth asking the model about.
 
-    Without similarities (embeddings unavailable, keyword search only) there is no measure,
-    so the model is asked and can decline itself.
+    The model is still asked when there is no measure (embeddings unavailable, keyword search
+    only), and when the question names an identifier ("form HR-27") that keyword search
+    found: meaning alone underrates exact matches. Either way, the model can decline itself.
     """
     similarities = [p.similarity for p in passages if p.similarity is not None]
-    return bool(similarities) and max(similarities) < get_settings().decline_below_similarity
-
-
-def _has_documents(turn: Turn) -> bool:
-    if not turn.scope:
+    if not similarities or max(similarities) >= get_settings().decline_below_similarity:
         return False
+    found_by_keyword = any(p.keyword_rank is not None for p in passages)
+    return not (found_by_keyword and _IDENTIFIER.search(question))
+
+
+def _closest(passages: Sequence[Passage]) -> list[int]:
+    """The numbers of the passages closest in meaning (or, without similarities, the best
+    ranked), shown with a Decline."""
+    ranked = sorted(
+        range(len(passages)),
+        key=lambda i: (passages[i].similarity is None, -(passages[i].similarity or 0.0), i),
+    )
+    return sorted(i + 1 for i in ranked[:CLOSEST])
+
+
+def _documents_state(turn: Turn) -> str:
+    if not turn.scope:
+        return "none"
     with get_pool().connection() as conn:
-        return has_indexed_documents(conn, turn.user_id, turn.scope)
+        return documents_state(conn, turn.user_id, turn.scope)
 
 
 def is_decline(text: str) -> bool:
     """Whether a reply declines: the exact sentence asked for, or the model's own words for
     it (a short reply that cites nothing and says the passages don't answer)."""
     text = text.strip()
+    if _CITATION.search(text):
+        return False  # it answers something, citing it; that part is checked as an answer
     if text.replace("'", "\u2019").startswith(DECLINE):
         return True
     return (
         len(text) <= 400
-        and not _CITATION.search(text)
         and _OWN_WORDS_DECLINE.search(text) is not None
+        and _ABOUT_THE_SOURCES.search(text) is not None
+        and _GOES_ON.search(text) is None
     )
 
 

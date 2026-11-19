@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     fallback_answer_model: str = "gemini:gemini-3.5-flash-lite"
     # Below this similarity of the best passage, a question is declined without asking the
     # answer model (#43). Measured on the Demo Collection: answerable questions scored 0.70 to
-    # 0.80, unrelated ones 0.54 to 0.65. Tuned on the Eval Set (#46).
+    # 0.80, unrelated ones 0.54 to 0.65. To be tuned on the Eval Set (#46).
     decline_below_similarity: float = 0.66
 
     @property

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
@@ -143,8 +143,13 @@ describe("Conversation", () => {
     );
     render(<Conversation conversationId={null} initialTurns={[]} startQuestion="Parking?" />);
 
-    const closest = await screen.findByRole("list", { name: "Closest passages" });
+    const closest = await screen.findByRole("list", {
+      name: "The closest passages in your documents:",
+    });
     expect(closest.textContent).toContain("leave.pdf");
+    passages.getPassage.mockResolvedValue({ ok: true, value: null });
+    await userEvent.click(within(closest).getByRole("button"));
+    expect(await screen.findByRole("complementary", { name: "Source" })).toBeTruthy();
     expect(screen.getByText("The closest passages in your documents:")).toBeTruthy();
     expect(screen.queryByText(/checked against/)).toBeNull();
   });

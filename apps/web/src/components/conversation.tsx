@@ -2,7 +2,7 @@
 
 import { CheckIcon } from "lucide-react";
 import Link from "next/link";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 
 import { AskBox } from "@/components/ask-box";
 import { CITATION_CHIP, type CitedSource, SourceMeta, SourcePane } from "@/components/source-pane";
@@ -218,6 +218,7 @@ function TurnView({
   onOpenSource: (source: CitedSource, opener: HTMLElement) => void;
 }) {
   const Heading = first ? "h1" : "h2";
+  const closestId = useId();
   const available = new Set(turn.sources.map((source) => source.number));
   const cited = turn.sources.filter((source) => turn.cited.includes(source.number));
   const byNumber = new Map(turn.sources.map((source) => [source.number, source]));
@@ -291,7 +292,7 @@ function TurnView({
           </Link>
         </p>
       )}
-      {turn.verified && turn.status !== "streaming" && turn.outcome !== "declined" && (
+      {turn.verified && turn.status !== "streaming" && (
         <VerificationLine
           checked={citationCount(turn.answer, available)}
           removed={turn.removed ?? []}
@@ -307,13 +308,14 @@ function TurnView({
       )}
       {cited.length > 0 && turn.outcome === "declined" && (
         // DESIGN.md › Writing: a Decline is followed by the closest passages.
-        <p className="text-meta text-text-secondary">
+        <p id={closestId} className="text-meta text-text-secondary">
           The closest passages in your documents:
         </p>
       )}
       {cited.length > 0 && (
         <ol
-          aria-label={turn.outcome === "declined" ? "Closest passages" : "Sources"}
+          aria-label={turn.outcome === "declined" ? undefined : "Sources"}
+          aria-labelledby={turn.outcome === "declined" ? closestId : undefined}
           className="flex flex-col gap-1 border-t border-border pt-4"
         >
           {cited.map((source) => (
