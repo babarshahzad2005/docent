@@ -307,6 +307,9 @@ describe("The Effective Date", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("You can’t change this.");
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByLabelText("Effective from")).toBeNull();
+    // Opened again, it starts without the old message.
+    await userEvent.click(screen.getByRole("button", { name: /Change the effective date/ }));
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("can't be changed by Viewers", () => {

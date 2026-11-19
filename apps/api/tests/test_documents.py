@@ -1257,10 +1257,10 @@ def test_the_update_endpoint_sets_the_effective_date(
     changed = client.patch(f"/documents/{document_id}", json={"effective_date": "2019-11-01"})
 
     assert changed.status_code == 200 and changed.json()["effective_date"] == "2019-11-01"
-    assert (
-        client.patch(f"/documents/{document_id}", json={"effective_date": "soon"}).status_code
-        == 422
-    )
+    path = f"/documents/{document_id}"
+    # Not a date, or out of range: it orders Documents that disagree, so a typo mustn't win.
+    for bad in ("soon", "9999-12-31", "0001-01-01"):
+        assert client.patch(path, json={"effective_date": bad}).status_code == 422, bad
     assert (
         client.patch(f"/documents/{uuid4()}", json={"effective_date": "2019-11-01"}).status_code
         == 404

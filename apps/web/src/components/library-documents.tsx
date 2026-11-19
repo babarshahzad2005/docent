@@ -76,6 +76,8 @@ export function LibraryDocuments({
   const [documents, setDocuments] = useState(() =>
     onlyIn(collection.id, initialDocuments),
   );
+  // When each Document's Effective Date was last saved here (see the poll below).
+  const datesSaved = useRef(new Map<string, number>());
   // Bumped to restart status refreshing after it stopped on an error.
   const [refreshes, setRefreshes] = useState(0);
   const canEdit = collection.role !== "viewer";
@@ -107,13 +109,23 @@ export function LibraryDocuments({
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
+        const asked = Date.now();
         const result = await listDocuments();
         if (stopped) return;
         if (!result.ok) {
           setErrors([`Progress stopped updating: ${result.message}`]);
           return;
         }
-        setDocuments(onlyIn(collection.id, result.value));
+        // A date saved while this poll was on its way is newer than what it brings back.
+        setDocuments((current) =>
+          onlyIn(collection.id, result.value).map((fresh) => {
+            const saved = datesSaved.current.get(fresh.id);
+            const mine = current.find((d) => d.id === fresh.id);
+            return saved !== undefined && saved > asked && mine
+              ? { ...fresh, effective_date: mine.effective_date }
+              : fresh;
+          }),
+        );
       } catch {
         if (!stopped)
           setErrors([
@@ -523,6 +535,7 @@ export function LibraryDocuments({
               try {
                 const changed = await setEffectiveDate(document.id, date);
                 if (!changed.ok) return changed.message;
+                datesSaved.current.set(document.id, Date.now());
                 setDocuments((current) =>
                   current.map((d) => (d.id === document.id ? changed.value : d)),
                 );
@@ -733,6 +746,7 @@ function EffectiveDate({
             aria-label={`Change the effective date of ${name}`}
             onClick={() => {
               setValue(date);
+              setProblem(null);
               setEditing(true);
             }}
           >
@@ -755,7 +769,7 @@ function EffectiveDate({
         else close();
       }}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
+        if (event.key === "Escape" && !saving) {
           event.preventDefault();
           close();
         }
@@ -767,6 +781,8 @@ function EffectiveDate({
         id={inputId}
         type="date"
         required
+        min="1900-01-01"
+        max="2100-12-31"
         value={value}
         onChange={(event) => setValue(event.target.value)}
         className="h-8 rounded-md border border-border-strong bg-surface px-2 text-foreground pointer-coarse:h-11"

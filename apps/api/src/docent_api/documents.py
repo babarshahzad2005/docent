@@ -240,13 +240,18 @@ def set_effective_date(
     Owners and Editors of its Collection only; Viewers get NotAllowed.
     """
     _editable(conn, user_id, document_id)
-    conn.execute(
-        "update app.documents set effective_date = %s, updated_at = now() where id = %s",
+    row = conn.execute(
+        f"""
+        update app.documents d set effective_date = %s, updated_at = now()
+        where d.id = %s
+        returning {_SUMMARY_COLUMNS}
+        """,
         (effective, document_id),
-    )
-    summary = next(d for d in list_documents(conn, user_id) if d.id == document_id)
+    ).fetchone()
     conn.commit()
-    return summary
+    if row is None:
+        raise DocumentNotFound(document_id)  # deleted meanwhile
+    return DocumentSummary.model_validate(row)
 
 
 def delete_document(

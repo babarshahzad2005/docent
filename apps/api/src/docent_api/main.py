@@ -269,7 +269,8 @@ def delete(document_id: UUID, user: User, conn: Db, files: Files) -> None:
 
 
 class DocumentChanges(BaseModel):
-    effective_date: date
+    # Bounded, because it orders Documents that disagree: a typo like 9999 would win always.
+    effective_date: Annotated[date, Field(ge=date(1900, 1, 1), le=date(2100, 12, 31))]
     """The date the Document's content applies from (GLOSSARY: Effective Date)."""
 
 
