@@ -17,7 +17,12 @@ def generator_for(spec: str, settings: Settings) -> Generator:
         raise ValueError(f"answer model must look like provider:model, got {spec!r}")
     if provider == "groq":
         reasoning = "low" if model.startswith("openai/gpt-oss") else None
-        return GroqGenerator(settings.groq_api_key, model, reasoning_effort=reasoning)
+        return GroqGenerator(
+            settings.groq_api_key,
+            model,
+            reasoning_effort=reasoning,
+            hide_reasoning=model.startswith("qwen/"),
+        )
     if provider == "gemini":
         return GeminiGenerator(settings.gemini_api_key, model, {"thinkingLevel": "minimal"})
     raise ValueError(f"unknown answer model provider {provider!r}")

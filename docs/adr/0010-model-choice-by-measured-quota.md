@@ -53,7 +53,7 @@ The measurements above were taken from a laptop in Pakistan. The API runs in Ver
 | groq `openai/gpt-oss-120b` | 4 | 668 ms | 1,602 ms / 2,012 ms |
 | gemini `gemini-3.5-flash-lite` (as the fallback) | 7 | 5,079 ms | 5,597 ms / 7,276 ms |
 
-The samples are few, because v0.1 has little traffic yet, so they are re-checked once it has more. gpt-oss-120b meets the 1.5 s target, and the 8 s p95 target too. Gemini as the fallback misses it by far. Real prompts with 8 passages are much larger than the earlier test prompt: timed on a full-size prompt, Gemini took 7–16 s to its first token.
+The samples are few, because v0.1 has little traffic yet. A p95 over 4 answers says little, so they are re-checked once there is more traffic. Qwen's timings below are from the laptop, and its deployment numbers will come from the Answer Log once it has answered there. gpt-oss-120b meets the 1.5 s target, and the 8 s p95 target too. Gemini as the fallback misses it by far. Real prompts with 8 passages are much larger than the earlier test prompt: timed on a full-size prompt, Gemini took 7–16 s to its first token.
 
 **The fallback is revisited.** It becomes a chain, tried in order (`FALLBACK_ANSWER_MODEL`, comma-separated). Candidates were timed on a full-size prompt (3 runs each, from the laptop) and scored on the Eval Set's first 10 answerable questions:
 
@@ -69,4 +69,4 @@ gpt-oss-20b is fast, but it rarely follows the citation format, so its answers a
 2. `groq:qwen/qwen3.8-27b`
 3. `gemini:gemini-3.5-flash-lite`
 
-Groq's rate limits are per model, so Qwen's own allowance absorbs the most common failure, gpt-oss-120b's 8,000 tokens a minute, in under a second. Gemini stays last, on another provider, for when Groq as a whole is down. Qwen answering well enough to be the primary is worth testing on the full Eval Set before any switch (M5).
+Groq's rate limits are per model, so Qwen's own allowance absorbs the most common failure, gpt-oss-120b's 8,000 tokens a minute, in under a second. Gemini stays last, on another provider, for when Groq as a whole is down. Qwen answering well enough to be the primary is worth testing on the full Eval Set before any switch (M5). Qwen's reasoning is kept out of its answers (`reasoning_format: hidden`), as gpt-oss's is. When a fallback answers, the Answer Log records the model that answered and that the answer model failed (`fell_back_from`); it doesn't record which middle step was tried. This section supersedes the earlier bullet that names Gemini Flash-Lite as the fallback.
