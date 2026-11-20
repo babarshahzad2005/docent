@@ -877,7 +877,7 @@ def test_a_notice_of_disagreeing_documents_is_sent_saved_and_logged(
         Version(1, "up to 10 days", "leave.md", "2024-01-01"),
         Version(2, "within 30 days", "expenses.md", "2019-11-01"),
     ]
-    monkeypatch.setattr(answers, "notice", lambda entries, passages: versions)
+    monkeypatch.setattr(answers, "notice", lambda entries, passages, cited=None: versions)
 
     events = ask(reader, "How much leave carries over?", ScriptedModel(["10 days [1].", QUOTES]))
 
