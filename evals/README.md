@@ -37,6 +37,8 @@ The judge is `gemini-3.5-flash-lite`, never the answer model (`gpt-oss-120b` on 
 
 Faithfulness is measured on what the reader sees, by sentence. The PRD's wording ("citations whose passage supports the claim") is close: verification has already removed every claim whose quote isn't in its passage, so the judge measures the gap quote matching leaves (ADR 0007).
 
+The judge was spot-checked by hand on 10 items (20%): it agreed on 13 of 13 sentences ([judge-spot-check.md](judge-spot-check.md)).
+
 ## In CI
 
 `.github/workflows/eval.yml` runs the harness against the Demo Collection, as a read-only database user (`docent_eval`).
@@ -67,6 +69,15 @@ Secrets: `EVAL_DATABASE_URL` (the read-only user), `GEMINI_API_KEY`, `GROQ_API_K
 ## Results
 
 These results come from the first run on 2026-11-19 against the production Demo Collection, with 10 answerable questions answered. One answer of the 7 went unjudged (the judge's reply couldn't be read, since fixed), so faithfulness here is over 6 answers.
+
+The nightly full run on 2026-11-20 (all 36 answerable questions, before the per-Document cap) gave:
+
+- answerable answered: 88.9% (32 of 36);
+- faithfulness: 97.2% (35 of 36 sentences);
+- unanswerable declined: 100% (14 of 14);
+- answers judged: 32 of 32.
+
+The first run follows.
 
 | Metric | Result |
 | --- | --- |
