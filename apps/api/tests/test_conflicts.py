@@ -91,3 +91,37 @@ def test_values_not_in_their_passage_or_from_one_document_make_no_notice() -> No
     no_such_passage = notice([(1, "12.07% of hours worked"), (9, "anything")], PASSAGES)
 
     assert made_up is None and one_document is None and no_such_passage is None
+
+
+def test_only_versions_the_answer_still_cites_make_the_notice() -> None:
+    entries = [(1, "12.07% of hours worked"), (2, "at least 5.6 weeks")]
+
+    assert notice(entries, PASSAGES, cited=[1, 2]) is not None
+    assert notice(entries, PASSAGES, cited=[1]) is None  # [2] failed verification
+
+
+def test_values_of_one_word_are_too_short_to_count() -> None:
+    assert notice([(1, "12.07%"), (2, "weeks")], PASSAGES) is None
+
+
+def test_answer_text_after_the_list_is_kept() -> None:
+    raw = (
+        'Holiday accrues [1].\n\nDisagreements:\n[1] "12.07% of hours"\n[2] "at least 5.6 weeks"\n'
+        'The older guide said otherwise [2].\n\nQuotes:\n[1] "accrues at 12.07%"\n'
+    )
+
+    reply, entries = split_disagreements(raw)
+
+    assert len(entries) == 2
+    assert "The older guide said otherwise [2]." in reply and "Quotes:" in reply
+
+
+def test_a_line_starting_with_disagreement_is_answer_text() -> None:
+    shown = QuoteFilter()
+    raw = 'Disagreement between the two guides is about accrual [1].\n\nQuotes:\n[1] "x y z"\n'
+
+    streamed = "".join(shown.feed(raw[i : i + 3]) for i in range(0, len(raw), 3))
+    streamed += shown.finish()
+
+    assert streamed.strip() == "Disagreement between the two guides is about accrual [1]."
+    assert split_disagreements(raw)[1] == []

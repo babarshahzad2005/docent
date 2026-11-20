@@ -12,6 +12,7 @@ import {
   scopeNames,
 } from "@/components/scope-chips";
 import { CITATION_CHIP, type CitedSource, SourceMeta, SourcePane } from "@/components/source-pane";
+import { formatDate } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import {
   type ConflictVersion,
@@ -485,6 +486,11 @@ function ConflictNotice({
 }) {
   const headingId = useId();
   const Heading = level;
+  // The answer follows the newest only when one is newer: same or missing dates, it gives both.
+  const [first, second] = versions;
+  const newestWins = Boolean(
+    first?.effective_date && second?.effective_date && first.effective_date > second.effective_date,
+  );
   return (
     <section
       aria-labelledby={headingId}
@@ -495,14 +501,18 @@ function ConflictNotice({
         Your documents disagree
       </Heading>
       <p className="text-meta text-text-secondary">
-        The answer follows the newest. Each version, newest first:
+        {newestWins
+          ? "The answer follows the newest. Each version, newest first:"
+          : "They apply from the same date, so the answer gives both:"}
       </p>
-      <table className="w-full text-left text-meta">
+      {/* Scrolls sideways within itself on a narrow screen, never the page. */}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[20rem] text-left text-meta">
         <thead className="text-muted-foreground">
           <tr>
             <th scope="col" className="pb-1 pr-3 font-medium">What it says</th>
             <th scope="col" className="pb-1 pr-3 font-medium">Document</th>
-            <th scope="col" className="pb-1 font-medium">Effective</th>
+            <th scope="col" className="pb-1 font-medium">Effective Date</th>
           </tr>
         </thead>
         <tbody>
@@ -514,25 +524,16 @@ function ConflictNotice({
                   <span>“{version.value}”</span>
                 </span>
               </td>
-              <td className="py-2 pr-3 break-words">{version.document_name}</td>
+              <td className="py-2 pr-3 [overflow-wrap:anywhere]">{version.document_name}</td>
               <td className="py-2 tabular-nums whitespace-nowrap">
                 {version.effective_date ? formatDate(version.effective_date) : "Not set"}
               </td>
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
     </section>
   );
 }
 
-/** A date as people write it: "1 January 2024". */
-function formatDate(iso: string): string {
-  const [year, month, day] = iso.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}

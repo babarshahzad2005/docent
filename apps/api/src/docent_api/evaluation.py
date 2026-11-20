@@ -44,6 +44,7 @@ from docent_api.answers import (
     SYSTEM_PROMPT,
     _weak_retrieval,
     build_prompt,
+    cited_numbers,
     is_decline,
     normalize_citations,
 )
@@ -212,8 +213,6 @@ async def _answer(
     raw = await _generate(generator, build_prompt(item.question, passages))
     reply, disagreements = split_disagreements(normalize_citations(raw))
     text, quotes = split_answer(reply)
-    versions = notice(disagreements, passages)
-    result.notice_documents = [v.document_name for v in versions] if versions else []
     if is_decline(text):
         result.answered, result.outcome, result.answer = False, "declined", DECLINE
         return
@@ -222,6 +221,9 @@ async def _answer(
         result.answered, result.outcome, result.answer = False, "unverified", text
         return
     result.answered, result.outcome, result.answer = True, "answered", verification.answer
+    # As shown: only versions whose Citations survived verification (answers._verify).
+    versions = notice(disagreements, passages, cited_numbers(verification.answer, len(passages)))
+    result.notice_documents = [v.document_name for v in versions] if versions else []
     await _judge(result, verification.answer, passages, judge)
 
 
@@ -335,7 +337,8 @@ def report(results: Sequence[Result], settings: Settings) -> dict[str, Any]:
         "conflicts_both_retrieved": _rate(
             sum(bool(r.both_versions) for r in conflicts), len(conflicts)
         ),
-        # Conflict questions answered with a notice naming every expected Document (#48).
+        # Conflict questions answered with a notice of two or more Documents, at least one of
+        # them expected (#48).
         "conflicts_noticed": _rate(
             sum(r.notice_complete for r in answered if r.kind == "conflict"),
             sum(1 for r in answered if r.kind == "conflict"),

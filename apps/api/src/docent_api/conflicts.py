@@ -15,7 +15,7 @@ Documents survive: a table of each value, its Document, and its Effective Date, 
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -23,6 +23,7 @@ from docent_api.retrieval import Passage
 from docent_api.verification import _ELLIPSIS, _find_words, _words
 
 DISAGREEMENTS_HEADING = "Disagreements:"
+MIN_VALUE_WORDS = 2
 
 INSTRUCTIONS = f"""- If you said the documents disagree, after the quotes write a line with only \
 "{DISAGREEMENTS_HEADING}". Then, for each passage that disagrees, one line with its number \
@@ -30,7 +31,7 @@ and the short answer it gives, copied exactly from it, in double quotes, like:
 [4] "12.07% of hours worked\""""
 
 _HEADING = re.compile(
-    r"(?:^|\n)[ \t]*(?:#{1,6}[ \t]*)?\**[ \t]*disagreements?[ \t]*\**[ \t]*:?[ \t]*\**[ \t]*"
+    r"(?:^|\n)[ \t]*(?:#{1,6}[ \t]*)?\**[ \t]*disagreements?[ \t]*\**[ \t]*:[ \t]*\**[ \t]*"
     r"(?=\n|\[\d|$)",
     re.IGNORECASE,
 )
@@ -54,21 +55,33 @@ def split_disagreements(raw: str) -> tuple[str, list[tuple[int, str]]]:
     match = _HEADING.search(raw)
     if match is None:
         return raw, []
-    end_match = _NEXT_SECTION.search(raw, match.end())
-    end = end_match.start() if end_match else len(raw)
-    entries = [
-        (int(m.group(1)), m.group(2).strip()) for m in _ENTRY.finditer(raw[match.start() : end])
-    ]
-    return raw[: match.start()] + raw[end:], entries
+    entries: list[tuple[int, str]] = []
+    end = match.end()
+    for line in raw[match.end() :].split("\n"):
+        found = _ENTRY.fullmatch(line.strip())
+        if found:
+            entries.append((int(found.group(1)), found.group(2).strip()))
+        elif line.strip():
+            break  # the list is over: what follows (quotes, or answer text) stays
+        end += len(line) + 1
+    end = min(end, len(raw))
+    return raw[: match.start()] + "\n" + raw[end:], entries
 
 
-def notice(entries: Sequence[tuple[int, str]], passages: Sequence[Passage]) -> list[Version] | None:
+def notice(
+    entries: Sequence[tuple[int, str]],
+    passages: Sequence[Passage],
+    cited: Collection[int] | None = None,
+) -> list[Version] | None:
     """The versions to show, newest first, or None when fewer than two Documents' values
-    check out against their passages."""
+    check out against their passages. With `cited` (the verified answer's Citations), only
+    passages the answer still cites count, so every row opens a Citation the answer keeps."""
     versions: dict[Any, Version] = {}
     for number, value in entries:
-        if not 1 <= number <= len(passages) or not value.strip():
-            continue
+        if not 1 <= number <= len(passages) or len(value.split()) < MIN_VALUE_WORDS:
+            continue  # no such passage, or too short to mean anything ("8", "yes")
+        if cited is not None and number not in cited:
+            continue  # its Citation didn't survive verification
         passage = passages[number - 1]
         if not _says(passage.content, value):
             continue  # not what the passage says

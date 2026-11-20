@@ -44,8 +44,9 @@ _ELLIPSIS = re.compile(r"\s*(?:…|\.\.\.)\s*")
 # The line that starts the quotes: "Quotes:", and the forms models drift into ("**Quotes**",
 # "### Quotes", "Quote:", "Sources:"), alone on its line or followed by the first quote.
 _HEADING = re.compile(
-    r"(?:^|\n)[ \t]*(?:#{1,6}[ \t]*)?\**[ \t]*(?:quotes?|sources?|disagreements?)"
-    r"[ \t]*\**[ \t]*:?[ \t]*\**[ \t]*(?=\n|\[\d|$)",
+    r"(?:^|\n)[ \t]*(?:#{1,6}[ \t]*)?\**[ \t]*"
+    r"(?:(?:quotes?|sources?)[ \t]*\**[ \t]*:?|disagreements?[ \t]*\**[ \t]*:)"
+    r"[ \t]*\**[ \t]*(?=\n|\[\d|$)",
     re.IGNORECASE,
 )
 _HEADING_WORDS = (

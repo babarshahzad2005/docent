@@ -400,9 +400,11 @@ def _verify(turn: Turn) -> str:
     if is_decline(text):
         turn.answer, turn.decline_reason = DECLINE, "model"
         return "declined"
-    turn.conflict = notice(disagreements, turn.passages)
     turn.verification = verify(text, quotes, [p.content for p in turn.passages])
     turn.answer = turn.verification.answer
+    turn.conflict = notice(
+        disagreements, turn.passages, cited_numbers(turn.answer, len(turn.passages))
+    )
     if not turn.verification.checked:
         # Nothing it says could be tied to a passage: say so rather than show it.
         turn.answer = NOTHING_VERIFIED
