@@ -238,6 +238,52 @@ describe("Conversation", () => {
     expect(screen.getByRole("list", { name: "Collections to ask" }).textContent).toBe("Personal");
   });
 
+  it("shows a notice when the documents disagree, newest first, each opening its source", async () => {
+    const sources = [
+      { number: 1, document_id: "d1", document_name: "reforms-2024.md", heading_path: [], page: null },
+      { number: 2, document_id: "d2", document_name: "guidance-2019.pdf", heading_path: [], page: 4 },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        sse(
+          ["start", { ...START, sources }],
+          ["delta", { text: "Up to 5.6 weeks, accrued [1]. The documents disagree [1][2]." }],
+          [
+            "done",
+            {
+              message_id: "m1",
+              outcome: "answered",
+              cited: [1, 2],
+              answer: "Up to 5.6 weeks, accrued [1]. The documents disagree [1][2].",
+              verified: true,
+              removed: [],
+              conflict: [
+                { number: 1, value: "up to 5.6 weeks", document_name: "reforms-2024.md", effective_date: "2024-01-01" },
+                { number: 2, value: "at least 5.6 weeks", document_name: "guidance-2019.pdf", effective_date: "2019-11-01" },
+              ],
+            },
+          ],
+        ),
+      ),
+    );
+    const { container } = render(
+      <Conversation conversationId={null} initialTurns={[]} startQuestion="Minimum leave?" />,
+    );
+
+    const notice = await screen.findByRole("region", { name: "Your documents disagree" });
+    const rows = within(notice).getAllByRole("row").slice(1);
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "1“up to 5.6 weeks”reforms-2024.md1 January 2024",
+      "2“at least 5.6 weeks”guidance-2019.pdf1 November 2019",
+    ]);
+    passages.getPassage.mockResolvedValue({ ok: true, value: null });
+    await userEvent.click(within(notice).getByRole("button", { name: "Source 2, guidance-2019.pdf, page 4" }));
+    expect(await screen.findByRole("complementary", { name: "Source" })).toBeTruthy();
+    const results = await axe(container, { rules: { "color-contrast": { enabled: false } } });
+    expect(results.violations.map((v) => v.id)).toEqual([]);
+  });
+
   it("marks an answer cut off without an ending, and lets the User ask again", async () => {
     vi.stubGlobal(
       "fetch",

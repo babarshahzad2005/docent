@@ -44,9 +44,11 @@ from docent_api.answers import (
     SYSTEM_PROMPT,
     _weak_retrieval,
     build_prompt,
+    cited_numbers,
     is_decline,
     normalize_citations,
 )
+from docent_api.conflicts import notice, split_disagreements
 from docent_api.providers.base import (
     Generator,
     Message,
@@ -99,6 +101,8 @@ class Result:
     claims: int = 0
     supported: int | None = None
     judge_failed: bool = False
+    notice_documents: list[str] = field(default_factory=list)  # in a "documents disagree" notice
+    notice_complete: bool = False  # a conflict question got a notice (see evaluate)
     # The question names an identifier keyword search found: it reaches the model whatever
     # its similarity (answers._weak_retrieval).
     bypasses_threshold: bool = False
@@ -160,6 +164,14 @@ async def evaluate(
         if item.id in answer_ids:
             try:
                 await _answer(result, item, passages, generator, judge, pace)
+                # A notice of two or more Documents naming one expected: newer guidance can
+                # agree with the expected newer Document and stand in for it.
+                expected = {e["document"] for e in item.expected}
+                result.notice_complete = (
+                    item.kind == "conflict"
+                    and len(result.notice_documents) >= 2
+                    and bool(expected & set(result.notice_documents))
+                )
             except ProviderError as error:
                 # One failed question is recorded, not allowed to lose the whole run.
                 result.answered, result.outcome = None, "error"
@@ -199,7 +211,8 @@ async def _answer(
         return
     await pace.wait()
     raw = await _generate(generator, build_prompt(item.question, passages))
-    text, quotes = split_answer(normalize_citations(raw))
+    reply, disagreements = split_disagreements(normalize_citations(raw))
+    text, quotes = split_answer(reply)
     if is_decline(text):
         result.answered, result.outcome, result.answer = False, "declined", DECLINE
         return
@@ -208,6 +221,9 @@ async def _answer(
         result.answered, result.outcome, result.answer = False, "unverified", text
         return
     result.answered, result.outcome, result.answer = True, "answered", verification.answer
+    # As shown: only versions whose Citations survived verification (answers._verify).
+    versions = notice(disagreements, passages, cited_numbers(verification.answer, len(passages)))
+    result.notice_documents = [v.document_name for v in versions] if versions else []
     await _judge(result, verification.answer, passages, judge)
 
 
@@ -320,6 +336,12 @@ def report(results: Sequence[Result], settings: Settings) -> dict[str, Any]:
         "hit_at_5": _rate(sum(bool(r.hit_at_5) for r in retrievable), len(retrievable)),
         "conflicts_both_retrieved": _rate(
             sum(bool(r.both_versions) for r in conflicts), len(conflicts)
+        ),
+        # Conflict questions answered with a notice of two or more Documents, at least one of
+        # them expected (#48).
+        "conflicts_noticed": _rate(
+            sum(r.notice_complete for r in answered if r.kind == "conflict"),
+            sum(1 for r in answered if r.kind == "conflict"),
         ),
         "unanswerable_declined": _rate(
             sum(not r.answered for r in should_decline), len(should_decline)

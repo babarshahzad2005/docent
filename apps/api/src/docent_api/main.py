@@ -122,6 +122,15 @@ class CitationOut(BaseModel):
     passage: str
 
 
+class ConflictVersion(BaseModel):
+    """One Document's side when Documents disagree."""
+
+    number: int
+    value: str
+    document_name: str
+    effective_date: date | None
+
+
 class RemovedClaim(BaseModel):
     text: str
     reason: str
@@ -141,6 +150,8 @@ class MessageOut(BaseModel):
     """The answer's Citations were checked against their passages (ADR 0007)."""
     removed: list[RemovedClaim]
     """Claims removed from the answer because their Citations couldn't be verified."""
+    conflict: list[ConflictVersion] | None = None
+    """When the answer's Documents disagree: each version, newest first (#48)."""
     created_at: datetime
     citations: list[CitationOut]
 

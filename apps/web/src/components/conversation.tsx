@@ -1,8 +1,8 @@
 "use client";
 
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
-import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 import { AskBox } from "@/components/ask-box";
 import {
@@ -12,8 +12,10 @@ import {
   scopeNames,
 } from "@/components/scope-chips";
 import { CITATION_CHIP, type CitedSource, SourceMeta, SourcePane } from "@/components/source-pane";
+import { formatDate } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import {
+  type ConflictVersion,
   normalizeCitations,
   type Outcome,
   readAnswerEvents,
@@ -38,6 +40,8 @@ export type Turn = {
   /** The Citations were checked against their passages (ADR 0007). */
   verified?: boolean;
   removed?: RemovedClaim[];
+  /** When the answer's Documents disagree: each version, newest first. */
+  conflict?: ConflictVersion[] | null;
   /** Removed sentences fading out of the streamed text, before the checked answer replaces it. */
   fading?: string[];
 };
@@ -139,6 +143,7 @@ export function Conversation({
             outcome: event.outcome,
             verified: event.verified,
             removed: event.removed,
+            conflict: event.conflict ?? null,
             fading: undefined,
           });
           if (fading.length === 0) {
@@ -262,6 +267,18 @@ function TurnView({
     }
   };
 
+  const chip = (n: number) =>
+    byNumber.has(n) ? (
+      <button
+        type="button"
+        aria-label={label(n)}
+        onClick={open(n)}
+        className={`${CITATION_CHIP} cursor-pointer`}
+      >
+        {n}
+      </button>
+    ) : null;
+
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
@@ -316,6 +333,13 @@ function TurnView({
             Go to your library to upload documents
           </Link>
         </p>
+      )}
+      {turn.conflict && turn.conflict.length > 1 && turn.status !== "streaming" && (
+        <ConflictNotice
+          versions={turn.conflict}
+          chip={(n) => chip(n)}
+          level={first ? "h2" : "h3"}
+        />
       )}
       {turn.verified && turn.status !== "streaming" && (
         <VerificationLine
@@ -444,3 +468,72 @@ function usableScope(scope: string[] | undefined, collections: CollectionChoice[
   const usable = (scope ?? []).filter((id) => ids.has(id));
   return usable.length > 0 ? usable : defaultScope(collections);
 }
+
+/**
+ * DESIGN.md › Conflict notice: a bordered surface with an icon, the heading "Your documents
+ * disagree", and a table of each value, its document, and its Effective Date, newest first.
+ * The answer follows the newest.
+ */
+function ConflictNotice({
+  versions,
+  chip,
+  level,
+}: {
+  versions: ConflictVersion[];
+  chip: (n: number) => ReactNode;
+  /** One below the question's heading. */
+  level: "h2" | "h3";
+}) {
+  const headingId = useId();
+  const Heading = level;
+  // The answer follows the newest only when one is newer: same or missing dates, it gives both.
+  const [first, second] = versions;
+  const newestWins = Boolean(
+    first?.effective_date && second?.effective_date && first.effective_date > second.effective_date,
+  );
+  return (
+    <section
+      aria-labelledby={headingId}
+      className="flex flex-col gap-3 rounded-lg border border-border-strong bg-surface p-4"
+    >
+      <Heading id={headingId} className="flex items-center gap-2 font-sans text-ui font-semibold">
+        <TriangleAlertIcon aria-hidden="true" className="size-4 shrink-0 text-warning-icon" />
+        Your documents disagree
+      </Heading>
+      <p className="text-meta text-text-secondary">
+        {newestWins
+          ? "The answer follows the newest. Each version, newest first:"
+          : "They apply from the same date, so the answer gives both:"}
+      </p>
+      {/* Scrolls sideways within itself on a narrow screen, never the page. */}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[20rem] text-left text-meta">
+        <thead className="text-muted-foreground">
+          <tr>
+            <th scope="col" className="pb-1 pr-3 font-medium">What it says</th>
+            <th scope="col" className="pb-1 pr-3 font-medium">Document</th>
+            <th scope="col" className="pb-1 font-medium">Effective Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {versions.map((version) => (
+            <tr key={version.number} className="border-t border-border align-top">
+              <td className="py-2 pr-3">
+                <span className="flex items-start gap-2">
+                  {chip(version.number)}
+                  <span>“{version.value}”</span>
+                </span>
+              </td>
+              <td className="py-2 pr-3 [overflow-wrap:anywhere]">{version.document_name}</td>
+              <td className="py-2 tabular-nums whitespace-nowrap">
+                {version.effective_date ? formatDate(version.effective_date) : "Not set"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+

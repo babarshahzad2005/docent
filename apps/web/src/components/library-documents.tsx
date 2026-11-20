@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { CheckIcon, UploadIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { formatDate } from "@/lib/dates";
 
 import {
   deleteDocument,
@@ -1111,16 +1112,6 @@ function EffectiveDate({
   );
 }
 
-/** A date as people write it: "1 January 2024". */
-function formatDate(iso: string): string {
-  const [year, month, day] = iso.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 /** Delete, after a confirmation that names the Document. */
 function DeleteDocument({

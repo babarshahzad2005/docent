@@ -77,4 +77,4 @@ def test_each_source_shows_its_effective_date_and_the_rule_says_newer_wins() -> 
     assert "[1] Source: doc.md (effective 2024-01-01)" in prompt
     assert "[2] Source: doc.md (effective 2019-11-01)" in prompt
     assert "[3] Source: doc.md\n" in prompt
-    assert "answer from the one with the later date" in SYSTEM_PROMPT
+    assert "Answer from the document with the latest date" in SYSTEM_PROMPT

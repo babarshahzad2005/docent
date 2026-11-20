@@ -19,6 +19,14 @@ export type Source = {
  */
 export type Outcome = "answered" | "declined" | "unverified" | "no_documents";
 
+/** One Document's side when Documents disagree (#48). */
+export type ConflictVersion = {
+  number: number;
+  value: string;
+  document_name: string;
+  effective_date: string | null;
+};
+
 /** A claim removed because its Citations couldn't be checked against their passages. */
 export type RemovedClaim = { text: string; reason: string; original: string };
 
@@ -42,6 +50,8 @@ export type AnswerEvent =
       answer: string;
       verified: boolean;
       removed: RemovedClaim[];
+      /** When the answer's Documents disagree: each version, newest first. */
+      conflict?: ConflictVersion[] | null;
     }
   | { event: "error"; message: string; partial: boolean; cited: number[] };
 

@@ -293,6 +293,20 @@ export interface components {
              */
             role: "owner" | "editor" | "viewer";
         };
+        /**
+         * ConflictVersion
+         * @description One Document's side when Documents disagree.
+         */
+        ConflictVersion: {
+            /** Document Name */
+            document_name: string;
+            /** Effective Date */
+            effective_date: string | null;
+            /** Number */
+            number: number;
+            /** Value */
+            value: string;
+        };
         /** ConversationOut */
         ConversationOut: {
             /**
@@ -418,6 +432,8 @@ export interface components {
         MessageOut: {
             /** Citations */
             citations: components["schemas"]["CitationOut"][];
+            /** Conflict */
+            conflict?: components["schemas"]["ConflictVersion"][] | null;
             /** Content */
             content: string;
             /**
