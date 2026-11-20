@@ -103,6 +103,7 @@ class Result:
     judge_failed: bool = False
     notice_documents: list[str] = field(default_factory=list)  # in a "documents disagree" notice
     notice_complete: bool = False  # a conflict question got a notice (see evaluate)
+    rate_limited: bool = False  # the answer model's quota ran out on this question
     # The question names an identifier keyword search found: it reaches the model whatever
     # its similarity (answers._weak_retrieval).
     bypasses_threshold: bool = False
@@ -176,6 +177,8 @@ async def evaluate(
                 # One failed question is recorded, not allowed to lose the whole run.
                 result.answered, result.outcome = None, "error"
                 result.notes.append(f"answer failed: {error!r}")
+                if isinstance(error, RateLimited):
+                    result.rate_limited = True
         results.append(result)
         print(f"  {item.id}: {_line(result)}", file=sys.stderr)
     return results
@@ -243,7 +246,12 @@ async def _generate(generator: Generator, prompt: str, attempts: int = 4) -> str
         except RateLimited as error:
             if attempt == attempts - 1:
                 raise
-            await asyncio.sleep(max(getattr(error, "retry_after", 0) or 0, 30 * (attempt + 1)))
+            # A per-minute limit clears within a minute; one that asks for longer is a daily
+            # quota, which waiting out would hang the run for hours. Give up on it instead.
+            wait = getattr(error, "retry_after", 0) or 30 * (attempt + 1)
+            if wait > MAX_RATE_WAIT_SECONDS:
+                raise
+            await asyncio.sleep(wait)
     raise AssertionError("unreachable")
 
 
@@ -443,6 +451,8 @@ def schema_behind(conn: Connection[DictRow]) -> str | None:
 
 
 SCHEMA_BEHIND = 3  # exit code: the database lacks this code's migrations (see schema_behind)
+QUOTA_SPENT = 4  # exit code: the answer model's quota ran out, so the run measured too little
+MAX_RATE_WAIT_SECONDS = 90
 
 
 def main() -> None:
@@ -480,6 +490,12 @@ def main() -> None:
     args.out.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     args.out.with_suffix(".md").write_text(markdown(summary), encoding="utf-8")
     print(markdown(summary))
+    limited = [r.id for r in results if r.rate_limited]
+    if limited:
+        print(
+            f"The answer model's quota ran out on {len(limited)} questions: {', '.join(limited)}."
+        )
+        raise SystemExit(QUOTA_SPENT)
 
 
 # --- Blocking regressions in CI -----------------------------------------------------------
