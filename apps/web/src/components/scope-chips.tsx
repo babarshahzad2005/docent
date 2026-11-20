@@ -3,17 +3,9 @@
 import { PlusIcon, XIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
-export type CollectionChoice = { id: string; name: string; is_demo?: boolean };
+import { type CollectionChoice } from "@/lib/scope";
 
-/**
- * The Scope a new question starts with: the User's own Collections. The Demo Collection is
- * one they can ask, not one of theirs, so it is offered under "Add a collection" (PRD
- * decision log, 2026-11-19) unless it is all they have.
- */
-export function defaultScope(collections: CollectionChoice[]): string[] {
-  const own = collections.filter((collection) => !collection.is_demo);
-  return (own.length > 0 ? own : collections).map((collection) => collection.id);
-}
+export { type CollectionChoice, defaultScope } from "@/lib/scope";
 
 /**
  * The Scope of the next question, as chips (DESIGN.md › Answer): the Collections it will be

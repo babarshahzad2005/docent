@@ -5,7 +5,7 @@ import { listDocuments } from "@/app/documents-actions";
 import { AppShell } from "@/components/app-shell";
 import { LibraryDocuments } from "@/components/library-documents";
 import { LibraryHome } from "@/components/library-home";
-import { defaultScope } from "@/components/scope-chips";
+import { defaultScope } from "@/lib/scope";
 import { getMe } from "@/lib/me";
 
 export default function LibraryPage() {
