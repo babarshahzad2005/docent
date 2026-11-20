@@ -44,11 +44,18 @@ _ELLIPSIS = re.compile(r"\s*(?:…|\.\.\.)\s*")
 # The line that starts the quotes: "Quotes:", and the forms models drift into ("**Quotes**",
 # "### Quotes", "Quote:", "Sources:"), alone on its line or followed by the first quote.
 _HEADING = re.compile(
-    r"(?:^|\n)[ \t]*(?:#{1,6}[ \t]*)?\**[ \t]*(?:quotes?|sources?)[ \t]*\**[ \t]*:?[ \t]*\**"
-    r"[ \t]*(?=\n|\[\d|$)",
+    r"(?:^|\n)[ \t]*(?:#{1,6}[ \t]*)?\**[ \t]*(?:quotes?|sources?|disagreements?)"
+    r"[ \t]*\**[ \t]*:?[ \t]*\**[ \t]*(?=\n|\[\d|$)",
     re.IGNORECASE,
 )
-_HEADING_WORDS = ("quotes:", "quote:", "sources:", "source:")
+_HEADING_WORDS = (
+    "quotes:",
+    "quote:",
+    "sources:",
+    "source:",
+    "disagreements:",
+    "disagreement:",
+)
 _LIST_ITEM = re.compile(r"[ \t]*(?:[-*]|\d{1,2}[.)])[ \t]+")
 
 

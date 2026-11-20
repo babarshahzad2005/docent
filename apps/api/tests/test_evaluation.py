@@ -110,6 +110,19 @@ def test_a_bare_verdict_for_a_one_sentence_answer_is_read() -> None:
     assert _verdicts('{"supported": true}') == [True]
 
 
+def test_conflict_questions_count_as_noticed_only_when_every_version_is_named() -> None:
+    rows = [
+        Result("c1", "conflict", 0.7, hit_at_5=True, answered=True, notice_complete=True),
+        Result("c2", "conflict", 0.7, hit_at_5=True, answered=True, notice_complete=False),
+    ]
+
+    assert report(rows, Settings())["metrics"]["conflicts_noticed"] == {
+        "rate": 0.5,
+        "of": 2,
+        "count": 1,
+    }
+
+
 def test_the_markdown_summary_is_a_table_of_rates() -> None:
     text = markdown(report(results(), Settings()))
 

@@ -109,6 +109,43 @@
         "title": "CollectionSummary",
         "type": "object"
       },
+      "ConflictVersion": {
+        "description": "One Document's side when Documents disagree.",
+        "properties": {
+          "document_name": {
+            "title": "Document Name",
+            "type": "string"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Date"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "value",
+          "document_name",
+          "effective_date"
+        ],
+        "title": "ConflictVersion",
+        "type": "object"
+      },
       "ConversationOut": {
         "properties": {
           "created_at": {
@@ -394,6 +431,20 @@
             },
             "title": "Citations",
             "type": "array"
+          },
+          "conflict": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ConflictVersion"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict"
           },
           "content": {
             "title": "Content",

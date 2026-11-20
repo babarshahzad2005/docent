@@ -862,3 +862,35 @@ def test_conversations_are_listed_for_their_owner_latest_first(
     assert [c["title"] for c in listed] == ["What is form HR-27?", "How much leave carries over?"]
     assert listed[0]["id"] == UUID(second[0].conversation_id)  # type: ignore[union-attr]
     assert list_conversations(conn, make_user(conn, "other@example.com").id) == []
+
+
+# --- Documents that disagree (#48) --------------------------------------------------------
+
+
+def test_a_notice_of_disagreeing_documents_is_sent_saved_and_logged(
+    conn: Connection[DictRow], reader: AuthUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docent_api import answers
+    from docent_api.conflicts import Version
+
+    versions = [
+        Version(1, "up to 10 days", "leave.md", "2024-01-01"),
+        Version(2, "within 30 days", "expenses.md", "2019-11-01"),
+    ]
+    monkeypatch.setattr(answers, "notice", lambda entries, passages: versions)
+
+    events = ask(reader, "How much leave carries over?", ScriptedModel(["10 days [1].", QUOTES]))
+
+    start, done = events[0], events[-1]
+    assert isinstance(start, Started) and isinstance(done, Completed)
+    assert done.conflict is not None and [v["document_name"] for v in done.conflict] == [
+        "leave.md",
+        "expenses.md",
+    ]
+    reply = load_conversation(conn, reader.id, UUID(start.conversation_id))["messages"][1]
+    log = conn.execute(
+        "select conflict from app.answer_logs where message_id = %s", (UUID(done.message_id),)
+    ).fetchone()
+    conn.commit()
+    assert reply["conflict"][0]["value"] == "up to 10 days"
+    assert log is not None and log["conflict"][1]["effective_date"] == "2019-11-01"

@@ -62,6 +62,7 @@ async function SavedConversation({ params }: { params: Promise<{ id: string }> }
     turn.outcome = message.outcome ?? undefined;
     if (message.outcome && message.outcome !== "answered") turn.status = "declined";
     turn.removed = message.removed;
+    turn.conflict = message.conflict ?? null;
     if (message.status === "interrupted") turn.error = "This answer was cut off. Ask again to get the whole answer.";
     if (message.status === "failed") turn.error = "Docent couldn’t answer this. Ask again.";
   }
