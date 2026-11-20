@@ -19,7 +19,10 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     # "provider:model"; chosen from measurements in ADR 0010.
     answer_model: str = "groq:openai/gpt-oss-120b"
-    fallback_answer_model: str = "gemini:gemini-3.5-flash-lite"
+    # Tried in order when the answer model fails before writing (ADR 0010): Qwen has its own
+    # Groq rate limit, answers in under a second, and follows the citation format; Gemini covers
+    # Groq being down, at 5 s or more.
+    fallback_answer_model: str = "groq:qwen/qwen3.8-27b,gemini:gemini-3.5-flash-lite"
     # Judges faithfulness in the Eval Set (#46): never the answer model judging itself.
     judge_model: str = "gemini:gemini-3.5-flash-lite"
     # Below this similarity of the best passage, a question is declined without asking the

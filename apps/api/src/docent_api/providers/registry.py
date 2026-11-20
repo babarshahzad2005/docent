@@ -24,12 +24,16 @@ def generator_for(spec: str, settings: Settings) -> Generator:
 
 
 def answer_generator(settings: Settings | None = None) -> Generator:
-    """The answer model, falling back to the backup model when it fails."""
+    """The answer model, falling back along FALLBACK_ANSWER_MODEL (comma-separated, in order)
+    when a model fails before writing anything (ADR 0010)."""
     settings = settings or get_settings()
-    return FallbackGenerator(
-        generator_for(settings.answer_model, settings),
-        generator_for(settings.fallback_answer_model, settings),
-    )
+    chain = [settings.answer_model] + [
+        spec.strip() for spec in settings.fallback_answer_model.split(",") if spec.strip()
+    ]
+    generator = generator_for(chain[-1], settings)
+    for spec in reversed(chain[:-1]):
+        generator = FallbackGenerator(generator_for(spec, settings), generator)
+    return generator
 
 
 def embedder(settings: Settings | None = None) -> Embedder:

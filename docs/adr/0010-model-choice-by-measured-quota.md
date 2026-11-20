@@ -43,3 +43,30 @@ The fallback is used only if the primary fails before it has written any text. O
 - Gemini reports no token counts for embeddings, so the Answer Log records model and latency for them but not tokens.
 - Gemini's daily limits are unknown; the Answer Log will show real usage.
 - Model versions change under us (`gemini-2.5-flash` disappeared for new users). The measurement script is re-run before each milestone that depends on answer quality, and this ADR is updated with the new numbers.
+
+## From the deployment (#26, November 2026)
+
+The measurements above were taken from a laptop in Pakistan. The API runs in Vercel's Singapore region. The Answer Log records each real answer's model time to first token (from the call to the first token) and its whole time.
+
+| Answer model | Real answers | First token, p50 | Whole answer, p50 / p95 |
+| --- | --- | --- | --- |
+| groq `openai/gpt-oss-120b` | 4 | 668 ms | 1,602 ms / 2,012 ms |
+| gemini `gemini-3.5-flash-lite` (as the fallback) | 7 | 5,079 ms | 5,597 ms / 7,276 ms |
+
+The samples are few, because v0.1 has little traffic yet, so they are re-checked once it has more. gpt-oss-120b meets the 1.5 s target, and the 8 s p95 target too. Gemini as the fallback misses it by far. Real prompts with 8 passages are much larger than the earlier test prompt: timed on a full-size prompt, Gemini took 7–16 s to its first token.
+
+**The fallback is revisited.** It becomes a chain, tried in order (`FALLBACK_ANSWER_MODEL`, comma-separated). Candidates were timed on a full-size prompt (3 runs each, from the laptop) and scored on the Eval Set's first 10 answerable questions:
+
+| Candidate | First token | Answerable answered | Faithfulness |
+| --- | --- | --- | --- |
+| groq `openai/gpt-oss-20b` | 0.6–0.7 s | 1 of 10 | 3 of 3 sentences |
+| **groq `qwen/qwen3.8-27b`** | **0.33–0.76 s** | **10 of 10** | **18 of 18 sentences** |
+| gemini `gemini-3.5-flash-lite` | 7–16 s | (fallback until now) | |
+
+gpt-oss-20b is fast, but it rarely follows the citation format, so its answers are hidden or declined. Qwen is fast, and on this sample it answered as well as gpt-oss-120b. The chain is therefore:
+
+1. `groq:openai/gpt-oss-120b`
+2. `groq:qwen/qwen3.8-27b`
+3. `gemini:gemini-3.5-flash-lite`
+
+Groq's rate limits are per model, so Qwen's own allowance absorbs the most common failure, gpt-oss-120b's 8,000 tokens a minute, in under a second. Gemini stays last, on another provider, for when Groq as a whole is down. Qwen answering well enough to be the primary is worth testing on the full Eval Set before any switch (M5).

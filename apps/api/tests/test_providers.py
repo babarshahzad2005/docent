@@ -381,6 +381,17 @@ def test_the_configured_answer_models_are_used() -> None:
     assert generator.fallback.name == "gemini:flash-lite"
 
 
+def test_fallbacks_are_tried_in_the_order_given() -> None:
+    generator = answer_generator(Settings())  # the defaults (ADR 0010)
+
+    assert isinstance(generator, FallbackGenerator)
+    assert generator.primary.name == "groq:openai/gpt-oss-120b"
+    second = generator.fallback
+    assert isinstance(second, FallbackGenerator)
+    assert second.primary.name == "groq:qwen/qwen3.8-27b"
+    assert second.fallback.name == "gemini:gemini-3.5-flash-lite"
+
+
 @pytest.mark.parametrize("spec", ["gpt-4", "openai:gpt-4", "groq:"])
 def test_unknown_answer_models_are_rejected(spec: str) -> None:
     with pytest.raises(ValueError):
