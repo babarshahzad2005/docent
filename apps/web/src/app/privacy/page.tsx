@@ -34,9 +34,9 @@ export default function PrivacyPage() {
           <li>
             <strong>Your documents:</strong> each file you upload, and the text and search data
             Docent makes from it, so it can answer and show its sources. Deleting a document
-            removes the file and everything made from it. When you replace a document, the
-            passages earlier answers cited are kept as text, so those answers still show what
-            they were based on, until you delete the document.
+            removes the file, its text, and its search data; passages that earlier answers
+            cited stay with those answers, and in the answer log for up to 90 days. When you
+            replace a document, the passages earlier answers cited are kept too.
           </li>
           <li>
             <strong>Your conversations:</strong> each question you ask and its answer, with the
@@ -46,15 +46,17 @@ export default function PrivacyPage() {
           <li>
             <strong>An answer log:</strong> for each answer, the question, which passages were
             found, the prompt sent to the AI model, the reply, and timings, to measure and
-            improve answer quality. Entries are deleted after 90 days.
+            improve answer quality. Entries are deleted after 90 days, and are kept for those
+            90 days even if you delete the conversation or your account.
           </li>
         </ul>
         <h2>Who processes it</h2>
         <p>
-          Data is stored with Supabase and the app runs on Vercel, both in Singapore. To
-          answer, Docent sends your question and the passages it found to AI model providers:
-          Groq (which runs the answer models) and Google (Gemini, for search data and as a
-          backup answer model). Their free tiers may use what they
+          Data is stored with Supabase and the app runs on Vercel, both in Singapore. When you
+          upload a document, its text is sent to Google (Gemini) to build search data, and so
+          is each question you ask. To answer, Docent sends your question, the passages it
+          found and, for follow-ups, your recent questions and answers in that conversation to
+          Groq, or to Google if Groq is unavailable. Their free tiers may use what they
           receive to improve their products, so{" "}
           <strong>don&rsquo;t upload confidential or personal documents.</strong>
         </p>

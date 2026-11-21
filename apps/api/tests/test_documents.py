@@ -1504,7 +1504,7 @@ def test_answer_log_entries_past_90_days_are_deleted_and_newer_ones_kept(
     conversation = conn.execute(
         "insert into app.conversations (user_id, title) values (%s, 'q') returning id", (user.id,)
     ).fetchone()["id"]  # type: ignore[index]
-    for age in (10, 91):
+    for age in (89, 91):  # either side of the 90-day boundary
         message = conn.execute(
             "insert into app.messages (conversation_id, role, status) "
             "values (%s, 'assistant', 'complete') returning id",
@@ -1528,4 +1528,4 @@ def test_answer_log_entries_past_90_days_are_deleted_and_newer_ones_kept(
     ).fetchall()
     conn.commit()
 
-    assert [row["days"] for row in ages] == [10]
+    assert [row["days"] for row in ages] == [89]

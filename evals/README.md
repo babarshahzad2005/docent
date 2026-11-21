@@ -70,7 +70,7 @@ Secrets: `EVAL_DATABASE_URL` (the read-only user), `GEMINI_API_KEY`, `GROQ_API_K
 
 These results come from the first run on 2026-11-19 against the production Demo Collection, with 10 answerable questions answered. One answer of the 7 went unjudged (the judge's reply couldn't be read, since fixed), so faithfulness here is over 6 answers.
 
-The nightly full run on 2026-11-20 (all 36 answerable questions, before the per-Document cap) gave:
+The nightly full run on 2026-11-20 (all 36 answerable and conflict questions, before the per-Document cap) gave:
 
 - answerable answered: 88.9% (32 of 36);
 - faithfulness: 97.2% (35 of 36 sentences);
