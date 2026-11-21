@@ -183,3 +183,28 @@ def test_one_item_changing_in_a_small_subset_does_not_block() -> None:
         == []
     )
     assert regressions(metrics(8, answerable_answered=0.75), metrics(8, answerable_answered=0.5))
+
+
+def test_a_daily_quota_wait_gives_up_at_once_instead_of_hanging() -> None:
+    import asyncio
+    import time
+
+    import pytest
+
+    from docent_api.evaluation import _generate
+    from docent_api.providers.base import RateLimited
+
+    class Spent:
+        name = "fake:spent"
+        calls = 0
+
+        async def generate(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            Spent.calls += 1
+            raise RateLimited("fake", "daily quota", retry_after=3600)
+            yield  # pragma: no cover
+
+    started = time.monotonic()
+    with pytest.raises(RateLimited):
+        asyncio.run(_generate(Spent(), "prompt"))  # type: ignore[arg-type]
+
+    assert Spent.calls == 1 and time.monotonic() - started < 5

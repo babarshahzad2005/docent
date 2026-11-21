@@ -233,6 +233,24 @@ def test_groq_streams_answer_text_and_usage() -> None:
     assert body["max_completion_tokens"] == 200
 
 
+def test_qwens_reasoning_is_kept_out_of_the_answer_without_an_effort() -> None:
+    chunk = {"model": "qwen/qwen3.8-27b"}
+    fake = replying(
+        content=sse(
+            {**chunk, "choices": [{"delta": {"content": "4"}}]},
+            {**chunk, "choices": [{"delta": {}, "finish_reason": "stop"}]},
+            "[DONE]",
+        )
+    )
+    generator = generator_for("groq:qwen/qwen3.8-27b", Settings())
+    generator._http = GroqGenerator("key", "qwen/qwen3.8-27b", transport=fake.transport)._http  # type: ignore[attr-defined]
+
+    run(collect(generator.generate("Answer briefly.", QUESTION, 50)))
+
+    body = fake.body()
+    assert body["reasoning_format"] == "hidden" and "reasoning_effort" not in body
+
+
 def test_groq_reads_usage_from_the_final_usage_chunk() -> None:
     fake = replying(
         content=sse(
@@ -379,6 +397,17 @@ def test_the_configured_answer_models_are_used() -> None:
     assert isinstance(generator, FallbackGenerator)
     assert generator.primary.name == "groq:openai/gpt-oss-120b"
     assert generator.fallback.name == "gemini:flash-lite"
+
+
+def test_fallbacks_are_tried_in_the_order_given() -> None:
+    generator = answer_generator(Settings())  # the defaults (ADR 0010)
+
+    assert isinstance(generator, FallbackGenerator)
+    assert generator.primary.name == "groq:openai/gpt-oss-120b"
+    second = generator.fallback
+    assert isinstance(second, FallbackGenerator)
+    assert second.primary.name == "groq:qwen/qwen3.8-27b"
+    assert second.fallback.name == "gemini:gemini-3.5-flash-lite"
 
 
 @pytest.mark.parametrize("spec", ["gpt-4", "openai:gpt-4", "groq:"])

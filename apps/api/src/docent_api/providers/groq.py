@@ -26,10 +26,14 @@ class GroqGenerator:
         model: str,
         reasoning_effort: str | None = None,
         transport: httpx2.AsyncBaseTransport | None = None,
+        hide_reasoning: bool = False,
     ) -> None:
-        """`reasoning_effort` (e.g. "low") applies to reasoning models; reasoning stays hidden."""
+        """`reasoning_effort` (e.g. "low") applies to reasoning models. A reasoning model's
+        reasoning is always kept out of the answer: with `reasoning_effort`, or with
+        `hide_reasoning` for one that reasons without taking an effort (Qwen)."""
         self.model = model
         self._reasoning_effort = reasoning_effort
+        self._hide_reasoning = hide_reasoning or reasoning_effort is not None
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._http = ProviderHttp(_PROVIDER, transport)
 
@@ -56,7 +60,8 @@ class GroqGenerator:
             body["temperature"] = temperature
         if self._reasoning_effort is not None:
             body["reasoning_effort"] = self._reasoning_effort
-            body["reasoning_format"] = "hidden"
+        if self._hide_reasoning:
+            body["reasoning_format"] = "hidden"  # never "<think>…</think>" in the answer
         stopwatch = Stopwatch()
         version = self.model
         usage: dict[str, Any] = {}
