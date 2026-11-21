@@ -70,6 +70,16 @@ def job_command(api_url: str) -> str:
     """
 
 
+# The Answer Log keeps each entry 90 days (PRD decision log, GLOSSARY: Answer Log; the
+# privacy notice says so). Nothing is promoted to the Eval Set from it yet; once entries are,
+# they are kept.
+RETENTION_JOB_NAME = "docent-answer-log-retention"
+ANSWER_LOG_DAYS = 90
+RETENTION_SQL = (
+    f"delete from app.answer_logs where created_at < now() - interval '{ANSWER_LOG_DAYS} days'"
+)
+
+
 def set_up(conn: Connection[DictRow], api_url: str) -> None:
     token = secrets.token_urlsafe(32)
     with conn.transaction():
@@ -87,6 +97,10 @@ def set_up(conn: Connection[DictRow], api_url: str) -> None:
             )
         set_trigger_token(conn, token)
         conn.execute("select cron.schedule(%s, '* * * * *', %s)", (_JOB_NAME, job_command(api_url)))
+        # Daily, at a quiet hour: Answer Log entries past their 90 days go.
+        conn.execute(
+            "select cron.schedule(%s, '41 3 * * *', %s)", (RETENTION_JOB_NAME, RETENTION_SQL)
+        )
 
 
 def main() -> None:
@@ -103,3 +117,7 @@ def main() -> None:
     ) as conn:
         set_up(conn, args.api_url)
     print(f"Scheduled '{_JOB_NAME}' every minute, calling {args.api_url}; token rotated.")
+    print(
+        f"Scheduled '{RETENTION_JOB_NAME}' daily: Answer Log entries go after "
+        f"{ANSWER_LOG_DAYS} days."
+    )
