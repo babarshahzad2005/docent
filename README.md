@@ -52,7 +52,25 @@ Both run in Vercel's Singapore region, next to the database. A scheduled workflo
 
 ## Evaluation
 
-Results, methodology, and cost per answer will be published here once the eval suite runs in CI (M2).
+Answer quality is measured on the **Eval Set**: 50 maintainer-reviewed questions about the Demo Collection. 33 are answerable, each with its expected passages; 3 test Documents that disagree; 14 are unanswerable. The harness runs each question through Docent's own answer path, read-only, against the live Demo Collection. CI runs a subset on every pull request that changes the answer path, and blocks regressions. The full set runs nightly. Details are in [`evals/README.md`](evals/README.md).
+
+| Metric | Result | Target | How it's measured |
+| --- | --- | --- | --- |
+| Retrieval hit@5 | **91.7%** (33 of 36) | ≥ 90% | An expected passage among the top 5 retrieved |
+| Faithfulness | **97.2%** (35 of 36 sentences) | ≥ 95% | Answer sentences a judge model (Gemini, never the answer model) finds supported by the passages they cite. Spot-checked by hand on 20% of items: 13 of 13 agreed ([judge-spot-check.md](evals/judge-spot-check.md)) |
+| Unanswerable questions declined | **100%** (14 of 14) | ≥ 90% | Unanswerable questions declined: by a similarity threshold before the model (chosen on the set), or by the model |
+| Answerable and conflict questions answered | **88.9%** (32 of 36) | | Answered, not declined or hidden for failing citation checks |
+| Documents that disagree noticed | 1 of 3 | | A "Your documents disagree" notice naming both versions (#67 improves this) |
+
+hit@5 comes from a CI run on 2026-11-20, with the per-Document cap. The answer metrics come from that night's full run, made before the cap. Every Citation is also checked live against its passage by quote matching (ADR 0007), and a claim that can't be tied to its passage is removed before the reader sees the final answer.
+
+**Speed**, measured from the deployment in Singapore (ADR 0010; from the 4 answers so far):
+
+- Time to first token, p50: 668 ms on gpt-oss-120b. The target is under 1.5 s.
+- Whole answer: 1.6 s p50 and 2.0 s p95. The target is p95 under 8 s.
+- If gpt-oss-120b fails, Qwen 3.8 27B on Groq answers, at about 0.3–0.8 s to first token (timed from a laptop), then Gemini Flash-Lite.
+
+**Cost per answer: $0.** Every model runs on a free tier (Groq for answers, Google Gemini for embeddings), and the whole stack is on free hosting tiers. The 3 real answers logged with token counts (the Answer Log, before quotes were added) averaged about 2,300 prompt tokens and 90 answer tokens. With the quotes that verification needs, and 8 passages, the Eval Set's answers come to about 4,500 tokens each. Groq's free tier allows about 200,000 tokens a day for the answer model, which bounds both traffic and the nightly eval.
 
 ## Getting started
 

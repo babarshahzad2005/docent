@@ -1494,3 +1494,38 @@ def test_replace_keeps_the_effective_date_and_each_version_keeps_its_own_context
     assert second is not None
     cited = passage_in_context(conn, user.id, second["id"])
     assert cited["replaced"] is True and cited["content"] == "Up to 5 days."
+
+
+def test_answer_log_entries_past_90_days_are_deleted_and_newer_ones_kept(
+    conn: Connection[DictRow], user: AuthUser
+) -> None:
+    from docent_api.scheduler import RETENTION_SQL
+
+    conversation = conn.execute(
+        "insert into app.conversations (user_id, title) values (%s, 'q') returning id", (user.id,)
+    ).fetchone()["id"]  # type: ignore[index]
+    for age in (89, 91):  # either side of the 90-day boundary
+        message = conn.execute(
+            "insert into app.messages (conversation_id, role, status) "
+            "values (%s, 'assistant', 'complete') returning id",
+            (conversation,),
+        ).fetchone()["id"]  # type: ignore[index]
+        conn.execute(
+            """
+            insert into app.answer_logs
+                (message_id, user_id, question, scope, retrieved, prompt, answer, outcome, model,
+                 latency_ms, created_at)
+            values (%s, %s, 'q', '{}', '[]', '', '', 'answered', 'fake', 1,
+                    now() - make_interval(days => %s))
+            """,
+            (message, user.id, age),
+        )
+    conn.commit()
+
+    conn.execute(RETENTION_SQL)
+    ages = conn.execute(
+        "select extract(day from now() - created_at)::int as days from app.answer_logs"
+    ).fetchall()
+    conn.commit()
+
+    assert [row["days"] for row in ages] == [89]
