@@ -471,6 +471,40 @@
         "title": "Me",
         "type": "object"
       },
+      "MemberSummary": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "is_you": {
+            "title": "Is You",
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "role",
+          "is_you"
+        ],
+        "title": "MemberSummary",
+        "type": "object"
+      },
       "MessageOut": {
         "properties": {
           "citations": {
@@ -645,6 +679,20 @@
           "role"
         ],
         "title": "NewInvite",
+        "type": "object"
+      },
+      "NewOwner": {
+        "properties": {
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "NewOwner",
         "type": "object"
       },
       "PassageOut": {
@@ -839,6 +887,23 @@
           "can_retry"
         ],
         "title": "ReplacementSummary",
+        "type": "object"
+      },
+      "RoleChange": {
+        "properties": {
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "RoleChange",
         "type": "object"
       },
       "StartedUpload": {
@@ -1271,6 +1336,250 @@
           }
         ],
         "summary": "New Invite",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/collections/{collection_id}/members": {
+      "get": {
+        "description": "Everyone with access to the Collection and their Roles, Owner first (any Member).",
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemberSummary"
+                  },
+                  "title": "Response Listmembers",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such Collection, or not a Member"
+          },
+          "409": {
+            "description": "The Personal or Demo Collection"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Members",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/collections/{collection_id}/members/{member_id}": {
+      "delete": {
+        "description": "Remove a Member (the Owner), or leave: pass your own id (anyone but the Owner).",
+        "operationId": "removeMember",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Owner removes others"
+          },
+          "404": {
+            "description": "No such Collection or Member"
+          },
+          "409": {
+            "description": "The Owner can't leave; or the Personal or Demo Collection"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove",
+        "tags": [
+          "sharing"
+        ]
+      },
+      "patch": {
+        "description": "Make a Member an Editor or a Viewer (the Owner).",
+        "operationId": "changeRole",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Owner changes Roles"
+          },
+          "404": {
+            "description": "No such Collection or Member"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Role",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/collections/{collection_id}/owner": {
+      "post": {
+        "description": "Make another Member the Owner; you stay, as an Editor.",
+        "operationId": "transferOwnership",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewOwner"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Owner transfers ownership"
+          },
+          "404": {
+            "description": "No such Collection or Member"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Transfer",
         "tags": [
           "sharing"
         ]
