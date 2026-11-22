@@ -61,7 +61,7 @@ def rename_collection(
 ) -> CollectionSummary:
     name = clean_collection_name(name)
     with conn.transaction():
-        _owned(conn, user_id, collection_id)
+        require_owner(conn, user_id, collection_id)
         conn.execute("update app.collections set name = %s where id = %s", (name, collection_id))
     return CollectionSummary(
         id=collection_id, name=name, is_personal=False, is_demo=False, role="owner"
@@ -79,7 +79,7 @@ def delete_collection(
     at the same moment wait, then be refused (main.new_document).
     """
     with conn.transaction():
-        _owned(conn, user_id, collection_id)
+        require_owner(conn, user_id, collection_id)
         # Documents before their replacements, the order a swap locks them in
         # (ingestion._replace), so the two never wait on each other; and each file's path is
         # read under the lock, after any swap that got there first.
@@ -114,8 +114,10 @@ def delete_collection(
         remove_files(conn, store, stored)
 
 
-def _owned(conn: Connection[DictRow], user_id: UUID, collection_id: UUID) -> None:
-    """Lock the Collection, and check the User owns it and it may change."""
+def require_owner(conn: Connection[DictRow], user_id: UUID, collection_id: UUID) -> None:
+    """Lock the Collection, and check the User owns it and it may change or be shared: the
+    Personal Collection is always private (PRD decision log), and the Demo Collection has no
+    Owner."""
     row = conn.execute(
         """
         select c.personal_owner_id is not null as is_personal, c.is_demo, m.role

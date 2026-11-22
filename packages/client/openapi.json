@@ -416,6 +416,40 @@
         "title": "IngestionRun",
         "type": "object"
       },
+      "InviteSummary": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "expires_at"
+        ],
+        "title": "InviteSummary",
+        "type": "object"
+      },
       "Me": {
         "properties": {
           "collections": {
@@ -588,6 +622,29 @@
           "sha256"
         ],
         "title": "NewDocument",
+        "type": "object"
+      },
+      "NewInvite": {
+        "properties": {
+          "email": {
+            "maxLength": 500,
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "NewInvite",
         "type": "object"
       },
       "PassageOut": {
@@ -1091,6 +1148,134 @@
         ]
       }
     },
+    "/collections/{collection_id}/invites": {
+      "get": {
+        "description": "The Collection's invites still waiting (its Owner).",
+        "operationId": "listInvites",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InviteSummary"
+                  },
+                  "title": "Response Listinvites",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Owner sees invites"
+          },
+          "404": {
+            "description": "No such Collection, or not a Member"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Invites",
+        "tags": [
+          "sharing"
+        ]
+      },
+      "post": {
+        "description": "Invite an email address with a Role. Docent sends no email: pass on the invite's link.",
+        "operationId": "inviteToCollection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewInvite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Not an email address, or the Owner's own"
+          },
+          "403": {
+            "description": "Only the Owner invites"
+          },
+          "404": {
+            "description": "No such Collection, or not a Member"
+          },
+          "409": {
+            "description": "Already has access, or the Collection can't be shared"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "New Invite",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
     "/conversations": {
       "get": {
         "description": "The User's Conversations, most recently active first.",
@@ -1542,6 +1727,106 @@
         "summary": "Run Ingestion",
         "tags": [
           "documents"
+        ]
+      }
+    },
+    "/invites/{invite_id}": {
+      "delete": {
+        "description": "Cancel an invite; its link stops working. Repeating the call is harmless.",
+        "operationId": "revokeInvite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invite_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invite Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Owner cancels invites"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Invite",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/invites/{invite_id}/accept": {
+      "post": {
+        "description": "Join the invite's Collection as the invited address; returns the Collection.",
+        "operationId": "acceptInvite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invite_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invite Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "The invite is for another address"
+          },
+          "404": {
+            "description": "Expired, cancelled, or never existed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accept",
+        "tags": [
+          "sharing"
         ]
       }
     },

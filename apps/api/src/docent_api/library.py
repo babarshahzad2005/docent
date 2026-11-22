@@ -23,7 +23,8 @@ class CollectionSummary(BaseModel):
 
 
 def ensure_user(conn: Connection[DictRow], user: AuthUser) -> None:
-    """Create the User and their Personal Collection on first sign-in; afterwards do nothing.
+    """Create the User and their Personal Collection on first sign-in, and accept any Invites
+    to their address; otherwise do nothing.
 
     Safe under concurrent first requests: the unique constraint on a Collection's personal
     owner lets exactly one transaction create the Personal Collection. The owner Membership is
@@ -53,6 +54,24 @@ def ensure_user(conn: Connection[DictRow], user: AuthUser) -> None:
             """,
             {"id": user.id},
         )
+        # Invites to this address become Memberships (GLOSSARY: Invite). The address comes
+        # from the token, which Supabase issues only once it is verified (Google, or a link
+        # sent to it), so nobody can claim someone else's invites.
+        if user.email:
+            conn.execute(
+                """
+                with accepted as (
+                    update app.invites set accepted_by = %(id)s, accepted_at = now()
+                    where email = lower(%(email)s) and accepted_at is null
+                      and expires_at > now()
+                    returning collection_id, role
+                )
+                insert into app.memberships (collection_id, user_id, role)
+                select collection_id, %(id)s, role from accepted
+                on conflict (collection_id, user_id) do nothing
+                """,
+                {"id": user.id, "email": user.email},
+            )
         # Every User can ask the Demo Collection, read-only (PRD decision log, 2026-11-18).
         conn.execute(
             """

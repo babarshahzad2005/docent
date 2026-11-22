@@ -48,6 +48,18 @@ from docent_api.documents import (
     start_upload,
 )
 from docent_api.ingestion import run_batch
+from docent_api.invites import (
+    AlreadyMember,
+    BadEmail,
+    InviteNotFound,
+    InviteRole,
+    InviteSummary,
+    WrongAccount,
+    accept_invite,
+    invite,
+    list_invites,
+    revoke_invite,
+)
 from docent_api.library import CollectionSummary, ensure_user, list_collections
 from docent_api.providers.registry import answer_generator, embedder
 from docent_api.retrieval import PassageNotFound, passage_in_context
@@ -294,6 +306,113 @@ def remove_collection(collection_id: UUID, user: User, conn: Db, files: Files) -
         raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
     except FixedCollection:
         raise HTTPException(status.HTTP_409_CONFLICT, _FIXED) from None
+
+
+class NewInvite(BaseModel):
+    email: str = Field(max_length=500)
+    role: InviteRole
+
+
+_NOT_SHARABLE = (
+    "Your Personal Collection is private, and the Demo Collection can\u2019t be shared. "
+    "Create a collection to share."
+)
+_INVITE_GONE = (
+    "This invite has expired or was cancelled. Ask the person who invited you for a new one."
+)
+
+
+@app.get(
+    "/collections/{collection_id}/invites",
+    operation_id="listInvites",
+    tags=["sharing"],
+    responses={
+        403: {"description": "Only the Owner sees invites"},
+        404: {"description": "No such Collection, or not a Member"},
+    },
+)
+def invites(collection_id: UUID, user: User, conn: Db) -> list[InviteSummary]:
+    """The Collection's invites still waiting (its Owner)."""
+    try:
+        return list_invites(conn, user.id, collection_id)
+    except CollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotOwner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        return []
+
+
+@app.post(
+    "/collections/{collection_id}/invites",
+    operation_id="inviteToCollection",
+    tags=["sharing"],
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "Not an email address, or the Owner's own"},
+        403: {"description": "Only the Owner invites"},
+        404: {"description": "No such Collection, or not a Member"},
+        409: {"description": "Already has access, or the Collection can't be shared"},
+    },
+)
+def new_invite(collection_id: UUID, body: NewInvite, user: User, conn: Db) -> InviteSummary:
+    """Invite an email address with a Role. Docent sends no email: pass on the invite's link."""
+    try:
+        return invite(conn, user.id, collection_id, body.email, body.role)
+    except BadEmail as bad:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(bad)) from None
+    except CollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotOwner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(status.HTTP_409_CONFLICT, _NOT_SHARABLE) from None
+    except AlreadyMember as member:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"{member} already has access to this collection."
+        ) from None
+
+
+@app.delete(
+    "/invites/{invite_id}",
+    operation_id="revokeInvite",
+    tags=["sharing"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={403: {"description": "Only the Owner cancels invites"}},
+)
+def cancel_invite(invite_id: UUID, user: User, conn: Db) -> None:
+    """Cancel an invite; its link stops working. Repeating the call is harmless."""
+    try:
+        revoke_invite(conn, user.id, invite_id)
+    except (InviteNotFound, CollectionNotFound):
+        return
+    except (NotOwner, FixedCollection):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+
+
+@app.post(
+    "/invites/{invite_id}/accept",
+    operation_id="acceptInvite",
+    tags=["sharing"],
+    responses={
+        403: {"description": "The invite is for another address"},
+        404: {"description": "Expired, cancelled, or never existed"},
+    },
+)
+def accept(invite_id: UUID, user: User, conn: Db) -> CollectionSummary:
+    """Join the invite's Collection as the invited address; returns the Collection."""
+    ensure_user(conn, user)  # a first sign-in may arrive here: the User must exist
+    try:
+        collection_id = accept_invite(conn, user.id, user.email, invite_id)
+    except InviteNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _INVITE_GONE) from None
+    except WrongAccount as wrong:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"This invite is for {wrong.masked_email}. Sign out, then sign in with that "
+            "address to accept it.",
+        ) from None
+    return next(c for c in list_collections(conn, user.id) if c.id == collection_id)
 
 
 @app.get("/documents", operation_id="listDocuments", tags=["documents"])
