@@ -36,9 +36,12 @@ Solid arrows: main path. Dotted: edge paths and the follow-up loop.
 
 ## Share
 
-- Owner invites email + role → emailed link → recipient signs in → collection under “Shared with me”
+- Owner invites email + role (Editor or Viewer) → copies the invite link and sends it themselves (Docent sends no email) → recipient signs in with that address → collection under “Shared with me”
+- Signing in with the invited address is enough, link or not; the link works only for that address, and shows who it is for (partly hidden) to anyone else
+- Invites last 14 days; inviting again updates the Role and renews it, keeping the link
+- Personal Collection is never shared; Demo Collection has no Owner
 - Role change or revoke takes effect on next query (permissions live in retrieval SQL)
-- Pending invites: resend, revoke
+- Pending invites: copy link again, cancel
 
 ## Publish
 

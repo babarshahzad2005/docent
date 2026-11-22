@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import {
   createCollection,
   deleteCollection,
+  type InviteSummary,
   renameCollection,
 } from "@/app/collections-actions";
 import {
@@ -18,6 +19,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { SharePanel } from "@/components/share-panel";
 import { Button } from "@/components/ui/button";
 
 const CONNECTION = "Can’t reach the server. Check your connection and try again.";
@@ -65,17 +67,23 @@ export function NewCollection() {
   );
 }
 
-/** The Owner's Rename and Delete for a Collection they created. */
+/** The Owner's Share, Rename, and Delete for a Collection they created. */
 export function CollectionSettings({
   collection,
   documentCount,
+  invites,
 }: {
   collection: { id: string; name: string };
   /** How many Documents deleting it removes, said in the confirmation. */
   documentCount: number;
+  /** Invites still waiting, shown when sharing opens. */
+  invites: InviteSummary[];
 }) {
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
+  // Opens at once when invites are waiting, so the Owner sees them.
+  const [sharing, setSharing] = useState(invites.length > 0);
+  const panelId = useId();
   const rename = useRef<HTMLButtonElement>(null);
 
   if (renaming) {
@@ -102,7 +110,17 @@ export function CollectionSettings({
     );
   }
   return (
+    <div className="flex flex-col gap-3">
     <div className="flex flex-wrap items-center gap-1">
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-expanded={sharing}
+        aria-controls={sharing ? panelId : undefined}
+        onClick={() => setSharing((open) => !open)}
+      >
+        Share
+      </Button>
       <Button
         ref={rename}
         variant="ghost"
@@ -124,6 +142,12 @@ export function CollectionSettings({
           return null;
         }}
       />
+    </div>
+    {sharing && (
+      <div id={panelId}>
+        <SharePanel collectionId={collection.id} initialInvites={invites} />
+      </div>
+    )}
     </div>
   );
 }

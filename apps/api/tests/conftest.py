@@ -34,7 +34,7 @@ def conn(database_url: str) -> Iterator[Connection[DictRow]]:
         yield connection
         connection.execute(
             "truncate app.answer_logs, app.citations, app.messages, app.conversations, "
-            "app.chunks, app.documents, app.memberships, app.collections, app.users, "
+            "app.chunks, app.documents, app.invites, app.memberships, app.collections, app.users, "
             "app.storage_deletions"
         )
         connection.execute("update app.ingestion_lease set held_until = '-infinity'")
