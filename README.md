@@ -20,6 +20,10 @@ Keyword search misses anything not phrased exactly right, and general-purpose ch
 - Public collections, an embeddable chat widget, and a REST API
 - Answer quality measured on every pull request against a published eval set
 
+### Sharing (v0.2)
+
+Create Collections, invite people by email as Editors or Viewers, and manage who has access. Docent sends no email: the Owner copies an invite link, and signing in with the invited address is what grants access. Access is checked inside the retrieval query, so a change applies from the next question; someone removed keeps their past answers but no longer sees the cited passages. `apps/api/tests/test_leaks.py` calls every API endpoint as an Owner, Editor, Viewer, removed Member, and stranger across two Collections, and fails if a new endpoint isn't covered.
+
 ## Architecture
 
 - **Web:** Next.js (TypeScript)
@@ -35,7 +39,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs
 | M0 | Foundation: repo, CI, auth, deploy |
 | M1 | Ingestion |
 | M2 | Cited answers and eval suite → **v0.1** |
-| M3 | Collections and sharing |
+| M3 | Collections and sharing → **v0.2** |
 | M4 | Public collections, widget, API |
 | M5 | Full eval set, history, load test → **v1.0** |
 
