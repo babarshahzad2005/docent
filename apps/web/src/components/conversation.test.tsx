@@ -412,6 +412,24 @@ describe("The source of a Citation", () => {
     expect(passages.getPassage).not.toHaveBeenCalled();
   });
 
+  it("hides the passage of a Collection the User has lost access to", async () => {
+    screenWidth(true);
+    passages.getPassage.mockResolvedValue({ ok: true, value: null });
+    const lost: Turn = {
+      ...SAVED,
+      sources: [{ ...SAVED.sources[0], passage: null, access_lost: true }],
+    };
+    const user = userEvent.setup();
+    render(<Conversation conversationId="c1" initialTurns={[lost]} />);
+
+    await user.click(screen.getByRole("list", { name: "Sources" }).querySelector("button")!);
+
+    const pane = screen.getByRole("complementary", { name: "Source" });
+    expect(await within(pane).findByText(/no longer have access/)).toBeTruthy();
+    expect(pane.querySelector("mark")).toBeNull();
+    expect(pane.textContent).not.toContain("Unused leave");
+  });
+
   it("opens as a sheet on narrower screens", async () => {
     screenWidth(false);
     passages.getPassage.mockResolvedValue({ ok: true, value: null });

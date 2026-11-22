@@ -162,7 +162,10 @@ class CitationOut(BaseModel):
     document_name: str
     heading_path: list[str]
     page: int | None
-    passage: str
+    passage: str | None
+    """What it said when the answer was given; None once the User has lost access to it."""
+    access_lost: bool = False
+    """The User can no longer read its Collection: its passage is hidden (PRD decision log)."""
 
 
 class ConflictVersion(BaseModel):

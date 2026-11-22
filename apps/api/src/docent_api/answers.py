@@ -591,8 +591,9 @@ def _save_citations(conn: Connection[DictRow], turn: Turn) -> None:
             """
             insert into app.citations
                 (message_id, number, chunk_id, document_id, document_name, heading_path, page,
-                 passage)
-            values (%s, %s, %s, %s, %s, %s, %s, %s)
+                 passage, collection_id)
+            values (%s, %s, %s, %s, %s, %s, %s, %s,
+                    (select collection_id from app.chunks where id = %s))
             """,
             [
                 (
@@ -604,6 +605,7 @@ def _save_citations(conn: Connection[DictRow], turn: Turn) -> None:
                     list(passage.heading_path),
                     passage.page,
                     passage.content,
+                    passage.chunk_id,  # for the Collection it was cited from
                 )
                 for number in numbers
                 for passage in [turn.passages[number - 1]]
@@ -671,14 +673,30 @@ def load_conversation(
         """,
         (conversation_id,),
     ).fetchall()
+    # Losing access hides a cited passage's text; the answer stays (PRD decision log,
+    # 2026-11-15). Whose text it is: the Collection its chunk is in now (a Document may have
+    # moved), or, once the Document is deleted, the one it was cited from (migration 0016).
+    # A Member of that Collection still sees a deleted Document's passage (ADR 0004).
+    # Citations from before 0016 whose chunk is gone have neither, and keep their text.
     citations = conn.execute(
         """
         select c.message_id, c.number, c.chunk_id, c.document_id, c.document_name,
-               c.heading_path, c.page, c.passage
-        from app.citations c join app.messages m on m.id = c.message_id
-        where m.conversation_id = %s order by c.number
+               c.heading_path, c.page,
+               case when readable then c.passage end as passage,
+               not readable as access_lost
+        from app.citations c
+        join app.messages m on m.id = c.message_id
+        left join app.chunks k on k.id = c.chunk_id
+        cross join lateral (
+            select coalesce(k.collection_id, c.collection_id) is null or exists (
+                select 1 from app.memberships ms
+                where ms.collection_id = coalesce(k.collection_id, c.collection_id)
+                  and ms.user_id = %(user)s
+            ) as readable
+        ) r
+        where m.conversation_id = %(conversation)s order by c.number
         """,
-        (conversation_id,),
+        {"conversation": conversation_id, "user": user_id},
     ).fetchall()
     by_message: dict[UUID, list[dict[str, Any]]] = {}
     for citation in citations:

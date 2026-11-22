@@ -452,6 +452,11 @@ export interface components {
     schemas: {
         /** CitationOut */
         CitationOut: {
+            /**
+             * Access Lost
+             * @default false
+             */
+            access_lost: boolean;
             /** Chunk Id */
             chunk_id: string | null;
             /** Document Id */
@@ -465,7 +470,7 @@ export interface components {
             /** Page */
             page: number | null;
             /** Passage */
-            passage: string;
+            passage: string | null;
         };
         /** CollectionName */
         CollectionName: {

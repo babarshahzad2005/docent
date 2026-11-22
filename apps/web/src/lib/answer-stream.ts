@@ -8,8 +8,13 @@ export type Source = {
   document_name: string;
   heading_path: string[];
   page: number | null;
-  /** The passage's text as retrieved; sent with every source, so Citations can show it at once. */
-  passage?: string;
+  /**
+   * The passage's text as retrieved; sent with every source, so Citations can show it at once.
+   * Null in a saved Conversation once the User has lost access to it.
+   */
+  passage?: string | null;
+  /** The User can no longer read its Collection (PRD decision log: the text is hidden). */
+  access_lost?: boolean;
 };
 
 /**
