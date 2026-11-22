@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import {
   createCollection,
   deleteCollection,
+  type InviteSummary,
   renameCollection,
 } from "@/app/collections-actions";
 import {
@@ -18,9 +19,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { SharePanel } from "@/components/share-panel";
 import { Button } from "@/components/ui/button";
 
-const CONNECTION = "Can’t reach the server. Check your connection and try again.";
+const CONNECTION =
+  "Can’t reach the server. Check your connection and try again.";
 
 /** "New collection" in the Library navigation: name it, and it opens, empty. */
 export function NewCollection() {
@@ -65,17 +68,23 @@ export function NewCollection() {
   );
 }
 
-/** The Owner's Rename and Delete for a Collection they created. */
+/** The Owner's Share, Rename, and Delete for a Collection they created. */
 export function CollectionSettings({
   collection,
   documentCount,
+  invites,
 }: {
   collection: { id: string; name: string };
   /** How many Documents deleting it removes, said in the confirmation. */
   documentCount: number;
+  /** Invites still waiting, shown when sharing opens. */
+  invites: InviteSummary[];
 }) {
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
+  // Opens at once when invites are waiting, so the Owner sees them.
+  const [sharing, setSharing] = useState(invites.length > 0);
+  const panelId = useId();
   const rename = useRef<HTMLButtonElement>(null);
 
   if (renaming) {
@@ -86,7 +95,9 @@ export function CollectionSettings({
         submit="Save"
         busy="Saving…"
         onSave={async (name) => {
-          const renamed = await renameCollection(collection.id, name).catch(() => null);
+          const renamed = await renameCollection(collection.id, name).catch(
+            () => null,
+          );
           if (!renamed) return CONNECTION;
           if (!renamed.ok) return renamed.message;
           setRenaming(false);
@@ -102,28 +113,45 @@ export function CollectionSettings({
     );
   }
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      <Button
-        ref={rename}
-        variant="ghost"
-        size="sm"
-        aria-label={`Rename ${collection.name}`}
-        onClick={() => setRenaming(true)}
-      >
-        Rename
-      </Button>
-      <DeleteCollection
-        name={collection.name}
-        documentCount={documentCount}
-        onDelete={async () => {
-          const deleted = await deleteCollection(collection.id).catch(() => null);
-          if (!deleted) return CONNECTION;
-          if (!deleted.ok) return deleted.message;
-          router.push("/");
-          router.refresh();
-          return null;
-        }}
-      />
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-expanded={sharing}
+          aria-controls={panelId}
+          onClick={() => setSharing((open) => !open)}
+        >
+          Share
+        </Button>
+        <Button
+          ref={rename}
+          variant="ghost"
+          size="sm"
+          aria-label={`Rename ${collection.name}`}
+          onClick={() => setRenaming(true)}
+        >
+          Rename
+        </Button>
+        <DeleteCollection
+          name={collection.name}
+          documentCount={documentCount}
+          onDelete={async () => {
+            const deleted = await deleteCollection(collection.id).catch(
+              () => null,
+            );
+            if (!deleted) return CONNECTION;
+            if (!deleted.ok) return deleted.message;
+            router.push("/");
+            router.refresh();
+            return null;
+          }}
+        />
+      </div>
+      {/* Hidden, not unmounted, when closed: its invites survive closing and opening it. */}
+      <div id={panelId} hidden={!sharing}>
+        <SharePanel collectionId={collection.id} initialInvites={invites} />
+      </div>
     </div>
   );
 }
@@ -225,7 +253,11 @@ function NameForm({
 
   return (
     <form
-      className={stacked ? "flex flex-col gap-2 px-2" : "flex flex-wrap items-center gap-2"}
+      className={
+        stacked
+          ? "flex flex-col gap-2 px-2"
+          : "flex flex-wrap items-center gap-2"
+      }
       onSubmit={async (event) => {
         event.preventDefault();
         if (!value.trim()) return;
@@ -241,7 +273,10 @@ function NameForm({
         }
       }}
     >
-      <label htmlFor={inputId} className={stacked ? "text-meta text-muted-foreground" : "sr-only"}>
+      <label
+        htmlFor={inputId}
+        className={stacked ? "text-meta text-muted-foreground" : "sr-only"}
+      >
         {label}
       </label>
       <input
@@ -259,12 +294,22 @@ function NameForm({
         <Button type="submit" size="sm" disabled={saving || !value.trim()}>
           {saving ? busy : submit}
         </Button>
-        <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={onCancel}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={saving}
+          onClick={onCancel}
+        >
           Cancel
         </Button>
       </span>
       {problem && (
-        <p id={problemId} role="alert" className="w-full text-meta text-destructive">
+        <p
+          id={problemId}
+          role="alert"
+          className="w-full text-meta text-destructive"
+        >
           {problem}
         </p>
       )}

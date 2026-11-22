@@ -7,9 +7,10 @@
 export type CollectionChoice = { id: string; name: string; is_demo?: boolean };
 
 /**
- * The Scope a new question starts with: the User's own Collections. The Demo Collection is
- * one they can ask, not one of theirs, so it is offered under "Add a collection" (PRD
- * decision log, 2026-11-19) unless it is all they have.
+ * The Scope a new question starts with: the User's Collections, their own and those shared
+ * with them. The Demo Collection is one they can ask, not one of theirs, so it is offered
+ * under "Add a collection" (PRD decision log, 2026-11-19 and 2026-11-22) unless it is all
+ * they have.
  */
 export function defaultScope(collections: CollectionChoice[]): string[] {
   const own = collections.filter((collection) => !collection.is_demo);

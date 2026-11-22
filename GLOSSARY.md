@@ -58,6 +58,10 @@ _Avoid_: Account, customer
 A User's place in a Collection, with exactly one Role.
 _Avoid_: Collaborator, participant
 
+**Invite**:
+An Owner's offer of a Role in a Collection to an email address; signing in with that address makes its User a Member. Docent sends no email: the Owner passes on its link.
+_Avoid_: Invitation email, share request
+
 **Role**:
 What a Member may do in a Collection: Owner, Editor, or Viewer.
 _Avoid_: Permission level, access level

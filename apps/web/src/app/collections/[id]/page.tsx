@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { listInvites } from "@/app/collections-actions";
 import { listDocuments } from "@/app/documents-actions";
 import { AppShell } from "@/components/app-shell";
 import { CollectionSettings } from "@/components/collection-settings";
@@ -30,23 +31,28 @@ async function Collection({ params }: { params: Promise<{ id: string }> }) {
   const collection = me.collections.find((c) => c.id === id);
   if (!collection) notFound();
   if (collection.is_personal) redirect("/");
-  const documents = await listDocuments();
+  const owned = collection.role === "owner" && !collection.is_demo;
+  const [documents, invites] = await Promise.all([
+    listDocuments(),
+    owned ? listInvites(collection.id) : null,
+  ]);
   if (!documents.ok) throw new Error(documents.message);
+  if (invites && !invites.ok) throw new Error(invites.message);
 
   return (
     <LibraryHome
       collections={me.collections}
       defaultScope={[collection.id]}
-      label={`Ask a question about the ${collection.name}`}
+      label={`Ask a question about ${collection.is_demo ? "the " : ""}${collection.name}`}
     >
       <LibraryDocuments
         collection={collection}
         initialDocuments={documents.value}
         settings={
-          collection.role === "owner" &&
-          !collection.is_demo && (
+          owned && (
             <CollectionSettings
               collection={collection}
+              invites={invites?.ok ? invites.value : []}
               documentCount={
                 documents.value.filter((document) => document.collection_id === collection.id)
                   .length
