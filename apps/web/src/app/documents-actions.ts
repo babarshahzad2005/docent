@@ -61,11 +61,11 @@ export async function startUpload(
 export async function finishUpload(documentId: string): Promise<Result<DocumentSummary>> {
   const caller = await apiAsUser();
   if (!caller) return { ok: false, message: SIGNED_OUT };
-  const { data, response } = await caller.api.POST("/documents/{document_id}/uploaded", {
+  const { data, error, response } = await caller.api.POST("/documents/{document_id}/uploaded", {
     headers: caller.headers,
     params: { path: { document_id: documentId } },
   });
-  if (!data) return { ok: false, message: problem(response.status) };
+  if (!data) return { ok: false, message: detail(error) ?? problem(response.status) };
   processInBackground(caller);
   return { ok: true, value: data };
 }
@@ -105,11 +105,11 @@ export async function setEffectiveDate(
 export async function retryDocument(documentId: string): Promise<Result<DocumentSummary>> {
   const caller = await apiAsUser();
   if (!caller) return { ok: false, message: SIGNED_OUT };
-  const { data, response } = await caller.api.POST("/documents/{document_id}/retry", {
+  const { data, error, response } = await caller.api.POST("/documents/{document_id}/retry", {
     headers: caller.headers,
     params: { path: { document_id: documentId } },
   });
-  if (!data) return { ok: false, message: problem(response.status) };
+  if (!data) return { ok: false, message: detail(error) ?? problem(response.status) };
   processInBackground(caller);
   return { ok: true, value: data };
 }
@@ -126,6 +126,8 @@ function processInBackground(caller: NonNullable<Awaited<ReturnType<typeof apiAs
 
 function problem(status: number): string {
   if (status === 401) return SIGNED_OUT;
-  if (status === 403) return "You can't add documents to this collection.";
+  if (status === 403) {
+    return "Only this collection’s owner and editors can add or change documents. Ask its owner to make you an editor.";
+  }
   return UNREACHABLE;
 }

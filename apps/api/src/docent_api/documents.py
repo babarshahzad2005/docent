@@ -76,6 +76,11 @@ class NotAllowed(Exception):
     """The User can't add or change Documents in this Collection."""
 
 
+class NotAMemberOf(NotAllowed):
+    """Not a Member of the Collection at all (removed, or it never existed): told apart from
+    a Viewer, who can be made an Editor."""
+
+
 class NotRetryable(Exception):
     """Retrying can't help: the problem is in the file itself."""
 
@@ -457,5 +462,7 @@ def _require_editor(conn: Connection[DictRow], user_id: UUID, collection_id: UUI
         """,
         {"collection_id": collection_id, "user_id": user_id},
     ).fetchone()
-    if row is None or row["role"] not in ("owner", "editor"):
+    if row is None:
+        raise NotAMemberOf(collection_id)
+    if row["role"] not in ("owner", "editor"):
         raise NotAllowed(collection_id)

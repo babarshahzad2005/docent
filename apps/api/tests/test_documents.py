@@ -982,7 +982,7 @@ def test_the_retry_endpoint_queues_or_explains(
     assert client.post(f"/documents/{retryable}/retry").json()["status"] == "queued"
     refused = client.post(f"/documents/{blank}/retry")
     assert refused.status_code == 409
-    assert "won't help" in refused.json()["detail"]
+    assert "won’t help" in refused.json()["detail"]
 
 
 # --- Delete -------------------------------------------------------------------------------
