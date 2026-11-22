@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CheckIcon, UploadIcon } from "lucide-react";
+import { CheckIcon, CircleAlertIcon, UploadIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { formatDate } from "@/lib/dates";
 
@@ -801,14 +801,17 @@ function DocumentRow({
           </span>
           {document.source_url && (
             <span className="flex flex-wrap gap-x-3 text-meta">
+              {document.source_credit && (
+                <span className="w-full text-muted-foreground">{document.source_credit}</span>
+              )}
               <a
                 href={document.source_url}
                 rel="noreferrer"
                 target="_blank"
                 className="text-brand underline underline-offset-2 [@media(hover:hover)_and_(pointer:fine)]:hover:text-brand-strong"
               >
-                {document.source_credit ?? "Source"}
-                <span className="sr-only"> (opens in a new tab)</span>
+                Source{" "}
+                <span className="sr-only">of {document.name} (opens in a new tab)</span>
               </a>
               {document.source_licence_url && (
                 <a
@@ -817,8 +820,8 @@ function DocumentRow({
                   target="_blank"
                   className="text-brand underline underline-offset-2 [@media(hover:hover)_and_(pointer:fine)]:hover:text-brand-strong"
                 >
-                  Licence
-                  <span className="sr-only"> (opens in a new tab)</span>
+                  Licence{" "}
+                  <span className="sr-only">of {document.name} (opens in a new tab)</span>
                 </a>
               )}
             </span>
@@ -830,19 +833,25 @@ function DocumentRow({
           {document.status === "indexed" && (
             <CheckIcon aria-hidden="true" className="size-4" />
           )}
+          {failed && <CircleAlertIcon aria-hidden="true" className="size-4" />}
           {STATUS_LABELS[document.status]}
         </span>
       </div>
       <div className="flex items-center justify-between gap-4">
-        <span className="flex flex-wrap items-center gap-x-3 text-meta text-muted-foreground tabular-nums">
-          <span>{formatSize(document.size_bytes)}</span>
-          <EffectiveDate
-            name={document.name}
-            date={document.effective_date}
-            canChange={canDate}
-            onChange={onDate}
-          />
-        </span>
+        {/* A failed file has been removed (it counts as 0 bytes), so neither applies. */}
+        {failed ? (
+          <span />
+        ) : (
+          <span className="flex flex-wrap items-center gap-x-3 text-meta text-muted-foreground tabular-nums">
+            <span>{formatSize(document.size_bytes)}</span>
+            <EffectiveDate
+              name={document.name}
+              date={document.effective_date}
+              canChange={canDate}
+              onChange={onDate}
+            />
+          </span>
+        )}
         <span className="flex items-center gap-1">
           {canReplace && (
             <ReplaceDocument

@@ -124,3 +124,24 @@ export function segments(answer: string, available: Set<number>): Segment[] {
   if (last < answer.length) parts.push({ text: answer.slice(last) });
   return parts;
 }
+
+/**
+ * The number each source is shown with: 1, 2, 3… in the order the answer first cites them,
+ * then any others (`rest`) in their own order. The model numbers the passages it was given,
+ * so an answer citing [1] and [3] would otherwise show a gap. Stable while streaming, since
+ * markers only ever add to the end.
+ */
+export function displayNumbers(
+  answer: string,
+  available: Set<number>,
+  rest: number[] = [],
+): Map<number, number> {
+  const shown = new Map<number, number>();
+  const cited = segments(answer, available).flatMap((part) =>
+    "citation" in part ? [part.citation] : [],
+  );
+  for (const n of [...cited, ...rest]) {
+    if (!shown.has(n)) shown.set(n, shown.size + 1);
+  }
+  return shown;
+}

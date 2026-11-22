@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type AnswerEvent, readAnswerEvents, segments } from "./answer-stream";
+import { type AnswerEvent, displayNumbers, readAnswerEvents, segments } from "./answer-stream";
 
 function streamOf(...chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -49,6 +49,19 @@ describe("segments", () => {
       { text: "Fast " },
       { citation: 1 },
       { text: "." },
+    ]);
+  });
+});
+
+describe("displayNumbers", () => {
+  it("numbers sources 1, 2, 3 in the order the answer first cites them, then the rest", () => {
+    const shown = displayNumbers("Up to £123 [3], or 80% [1][3]. More [7].", new Set([1, 3, 5, 7]), [5, 1]);
+
+    expect([...shown]).toEqual([
+      [3, 1],
+      [1, 2],
+      [7, 3],
+      [5, 4],
     ]);
   });
 });

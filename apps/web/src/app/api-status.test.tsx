@@ -19,10 +19,10 @@ describe("ApiStatusMessage", () => {
     status.current = undefined;
   });
 
-  it("says the server is connected and shows its version", async () => {
+  it("says nothing while the server is connected", async () => {
     status.current = { kind: "connected", version: "0.1.0" };
 
-    expect(await renderMessage()).toContain("Server connected (version 0.1.0)");
+    expect(await renderMessage()).toBe("");
   });
 
   it("says the server can't be reached and what to do about it", async () => {

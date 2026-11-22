@@ -144,6 +144,7 @@ function SourceBody({
   const [marked, setMarked] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const mark = useRef<HTMLElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!source.chunk_id) return;
@@ -163,21 +164,25 @@ function SourceBody({
 
   // Focus moves into the pane when it opens (the sheet does this itself).
   useEffect(() => {
-    if (!inSheet) heading.current?.focus();
+    // Without preventScroll the browser scrolls the page too, moving the answer.
+    if (!inSheet) heading.current?.focus({ preventScroll: true });
   }, [inSheet]);
 
   // Once the text is in place, scroll to the passage, then fade the highlight in (180ms).
   const ready = context.state !== "loading";
   useEffect(() => {
-    if (!ready || !mark.current) return;
+    if (!ready || !mark.current || !scroller.current) return;
     const reduced = window.matchMedia(REDUCED_MOTION).matches;
-    mark.current.scrollIntoView?.({ block: "center", behavior: reduced ? "auto" : "smooth" });
+    // Scroll the pane only: scrollIntoView would scroll the page as well.
+    const box = scroller.current;
+    const top = mark.current.offsetTop - (box.clientHeight - mark.current.offsetHeight) / 2;
+    box.scrollTo?.({ top: Math.max(0, top), behavior: reduced ? "auto" : "smooth" });
     const timer = setTimeout(() => setMarked(true), reduced ? 0 : SCROLL_MS);
     return () => clearTimeout(timer);
   }, [ready]);
 
   const loaded = context.state === "loaded" ? context.passage : null;
-  const passage = loaded?.content ?? source.passage;
+  const passage = (loaded?.content ?? source.passage)?.trim();
   const Title = inSheet ? SheetTitle : "h2";
 
   return (
@@ -200,7 +205,7 @@ function SourceBody({
           </Button>
         )}
       </header>
-      <div className="flex-1 overflow-y-auto p-6">
+      <div ref={scroller} className="relative flex-1 overflow-y-auto p-6">
         {context.state === "unavailable" && (
           <p role="status" className="mb-4 text-meta text-muted-foreground">
             {source.chunk_id

@@ -281,6 +281,15 @@ describe("Many Documents at once", () => {
 });
 
 describe("The Effective Date", () => {
+  it("isn't shown for a failed Document, nor its size: the file is gone", () => {
+    const failed = aDocument({ status: "failed", size_bytes: 0, failure_reason: "This PDF is scanned." });
+    render(<LibraryDocuments collection={PERSONAL} initialDocuments={[failed]} />);
+
+    expect(screen.getByText("This PDF is scanned.")).toBeTruthy();
+    expect(screen.queryByText(/Effective/)).toBeNull();
+    expect(screen.queryByText("0 bytes")).toBeNull();
+  });
+
   it("is shown, and Owners change it", async () => {
     actions.setEffectiveDate.mockResolvedValue({
       ok: true,
@@ -438,7 +447,8 @@ describe("the Demo Collection", () => {
 
     expect(screen.getByRole("heading", { name: "Demo Collection" })).toBeTruthy();
     expect(screen.queryByText("policy.pdf")).toBeNull();
-    const credit = screen.getByRole("link", { name: /Crown copyright.*opens in a new tab/ });
+    expect(screen.getByText(/Crown copyright/)).toBeTruthy();
+    const credit = screen.getByRole("link", { name: "Source of govuk-statutory-sick-pay.md (opens in a new tab)" });
     expect(credit.getAttribute("href")).toBe("https://www.gov.uk/statutory-sick-pay");
     const licence = screen.getByRole("link", { name: /^Licence/ });
     expect(licence.getAttribute("href")).toContain("open-government-licence");
