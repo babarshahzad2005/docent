@@ -55,9 +55,24 @@ def ensure_user(conn: Connection[DictRow], user: AuthUser) -> None:
             {"id": user.id},
         )
         # Invites to this address become Memberships (GLOSSARY: Invite). The address comes
-        # from the token, which Supabase issues only once it is verified (Google, or a link
-        # sent to it), so nobody can claim someone else's invites.
+        # from the token, which Supabase issues only once the address is verified: Google, a
+        # sign-in link, or a confirmed sign-up ("Confirm email" is on; mailer_autoconfirm was
+        # false when checked on 2026-11-22). So nobody can claim someone else's invites.
         if user.email:
+            # Collections first, then invites: the order Owner actions lock them in
+            # (invites.lock_collection_then_invite), so the two never deadlock.
+            conn.execute(
+                """
+                select 1 from app.collections
+                where id in (
+                    select collection_id from app.invites
+                    where email = lower(%(email)s) and accepted_at is null
+                )
+                order by id
+                for key share
+                """,
+                {"email": user.email},
+            )
             conn.execute(
                 """
                 with accepted as (

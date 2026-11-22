@@ -116,7 +116,11 @@ def list_invites(
 
 
 def revoke_invite(conn: Connection[DictRow], user_id: UUID, invite_id: UUID) -> None:
-    """Delete a waiting invite (its Collection's Owner); its link stops working."""
+    """Delete a waiting invite (its Collection's Owner); its link stops working.
+
+    An invite accepted meanwhile is left alone: its User is a Member now, and removing them is
+    a Member's matter (#77), not an invite's.
+    """
     with conn.transaction():
         row = conn.execute(
             "select collection_id from app.invites where id = %s and accepted_at is null",
@@ -125,7 +129,12 @@ def revoke_invite(conn: Connection[DictRow], user_id: UUID, invite_id: UUID) -> 
         if row is None:
             raise InviteNotFound(invite_id)
         require_owner(conn, user_id, row["collection_id"])
-        conn.execute("delete from app.invites where id = %s", (invite_id,))
+        deleted = conn.execute(
+            "delete from app.invites where id = %s and accepted_at is null returning id",
+            (invite_id,),
+        ).fetchone()
+        if deleted is None:
+            raise InviteNotFound(invite_id)
 
 
 def accept_invite(conn: Connection[DictRow], user_id: UUID, email: str, invite_id: UUID) -> UUID:
@@ -136,14 +145,7 @@ def accept_invite(conn: Connection[DictRow], user_id: UUID, email: str, invite_i
     a Member of it.
     """
     with conn.transaction():
-        row = conn.execute(
-            """
-            select collection_id, email, role, accepted_by from app.invites
-            where id = %s and (accepted_at is not null or expires_at > now())
-            for update
-            """,
-            (invite_id,),
-        ).fetchone()
+        row = lock_collection_then_invite(conn, invite_id)
         if row is None:
             raise InviteNotFound(invite_id)
         if not email or row["email"] != email.lower():
@@ -168,6 +170,31 @@ def accept_invite(conn: Connection[DictRow], user_id: UUID, email: str, invite_i
             raise InviteNotFound(invite_id)
     collection_id: UUID = row["collection_id"]
     return collection_id
+
+
+def lock_collection_then_invite(conn: Connection[DictRow], invite_id: UUID) -> DictRow | None:
+    """The invite, if it can still be used, locked after its Collection.
+
+    Owner actions lock the Collection (FOR UPDATE), then its invites; accepting takes the same
+    order, with KEY SHARE (all a Membership's foreign key needs), so the two never deadlock.
+    """
+    found = conn.execute(
+        "select collection_id from app.invites where id = %s", (invite_id,)
+    ).fetchone()
+    if found is None:
+        return None
+    conn.execute(
+        "select 1 from app.collections where id = %s for key share", (found["collection_id"],)
+    )
+    row: DictRow | None = conn.execute(
+        """
+        select collection_id, email, role, accepted_by from app.invites
+        where id = %s and (accepted_at is not null or expires_at > now())
+        for update
+        """,
+        (invite_id,),
+    ).fetchone()
+    return row
 
 
 def mask(email: str) -> str:

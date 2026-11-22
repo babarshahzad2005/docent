@@ -412,7 +412,10 @@ def accept(invite_id: UUID, user: User, conn: Db) -> CollectionSummary:
             f"This invite is for {wrong.masked_email}. Sign out, then sign in with that "
             "address to accept it.",
         ) from None
-    return next(c for c in list_collections(conn, user.id) if c.id == collection_id)
+    joined = next((c for c in list_collections(conn, user.id) if c.id == collection_id), None)
+    if joined is None:  # removed again in the moment since
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _INVITE_GONE)
+    return joined
 
 
 @app.get("/documents", operation_id="listDocuments", tags=["documents"])

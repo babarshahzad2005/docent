@@ -18,7 +18,11 @@ export default function InvitePage({ params }: PageProps<"/invites/[id]">) {
   return (
     <AppShell>
       <Suspense
-        fallback={<p role="status" className="p-6 text-muted-foreground">Opening the invite…</p>}
+        fallback={
+          <p role="status" className="p-6 text-muted-foreground">
+            Opening the invite…
+          </p>
+        }
       >
         <Invite params={params} />
       </Suspense>

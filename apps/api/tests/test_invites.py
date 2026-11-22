@@ -249,3 +249,16 @@ def test_the_invite_endpoints(
     assert gone.status_code == 204
     expired = client_for(database_url, invited).post(f"/invites/{uuid4()}/accept")
     assert expired.status_code == 404
+
+
+def test_cancelling_an_accepted_invite_leaves_its_member_alone(
+    conn: Connection[DictRow], owner: AuthUser, team: UUID
+) -> None:
+    address = an_address()
+    sent = invite(conn, owner.id, team, address, "viewer")
+    invited = a_user(conn, address)
+
+    with pytest.raises(InviteNotFound):
+        revoke_invite(conn, owner.id, sent.id)
+    assert role_of(conn, invited, team) == "viewer"
+    assert accept_invite(conn, invited.id, invited.email, sent.id) == team

@@ -13,6 +13,7 @@ TABLES = [
     "conversations",
     "documents",
     "ingestion_lease",
+    "invites",
     "memberships",
     "messages",
     "storage_deletions",

@@ -1,8 +1,7 @@
+import type { CollectionSummary } from "@/app/collections-actions";
 import { NewCollection } from "@/components/collection-settings";
 import { NavLink } from "@/components/nav-link";
 import { getMe } from "@/lib/me";
-
-type Collection = { id: string; name: string; is_personal: boolean; is_demo: boolean; role: string };
 
 /**
  * The signed-in User's Collections: their own (Personal first) and the Demo Collection, then
@@ -17,13 +16,17 @@ export async function CollectionsNav() {
   return (
     <>
       <section aria-label="Collections" className="flex flex-col gap-1">
-        <p className="px-2 pb-1 text-meta font-medium text-muted-foreground">Collections</p>
+        <p className="px-2 pb-1 text-meta font-medium text-muted-foreground">
+          Collections
+        </p>
         <CollectionLinks collections={own} />
         <NewCollection />
       </section>
       {shared.length > 0 && (
         <section aria-label="Shared with me" className="flex flex-col gap-1">
-          <p className="px-2 pb-1 text-meta font-medium text-muted-foreground">Shared with me</p>
+          <p className="px-2 pb-1 text-meta font-medium text-muted-foreground">
+            Shared with me
+          </p>
           <CollectionLinks collections={shared} />
         </section>
       )}
@@ -31,12 +34,20 @@ export async function CollectionsNav() {
   );
 }
 
-function CollectionLinks({ collections }: { collections: Collection[] }) {
+function CollectionLinks({
+  collections,
+}: {
+  collections: CollectionSummary[];
+}) {
   return (
     <ul className="flex flex-col gap-1">
       {collections.map((collection) => (
         <li key={collection.id}>
-          <NavLink href={collection.is_personal ? "/" : `/collections/${collection.id}`}>
+          <NavLink
+            href={
+              collection.is_personal ? "/" : `/collections/${collection.id}`
+            }
+          >
             {collection.name}
           </NavLink>
         </li>

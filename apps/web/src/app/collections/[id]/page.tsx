@@ -37,6 +37,7 @@ async function Collection({ params }: { params: Promise<{ id: string }> }) {
     owned ? listInvites(collection.id) : null,
   ]);
   if (!documents.ok) throw new Error(documents.message);
+  if (invites && !invites.ok) throw new Error(invites.message);
 
   return (
     <LibraryHome

@@ -16,6 +16,7 @@ export async function createCollection(name: string): Promise<Result<CollectionS
     body: { name },
   });
   if (data) return { ok: true, value: data };
+  if (response.status === 422) return { ok: false, message: NAME_TOO_LONG };
   return { ok: false, message: detail(error) ?? problem(response.status) };
 }
 
@@ -32,6 +33,7 @@ export async function renameCollection(
     body: { name },
   });
   if (data) return { ok: true, value: data };
+  if (response.status === 422) return { ok: false, message: NAME_TOO_LONG };
   return { ok: false, message: detail(error) ?? problem(response.status) };
 }
 
@@ -47,9 +49,10 @@ export async function deleteCollection(collectionId: string): Promise<Result<nul
   return { ok: false, message: detail(error) ?? problem(response.status) };
 }
 
+const NAME_TOO_LONG = "Keep the name to 120 characters or fewer.";
+
 function problem(status: number): string {
   if (status === 401) return SIGNED_OUT;
-  if (status === 422) return "Keep the name to 120 characters or fewer.";
   return UNREACHABLE;
 }
 
