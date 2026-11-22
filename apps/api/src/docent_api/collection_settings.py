@@ -27,7 +27,7 @@ class FixedCollection(Exception):
 
 
 class BadName(Exception):
-    pass
+    """The name is empty once tidied, or too long; the message says which."""
 
 
 def clean_collection_name(name: str) -> str:
@@ -76,14 +76,23 @@ def delete_collection(
     As with deleting a Document (documents.delete_document), the rows go first, committed with
     a note of each file in `app.storage_deletions`; then the files are removed, or ingestion
     batches remove them later. Locking the Collection's row makes an upload starting into it
-    at the same moment wait, then fail, rather than leave a Document behind.
+    at the same moment wait, then be refused (main.new_document).
     """
     with conn.transaction():
         _owned(conn, user_id, collection_id)
-        rows = conn.execute(
+        # Documents before their replacements, the order a swap locks them in
+        # (ingestion._replace), so the two never wait on each other; and each file's path is
+        # read under the lock, after any swap that got there first.
+        conn.execute(
             """
-            select storage_path, status from app.documents where collection_id = %s
+            select 1 from app.documents where collection_id = %s
+            order by replaces_id is not null, id
+            for update
             """,
+            (collection_id,),
+        )
+        rows = conn.execute(
+            "delete from app.documents where collection_id = %s returning storage_path, status",
             (collection_id,),
         ).fetchall()
         for row in rows:
@@ -98,7 +107,7 @@ def delete_collection(
                     "wait": UPLOAD_LINK_HOURS if row["status"] == "uploading" else 0,
                 },
             )
-        # Documents, their chunks and vectors, and memberships go by cascade.
+        # Their chunks and vectors went with the Documents; memberships go by cascade.
         conn.execute("delete from app.collections where id = %s", (collection_id,))
     stored = [row["storage_path"] for row in rows if row["status"] != "uploading"]
     if stored:

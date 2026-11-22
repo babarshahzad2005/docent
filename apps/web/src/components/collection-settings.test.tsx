@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
@@ -81,11 +81,11 @@ describe("Collection settings", () => {
     actions.deleteCollection.mockResolvedValue({ ok: true, value: null });
     render(<CollectionSettings collection={TEAM} documentCount={3} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Delete Team handbook" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete collection" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog.textContent).toContain("Its 3 documents");
     expect(dialog.textContent).toContain("can’t be undone");
-    await userEvent.click(screen.getByRole("button", { name: "Delete collection" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete collection" }));
 
     expect(actions.deleteCollection).toHaveBeenCalledWith("c2");
     expect(router.push).toHaveBeenCalledWith("/");
@@ -98,8 +98,9 @@ describe("Collection settings", () => {
     });
     render(<CollectionSettings collection={TEAM} documentCount={1} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Delete Team handbook" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Delete collection" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete collection" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete collection" }));
 
     expect((await screen.findByRole("alert")).textContent).toContain("Only the collection’s owner");
     expect(router.push).not.toHaveBeenCalled();

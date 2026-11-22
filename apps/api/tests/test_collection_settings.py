@@ -130,6 +130,31 @@ def test_the_personal_collection_stays(
         delete_collection(conn, store, owner.id, personal.id)
 
 
+def test_the_demo_collection_stays(
+    conn: Connection[DictRow], owner: AuthUser, store: FakeStore
+) -> None:
+    row = conn.execute("select id from app.collections where is_demo").fetchone()
+    if row is None:
+        row = conn.execute(
+            "insert into app.collections (name, is_demo) values ('Demo Collection', true) "
+            "returning id"
+        ).fetchone()
+    assert row is not None
+    demo = row["id"]
+    conn.execute(
+        "insert into app.memberships (collection_id, user_id, role) values (%s, %s, 'viewer') "
+        "on conflict do nothing",
+        (demo, owner.id),
+    )
+    conn.commit()
+
+    # Every User is its Viewer: it has no Owner to rename or delete it.
+    with pytest.raises(NotOwner):
+        rename_collection(conn, owner.id, demo, "Mine")
+    with pytest.raises(NotOwner):
+        delete_collection(conn, store, owner.id, demo)
+
+
 def test_deleting_removes_its_documents_files_and_memberships(
     conn: Connection[DictRow], owner: AuthUser, store: FakeStore
 ) -> None:
@@ -151,6 +176,7 @@ def test_deleting_removes_its_documents_files_and_memberships(
 
     assert count(conn, "app.collections where id = %s", created.id) == 0
     assert count(conn, "app.documents where collection_id = %s", created.id) == 0
+    assert count(conn, "app.chunks where document_id = %s", document.id) == 0
     assert count(conn, "app.memberships where collection_id = %s", created.id) == 0
     assert list(store.files) == [kept_target.path]
     assert created.id not in [c.id for c in list_collections(conn, viewer.id)]

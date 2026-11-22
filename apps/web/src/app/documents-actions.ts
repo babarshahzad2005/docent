@@ -3,15 +3,11 @@
 import type { components } from "@docent/client";
 import { after } from "next/server";
 
+import { detail, type Result, SIGNED_OUT, UNREACHABLE } from "@/lib/action-result";
 import { apiAsUser } from "@/lib/api";
 
 export type DocumentSummary = components["schemas"]["DocumentSummary"];
 export type UploadTarget = components["schemas"]["UploadTarget"];
-
-type Result<T> = { ok: true; value: T } | { ok: false; message: string };
-
-const SIGNED_OUT = "Your session has expired. Sign in again.";
-const UNREACHABLE = "Can't reach the server. Try again in a minute.";
 
 /** Every Document in the User's Collections, for refreshing statuses. */
 export async function listDocuments(): Promise<Result<DocumentSummary[]>> {
@@ -126,13 +122,6 @@ function processInBackground(caller: NonNullable<Awaited<ReturnType<typeof apiAs
   after(async () => {
     await caller.api.POST("/ingestion/run", { headers: caller.headers });
   });
-}
-
-function detail(error: unknown): string | undefined {
-  if (error && typeof error === "object" && "detail" in error && typeof error.detail === "string") {
-    return error.detail;
-  }
-  return undefined;
 }
 
 function problem(status: number): string {

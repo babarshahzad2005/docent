@@ -80,7 +80,7 @@ export function LibraryDocuments({
     name: string;
     role: "owner" | "editor" | "viewer";
     is_demo: boolean;
-    is_personal?: boolean;
+    is_personal: boolean;
   };
   initialDocuments: DocumentSummary[];
   /** Where the Demo Collection is, offered while this Library is empty. */
@@ -88,7 +88,7 @@ export function LibraryDocuments({
   /** The Owner's controls for the Collection itself (Rename, Delete), beside its name. */
   settings?: ReactNode;
 }) {
-  const personal = collection.is_personal ?? true;
+  const personal = collection.is_personal;
   const [documents, setDocuments] = useState(() =>
     onlyIn(collection.id, initialDocuments),
   );
@@ -618,7 +618,7 @@ export function LibraryDocuments({
               ? `Documents in your ${collection.name} collection`
               : "Documents in this collection"}
           </p>
-          {settings && <div className="-ml-2.5">{settings}</div>}
+          {settings && <div className="-ml-2">{settings}</div>}
         </div>
         {picker}
       </div>

@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection
+from psycopg.errors import ForeignKeyViolation
 from psycopg.rows import DictRow
 from pydantic import BaseModel, Field, field_validator
 
@@ -224,8 +225,10 @@ class CollectionName(BaseModel):
     """1 to 120 characters once spaces are tidied."""
 
 
-_COLLECTION_NOT_FOUND = "That collection doesn’t exist."
-_FIXED = "Your Personal collection and the Demo Collection can’t be renamed or deleted."
+_COLLECTION_NOT_FOUND = (
+    "That collection doesn’t exist, or you no longer have access to it. Reload the page."
+)
+_FIXED = "Your Personal Collection and the Demo Collection can’t be renamed or deleted."
 _NOT_OWNER = "Only the collection’s owner can do that."
 
 
@@ -281,7 +284,8 @@ def rename(collection_id: UUID, body: CollectionName, user: User, conn: Db) -> C
     },
 )
 def remove_collection(collection_id: UUID, user: User, conn: Db, files: Files) -> None:
-    """Delete a Collection with all its Documents (its Owner). Repeating the call is harmless."""
+    """Delete a Collection with all its Documents (its Owner). Repeating the call is harmless,
+    so a Collection that is gone, or never visible to the User, answers 204 like `delete`."""
     try:
         delete_collection(conn, files, user.id, collection_id)
     except CollectionNotFound:
@@ -330,6 +334,8 @@ def new_document(body: NewDocument, user: User, conn: Db, files: Files) -> Start
         raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_EDIT) from None
     except DocumentNotFound:  # the Document to replace
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That document doesn’t exist.") from None
+    except ForeignKeyViolation:  # its Collection was deleted while the upload started
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
     except StorageError:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,

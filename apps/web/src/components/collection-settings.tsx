@@ -155,9 +155,7 @@ function DeleteCollection({
         setProblem(null);
       }}
     >
-      <AlertDialogTrigger
-        render={<Button variant="ghost" size="sm" aria-label={`Delete ${name}`} />}
-      >
+      <AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>
         Delete collection
       </AlertDialogTrigger>
       <AlertDialogContent>

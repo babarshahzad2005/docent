@@ -976,7 +976,7 @@
     },
     "/collections/{collection_id}": {
       "delete": {
-        "description": "Delete a Collection with all its Documents (its Owner). Repeating the call is harmless.",
+        "description": "Delete a Collection with all its Documents (its Owner). Repeating the call is harmless,\nso a Collection that is gone, or never visible to the User, answers 204 like `delete`.",
         "operationId": "deleteCollection",
         "parameters": [
           {

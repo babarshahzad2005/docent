@@ -19,7 +19,13 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: vi.fn() }));
 
 import { LibraryDocuments } from "./library-documents";
 
-const PERSONAL = { id: "c1", name: "Personal", role: "owner" as const, is_demo: false };
+const PERSONAL = {
+  id: "c1",
+  name: "Personal",
+  role: "owner" as const,
+  is_demo: false,
+  is_personal: true,
+};
 
 function aDocument(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
   return {
@@ -448,7 +454,7 @@ describe("Deleting a Document", () => {
 });
 
 describe("the Demo Collection", () => {
-  const DEMO = { id: "demo", name: "Demo Collection", role: "viewer" as const, is_demo: true };
+  const DEMO = { ...PERSONAL, id: "demo", name: "Demo Collection", role: "viewer" as const, is_demo: true, is_personal: false };
 
   it("shows only its own documents, each credited with a link to its source", () => {
     render(

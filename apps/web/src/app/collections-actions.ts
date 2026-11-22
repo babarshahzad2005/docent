@@ -2,14 +2,10 @@
 
 import type { components } from "@docent/client";
 
+import { detail, type Result, SIGNED_OUT, UNREACHABLE } from "@/lib/action-result";
 import { apiAsUser } from "@/lib/api";
 
 export type CollectionSummary = components["schemas"]["CollectionSummary"];
-
-type Result<T> = { ok: true; value: T } | { ok: false; message: string };
-
-const SIGNED_OUT = "Your session has expired. Sign in again.";
-const UNREACHABLE = "Can't reach the server. Try again in a minute.";
 
 /** A new, empty Collection owned by the User. */
 export async function createCollection(name: string): Promise<Result<CollectionSummary>> {
@@ -49,13 +45,6 @@ export async function deleteCollection(collectionId: string): Promise<Result<nul
   });
   if (response.ok) return { ok: true, value: null };
   return { ok: false, message: detail(error) ?? problem(response.status) };
-}
-
-function detail(error: unknown): string | undefined {
-  if (error && typeof error === "object" && "detail" in error && typeof error.detail === "string") {
-    return error.detail;
-  }
-  return undefined;
 }
 
 function problem(status: number): string {

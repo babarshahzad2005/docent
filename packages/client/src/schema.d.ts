@@ -56,7 +56,8 @@ export interface paths {
         post?: never;
         /**
          * Remove Collection
-         * @description Delete a Collection with all its Documents (its Owner). Repeating the call is harmless.
+         * @description Delete a Collection with all its Documents (its Owner). Repeating the call is harmless,
+         *     so a Collection that is gone, or never visible to the User, answers 204 like `delete`.
          */
         delete: operations["deleteCollection"];
         options?: never;
