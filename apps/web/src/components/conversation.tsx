@@ -16,6 +16,7 @@ import { formatDate } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import {
   type ConflictVersion,
+  displayNumbers,
   normalizeCitations,
   type Outcome,
   readAnswerEvents,
@@ -247,13 +248,21 @@ function TurnView({
   const asked = turn.scope ? scopeNames(turn.scope, collections) : null;
   const closestId = useId();
   const available = new Set(turn.sources.map((source) => source.number));
-  const cited = turn.sources.filter((source) => turn.cited.includes(source.number));
   const byNumber = new Map(turn.sources.map((source) => [source.number, source]));
+  // Shown 1, 2, 3… in the order the answer cites them, not the model's passage numbers.
+  const numbers = displayNumbers(turn.answer, available, [
+    ...turn.cited,
+    ...(turn.conflict ?? []).map((version) => version.number),
+  ]);
+  const shown = (n: number) => numbers.get(n) ?? n;
+  const cited = turn.sources
+    .filter((source) => turn.cited.includes(source.number))
+    .sort((a, b) => shown(a.number) - shown(b.number));
   // DESIGN.md: the accessible name says which source, not just the number.
   const label = (n: number) => {
     const source = byNumber.get(n);
-    if (!source) return `Source ${n}`;
-    return [`Source ${n}`, source.document_name, source.page !== null ? `page ${source.page}` : null]
+    if (!source) return `Source ${shown(n)}`;
+    return [`Source ${shown(n)}`, source.document_name, source.page !== null ? `page ${source.page}` : null]
       .filter(Boolean)
       .join(", ");
   };
@@ -261,7 +270,12 @@ function TurnView({
     const source = byNumber.get(n);
     if (source) {
       onOpenSource(
-        { ...source, chunk_id: source.chunk_id ?? null, openedAt: Date.now() },
+        {
+          ...source,
+          number: shown(n),
+          chunk_id: source.chunk_id ?? null,
+          openedAt: Date.now(),
+        },
         event.currentTarget,
       );
     }
@@ -275,7 +289,7 @@ function TurnView({
         onClick={open(n)}
         className={`${CITATION_CHIP} cursor-pointer`}
       >
-        {n}
+        {shown(n)}
       </button>
     ) : null;
 
@@ -304,7 +318,7 @@ function TurnView({
                 onClick={open(part.citation)}
                 className={`${CITATION_CHIP} mx-0.5 -translate-y-1 cursor-pointer`}
               >
-                {part.citation}
+                {shown(part.citation)}
               </button>
             ),
           );
@@ -374,7 +388,7 @@ function TurnView({
                 onClick={open(source.number)}
                 className="flex w-full cursor-pointer gap-3 rounded-lg px-2 py-2 text-left text-meta hover:bg-muted"
               >
-                <span className={`${CITATION_CHIP} h-5`}>{source.number}</span>
+                <span className={`${CITATION_CHIP} h-5`}>{shown(source.number)}</span>
                 <span className="flex flex-col">
                   <span className="font-medium text-foreground">{source.document_name}</span>
                   <SourceMeta headingPath={source.heading_path} page={source.page} />

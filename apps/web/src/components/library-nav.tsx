@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -10,13 +9,6 @@ import { ConversationsNav } from "./conversations-nav";
 export function LibraryNav() {
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <Link
-        href="/"
-        aria-current="page"
-        className="rounded-md bg-muted px-2 py-2 font-medium text-foreground"
-      >
-        Library
-      </Link>
       <Suspense fallback={null}>
         <CollectionsNav />
       </Suspense>
