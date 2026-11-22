@@ -1212,7 +1212,7 @@ function MoveDocument({
           for whoever can read the collection it moves to.
         </AlertDialogDescription>
         <fieldset className="flex flex-col gap-2">
-          <legend id={groupId} className="mb-1 text-meta text-muted-foreground">
+          <legend className="mb-1 text-meta text-muted-foreground">
             Move to
           </legend>
           {targets.map((target) => (

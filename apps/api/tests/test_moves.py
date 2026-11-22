@@ -249,3 +249,21 @@ def test_the_move_endpoint(
     assert refused.status_code == 404
     gone = client.post(f"/documents/{uuid4()}/move", json={"collection_id": str(team)})
     assert gone.status_code == 404
+
+
+def test_a_failed_document_moves_and_older_passages_go_with_it(
+    conn: Connection[DictRow], store: FakeStore, owner: AuthUser
+) -> None:
+    personal = list_collections(conn, owner.id)[0].id
+    team = create_collection(conn, owner.id, "Team").id
+    document_id, chunk_id = indexed(conn, store, owner, personal, "Carry over up to ten days.")
+    # A passage an earlier version left behind, still cited by old answers (ADR 0004).
+    conn.execute("update app.chunks set superseded_at = now() where id = %s", (chunk_id,))
+    conn.execute("update app.documents set status = 'failed' where id = %s", (document_id,))
+    conn.commit()
+
+    move_document(conn, owner.id, document_id, team)
+
+    row = conn.execute("select collection_id from app.chunks where id = %s", (chunk_id,)).fetchone()
+    conn.commit()
+    assert row is not None and row["collection_id"] == team
