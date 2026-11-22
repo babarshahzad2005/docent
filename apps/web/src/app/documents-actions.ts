@@ -126,6 +126,8 @@ function processInBackground(caller: NonNullable<Awaited<ReturnType<typeof apiAs
 
 function problem(status: number): string {
   if (status === 401) return SIGNED_OUT;
-  if (status === 403) return "You can't add documents to this collection.";
+  if (status === 403) {
+    return "Only this collection’s owner and editors can add or change documents. Ask its owner to make you an editor.";
+  }
   return UNREACHABLE;
 }

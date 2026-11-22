@@ -88,8 +88,15 @@ Files = Annotated[FileStore, Depends(get_file_store)]
 INGESTION_BATCH_SECONDS = 200.0
 
 _NOT_FOUND = "That document doesn't exist."
-_CANT_EDIT = "You can't add documents to this collection."
-_CANT_CHANGE = "You can't change documents in this collection."
+# GLOSSARY: Role. A Viewer can only ask; the refusal says who can, and how to become one.
+_CANT_EDIT = (
+    "Only this collection’s owner and editors can add documents. "
+    "Ask its owner to make you an editor."
+)
+_CANT_CHANGE = (
+    "Only this collection’s owner and editors can change its documents. "
+    "Ask its owner to make you an editor."
+)
 
 
 class Health(BaseModel):

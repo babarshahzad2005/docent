@@ -302,6 +302,38 @@ describe("A Collection besides the Personal one", () => {
     expect(screen.getByRole("button", { name: "Rename" })).toBeTruthy();
   });
 
+  it("shows a Viewer no way to change documents, only who has access", () => {
+    render(
+      <LibraryDocuments
+        collection={{ ...TEAM, role: "viewer" }}
+        initialDocuments={[aDocument({ collection_id: "c2" })]}
+        settings={<button type="button">People</button>}
+      />,
+    );
+
+    expect(screen.getByText("policy.pdf")).toBeTruthy();
+    for (const name of [/upload/i, /^Replace/, /^Delete/, /^Change the effective date/, /^Retry/]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+    expect(screen.getByRole("button", { name: "People" })).toBeTruthy();
+  });
+
+  it("lets an Editor change documents", () => {
+    render(
+      <LibraryDocuments
+        collection={{ ...TEAM, role: "editor" }}
+        initialDocuments={[aDocument({ collection_id: "c2" })]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /upload/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Replace policy.pdf" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete policy.pdf" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Change the effective date of policy.pdf" }),
+    ).toBeTruthy();
+  });
+
   it("says it is empty by name", () => {
     render(<LibraryDocuments collection={TEAM} initialDocuments={[]} />);
 
