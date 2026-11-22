@@ -38,6 +38,7 @@ from docent_api.documents import (
     DocumentSummary,
     DuplicateDocument,
     NotAllowed,
+    NotAMemberOf,
     NotRetryable,
     UploadRejected,
     delete_document,
@@ -259,7 +260,7 @@ _COLLECTION_NOT_FOUND = (
     "That collection doesn’t exist, or you no longer have access to it. Reload the page."
 )
 _FIXED = "Your Personal Collection and the Demo Collection can’t be renamed or deleted."
-_NOT_OWNER = "Only the collection’s owner can do that."
+_NOT_OWNER = "Only the collection’s owner can do that. Ask them if it needs doing."
 
 
 @app.post(
@@ -581,6 +582,8 @@ def new_document(body: NewDocument, user: User, conn: Db, files: Files) -> Start
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(rejected)) from None
     except DuplicateDocument as duplicate:
         raise HTTPException(status.HTTP_409_CONFLICT, str(duplicate)) from None
+    except NotAMemberOf:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
     except NotAllowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_EDIT) from None
     except DocumentNotFound:  # the Document to replace
@@ -590,7 +593,7 @@ def new_document(body: NewDocument, user: User, conn: Db, files: Files) -> Start
     except StorageError:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            "File storage isn't answering right now. Try again in a minute.",
+            "File storage isn\u2019t answering right now. Try again in a minute.",
         ) from None
     return StartedUpload(
         document=document,
@@ -656,7 +659,7 @@ def retry(document_id: UUID, user: User, conn: Db) -> DocumentSummary:
     except NotRetryable:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "Retrying won't help with this document. Fix the file and upload it again.",
+            "Retrying won\u2019t help with this document. Fix the file and upload it again.",
         ) from None
 
 

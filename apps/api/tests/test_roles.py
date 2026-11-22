@@ -52,8 +52,10 @@ class Team:
 
     def __init__(self, conn: Connection[DictRow], store: FakeStore) -> None:
         self.owner, self.editor, self.viewer = a_user(conn), a_user(conn), a_user(conn)
+        self.other = a_user(conn)  # whom the Owner-only actions are tried on
         self.id = create_collection(conn, self.owner.id, "Team").id
-        for user, role in ((self.editor, "editor"), (self.viewer, "viewer")):
+        members = ((self.editor, "editor"), (self.viewer, "viewer"), (self.other, "viewer"))
+        for user, role in members:
             conn.execute(
                 "insert into app.memberships (collection_id, user_id, role) values (%s, %s, %s)",
                 (self.id, user.id, role),
@@ -111,7 +113,7 @@ def document_actions(team: Team) -> list[tuple[str, str, dict[str, object] | Non
 
 # Every action only the Owner may take.
 def owner_actions(team: Team) -> list[tuple[str, str, dict[str, object] | None]]:
-    viewer = team.viewer.id
+    viewer = team.other.id
     return [
         ("PATCH", f"/collections/{team.id}", {"name": "Mine now"}),
         ("DELETE", f"/collections/{team.id}", None),
@@ -159,10 +161,27 @@ def test_only_the_owner_manages_the_collection(
 
     for action in owner_actions(team):
         status, detail = call(client, action)
-        if action[0] == "DELETE" and action[1].endswith(str(team.viewer.id)) and who == "viewer":
-            continue  # that is the Viewer leaving, which they may
         assert status == 403, action
-        assert detail == "Only the collection’s owner can do that.", action
+        assert detail.startswith("Only the collection’s owner can do that."), action
+    # Still a Member after all that, and free to leave.
+    leave = ("DELETE", f"/collections/{team.id}/members/{getattr(team, who).id}", None)
+    assert call(client, leave)[0] == 204
+
+
+def test_someone_removed_hears_they_have_no_access_not_how_to_edit(
+    database_url: str, conn: Connection[DictRow], store: FakeStore, team: Team
+) -> None:
+    conn.execute(
+        "delete from app.memberships where collection_id = %s and user_id = %s",
+        (team.id, team.editor.id),
+    )
+    conn.commit()
+    editor = as_user(database_url, store, team.editor)
+
+    status, detail = call(editor, ("POST", "/documents", new_document(team.id)))
+
+    assert status == 404
+    assert "no longer have access" in detail
 
 
 def test_everyone_reads_and_asks(database_url: str, store: FakeStore, team: Team) -> None:
