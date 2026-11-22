@@ -1,6 +1,7 @@
 """Who has access to a Collection, against a real database (TEST_DATABASE_URL)."""
 
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID, uuid4
 
 import psycopg
@@ -166,6 +167,37 @@ def test_ownership_goes_only_to_a_member(
     with pytest.raises(NotAMember):
         transfer_ownership(conn, owner.id, team, a_user(conn).id)
     assert roles(conn, team, owner) == {owner.id: "owner"}
+
+
+def test_racing_transfers_leave_one_owner(
+    database_url: str, conn: Connection[DictRow], owner: AuthUser, team: UUID
+) -> None:
+    first, second = a_user(conn), a_user(conn)
+    join(conn, team, first, "viewer")
+    join(conn, team, second, "viewer")
+
+    def transfer_to(member: AuthUser) -> str:
+        with psycopg.connect(database_url, row_factory=dict_row) as own:
+            try:
+                transfer_ownership(own, owner.id, team, member.id)
+                return "moved"
+            except NotOwner:
+                return "refused"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = sorted(pool.map(transfer_to, [first, second]))
+
+    assert results == ["moved", "refused"]
+    owners = [r for r in roles(conn, team, owner).values() if r == "owner"]
+    assert owners == ["owner"]
+
+
+def test_the_database_allows_one_owner(
+    conn: Connection[DictRow], owner: AuthUser, team: UUID
+) -> None:
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        join(conn, team, a_user(conn), "owner")
+    conn.rollback()
 
 
 # --- HTTP ---------------------------------------------------------------------------------

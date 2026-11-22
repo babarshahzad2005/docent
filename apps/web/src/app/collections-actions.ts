@@ -120,6 +120,8 @@ export async function acceptInvite(
 }
 
 export type MemberSummary = components["schemas"]["MemberSummary"];
+/** The Roles an Owner can give: ownership moves only by transfer. */
+export type MemberRole = components["schemas"]["RoleChange"]["role"];
 
 /** Everyone with access to a Collection, Owner first (any Member). */
 export async function listMembers(collectionId: string): Promise<Result<MemberSummary[]>> {
@@ -137,7 +139,7 @@ export async function listMembers(collectionId: string): Promise<Result<MemberSu
 export async function changeRole(
   collectionId: string,
   memberId: string,
-  role: "editor" | "viewer",
+  role: MemberRole,
 ): Promise<Result<null>> {
   const caller = await apiAsUser();
   if (!caller) return { ok: false, message: SIGNED_OUT };

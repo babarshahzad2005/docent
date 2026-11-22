@@ -157,9 +157,11 @@ export function CollectionSettings({
       <div id={panelId} hidden={!sharing}>
         <div className="flex flex-col gap-4">
           <SharePanel collectionId={collection.id} initialInvites={invites} />
-          {members.length > 1 && (
+          {members.length > 0 && (
             <div className="rounded-lg border border-border bg-surface p-4">
               <MembersList
+                // Starts again from the server's list when it changes (someone accepted).
+                key={members.map((m) => `${m.user_id}:${m.role}`).join()}
                 collection={collection}
                 initialMembers={members}
                 isOwner

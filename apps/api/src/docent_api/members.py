@@ -116,8 +116,11 @@ def transfer_ownership(
     """Make another Member the Owner; the old Owner stays, as an Editor."""
     with conn.transaction():
         require_owner(conn, user_id, collection_id)
-        if member_id == user_id:
-            return
+        # Demote first: a Collection has one Owner at a time (migration 0015).
+        conn.execute(
+            "update app.memberships set role = 'editor' where collection_id = %s and user_id = %s",
+            (collection_id, user_id),
+        )
         promoted = conn.execute(
             """
             update app.memberships set role = 'owner'
@@ -127,11 +130,7 @@ def transfer_ownership(
             (collection_id, member_id),
         ).fetchone()
         if promoted is None:
-            raise NotAMember(member_id)
-        conn.execute(
-            "update app.memberships set role = 'editor' where collection_id = %s and user_id = %s",
-            (collection_id, user_id),
-        )
+            raise NotAMember(member_id)  # rolls the demotion back with it
 
 
 def _shared(

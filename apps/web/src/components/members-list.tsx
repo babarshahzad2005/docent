@@ -5,6 +5,7 @@ import { useId, useRef, useState } from "react";
 
 import {
   changeRole,
+  type MemberRole,
   type MemberSummary,
   removeMember,
   transferOwnership,
@@ -22,6 +23,8 @@ import { Button } from "@/components/ui/button";
 
 const CONNECTION =
   "Can’t reach the server. Check your connection and try again.";
+/** "an editor", "a viewer": how a Role reads in a sentence. */
+const WITH_ARTICLE = { editor: "an editor", viewer: "a viewer" } as const;
 const ROLE_NAMES = {
   owner: "Owner",
   editor: "Editor",
@@ -36,11 +39,15 @@ export function MembersList({
   collection,
   initialMembers,
   isOwner,
+  level = "h3",
 }: {
   collection: { id: string; name: string };
   initialMembers: MemberSummary[];
   isOwner: boolean;
+  /** The heading's level: one below the section it sits in. */
+  level?: "h2" | "h3";
 }) {
+  const Heading = level;
   const router = useRouter();
   const [members, setMembers] = useState(initialMembers);
   const [announcement, setAnnouncement] = useState("");
@@ -52,14 +59,14 @@ export function MembersList({
       aria-labelledby={headingId}
       className="flex flex-col gap-2 text-left"
     >
-      <h3
+      <Heading
         ref={heading}
         id={headingId}
         tabIndex={-1}
         className="text-meta font-medium text-muted-foreground"
       >
         People with access
-      </h3>
+      </Heading>
       <ul className="flex flex-col border-t border-border">
         {members.map((member) => (
           <MemberRow
@@ -73,24 +80,24 @@ export function MembersList({
                   m.user_id === member.user_id ? { ...m, role } : m,
                 ),
               );
-              setAnnouncement(
-                `${member.email} is now ${ROLE_NAMES[role].toLowerCase()}.`,
-              );
+              setAnnouncement(`${member.email} is now ${WITH_ARTICLE[role]}.`);
             }}
             onRemoved={() => {
               setMembers((current) =>
                 current.filter((m) => m.user_id !== member.user_id),
               );
               setAnnouncement(`${member.email} no longer has access.`);
-              heading.current?.focus();
             }}
+            afterRemove={heading}
             onLeft={() => {
               router.push("/");
               router.refresh();
             }}
             onTransferred={() => {
-              setAnnouncement(`${member.email} is now the owner.`);
+              // The page re-renders with an Editor's controls, so this list goes: focus the
+              // page's heading, which says where they are, rather than lose it.
               router.refresh();
+              focusPageHeading();
             }}
           />
         ))}
@@ -110,12 +117,15 @@ function MemberRow({
   onRemoved,
   onLeft,
   onTransferred,
+  afterRemove,
 }: {
   member: MemberSummary;
   collection: { id: string; name: string };
   canManage: boolean;
-  onRoleChanged: (role: "editor" | "viewer") => void;
+  onRoleChanged: (role: MemberRole) => void;
   onRemoved: () => void;
+  /** Where focus goes once the row (and the Remove button) is gone. */
+  afterRemove: React.RefObject<HTMLHeadingElement | null>;
   onLeft: () => void;
   onTransferred: () => void;
 }) {
@@ -150,7 +160,7 @@ function MemberRow({
               value={member.role}
               disabled={saving}
               onChange={async (event) => {
-                const role = event.target.value as "editor" | "viewer";
+                const role = event.target.value as MemberRole;
                 setSaving(true);
                 setProblem(null);
                 const result = await changeRole(
@@ -163,7 +173,7 @@ function MemberRow({
                 if (!result.ok) return setProblem(result.message);
                 onRoleChanged(role);
               }}
-              className="h-8 rounded-md border border-border-strong bg-background px-2 text-meta text-foreground pointer-coarse:h-11"
+              className="h-9 rounded-md border border-border-strong bg-background px-2 text-foreground pointer-coarse:h-11"
             >
               <option value="editor">Editor</option>
               <option value="viewer">Viewer</option>
@@ -188,6 +198,7 @@ function MemberRow({
               destructive
               onConfirm={() => removeMember(collection.id, member.user_id)}
               onDone={onRemoved}
+              finalFocus={afterRemove}
             />
           </>
         )}
@@ -245,10 +256,21 @@ export function MemberSettings({
           collection={collection}
           initialMembers={members}
           isOwner={false}
+          level="h2"
         />
       </div>
     </div>
   );
+}
+
+/** Move focus to the page's main heading, once the page has re-rendered. */
+function focusPageHeading() {
+  window.setTimeout(() => {
+    const heading = document.querySelector<HTMLElement>("main h1");
+    if (!heading) return;
+    heading.tabIndex = -1;
+    heading.focus();
+  }, 300);
 }
 
 /** A button that asks before doing something to someone's access. */
@@ -262,6 +284,7 @@ function Confirm({
   destructive = false,
   onConfirm,
   onDone,
+  finalFocus,
 }: {
   trigger: string;
   /** The accessible name, when the visible text alone doesn't say whom it's about. */
@@ -273,9 +296,12 @@ function Confirm({
   destructive?: boolean;
   onConfirm: () => Promise<{ ok: true } | { ok: false; message: string }>;
   onDone: () => void;
+  /** Where focus goes once done, when the trigger itself goes with it. */
+  finalFocus?: React.RefObject<HTMLElement | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [working, setWorking] = useState(false);
+  const [done, setDone] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   return (
     <AlertDialog
@@ -291,7 +317,7 @@ function Confirm({
       >
         {trigger}
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      <AlertDialogContent finalFocus={done ? finalFocus : undefined}>
         <AlertDialogTitle>{title}</AlertDialogTitle>
         <AlertDialogDescription>{description}</AlertDialogDescription>
         {problem && (
@@ -310,6 +336,7 @@ function Confirm({
               setWorking(false);
               if (!result) return setProblem(CONNECTION);
               if (!result.ok) return setProblem(result.message);
+              setDone(true);
               setOpen(false);
               onDone();
             }}

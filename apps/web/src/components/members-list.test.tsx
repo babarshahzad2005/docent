@@ -42,7 +42,7 @@ describe("People with access, for the Owner", () => {
     await userEvent.selectOptions(screen.getByLabelText("Role for sam@example.com"), "editor");
 
     expect(actions.changeRole).toHaveBeenCalledWith("c2", "u3", "editor");
-    expect(screen.getByRole("status").textContent).toContain("sam@example.com is now editor");
+    expect(screen.getByRole("status").textContent).toContain("sam@example.com is now an editor");
   });
 
   it("removes a Member after asking", async () => {

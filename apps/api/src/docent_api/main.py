@@ -479,8 +479,10 @@ def role(collection_id: UUID, member_id: UUID, body: RoleChange, user: User, con
         change_role(conn, user.id, collection_id, member_id, body.role)
     except CollectionNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
-    except (NotOwner, FixedCollection):
+    except NotOwner:
         raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(status.HTTP_409_CONFLICT, _NOT_SHARED) from None
     except NotAMember:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_A_MEMBER) from None
 
@@ -502,8 +504,10 @@ def remove(collection_id: UUID, member_id: UUID, user: User, conn: Db) -> None:
         remove_member(conn, user.id, collection_id, member_id)
     except CollectionNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
-    except (NotOwner, FixedCollection):
+    except NotOwner:
         raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(status.HTTP_409_CONFLICT, _NOT_SHARED) from None
     except NotAMember:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_A_MEMBER) from None
     except OwnerCantLeave:
@@ -528,8 +532,10 @@ def transfer(collection_id: UUID, body: NewOwner, user: User, conn: Db) -> None:
         transfer_ownership(conn, user.id, collection_id, body.user_id)
     except CollectionNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
-    except (NotOwner, FixedCollection):
+    except NotOwner:
         raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(status.HTTP_409_CONFLICT, _NOT_SHARED) from None
     except NotAMember:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_A_MEMBER) from None
 

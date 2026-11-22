@@ -41,7 +41,7 @@ async function Collection({ params }: { params: Promise<{ id: string }> }) {
   ]);
   if (!documents.ok) throw new Error(documents.message);
   if (invites && !invites.ok) throw new Error(invites.message);
-  if (members && !members.ok) throw new Error(members.message);
+  // Not fatal: removed meanwhile, the next load shows the Collection gone.
   const people = members?.ok ? members.value : [];
 
   return (
