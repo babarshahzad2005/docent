@@ -16,3 +16,16 @@ export function defaultScope(collections: CollectionChoice[]): string[] {
   const own = collections.filter((collection) => !collection.is_demo);
   return (own.length > 0 ? own : collections).map((collection) => collection.id);
 }
+
+/**
+ * Where a Document in `currentId` can be Moved (GLOSSARY: Move): the User's other Collections
+ * where they are an Owner or Editor, never the Demo Collection.
+ */
+export function moveTargets(
+  collections: (CollectionChoice & { role: string })[],
+  currentId: string,
+): { id: string; name: string }[] {
+  return collections
+    .filter((c) => c.id !== currentId && !c.is_demo && (c.role === "owner" || c.role === "editor"))
+    .map(({ id, name }) => ({ id, name }));
+}
