@@ -671,14 +671,28 @@ def load_conversation(
         """,
         (conversation_id,),
     ).fetchall()
+    # Losing access hides a cited passage's text; the answer stays (PRD decision log,
+    # 2026-11-15). A passage whose Document was deleted keeps its text (ADR 0004): the
+    # User could read it then, and nobody can now.
     citations = conn.execute(
         """
         select c.message_id, c.number, c.chunk_id, c.document_id, c.document_name,
-               c.heading_path, c.page, c.passage
-        from app.citations c join app.messages m on m.id = c.message_id
-        where m.conversation_id = %s order by c.number
+               c.heading_path, c.page,
+               case when readable then c.passage end as passage,
+               not readable as access_lost
+        from app.citations c
+        join app.messages m on m.id = c.message_id
+        cross join lateral (
+            select c.chunk_id is null or exists (
+                select 1 from app.chunks k
+                join app.memberships ms
+                  on ms.collection_id = k.collection_id and ms.user_id = %(user)s
+                where k.id = c.chunk_id
+            ) as readable
+        ) r
+        where m.conversation_id = %(conversation)s order by c.number
         """,
-        (conversation_id,),
+        {"conversation": conversation_id, "user": user_id},
     ).fetchall()
     by_message: dict[UUID, list[dict[str, Any]]] = {}
     for citation in citations:

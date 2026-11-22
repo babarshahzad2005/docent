@@ -14,7 +14,9 @@ export type CitedSource = {
   document_name: string;
   heading_path: string[];
   page: number | null;
-  passage?: string;
+  passage?: string | null;
+  /** The User can no longer read its Collection, so its text isn't shown. */
+  access_lost?: boolean;
   /** Changes each time it is opened, so opening the same Citation again scrolls to it again. */
   openedAt: number;
 };
@@ -206,7 +208,13 @@ function SourceBody({
         )}
       </header>
       <div ref={scroller} className="relative flex-1 overflow-y-auto p-6">
-        {context.state === "unavailable" && (
+        {context.state === "unavailable" && source.access_lost && (
+          <p role="status" className="mb-4 text-meta text-muted-foreground">
+            You no longer have access to this document&rsquo;s collection, so its passage
+            isn&rsquo;t shown. The answer stays as it was given.
+          </p>
+        )}
+        {context.state === "unavailable" && !source.access_lost && (
           <p role="status" className="mb-4 text-meta text-muted-foreground">
             {source.chunk_id
               ? "This source isn’t available any more: its document was removed, or you no longer have access to it."

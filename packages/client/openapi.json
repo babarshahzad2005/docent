@@ -3,6 +3,11 @@
     "schemas": {
       "CitationOut": {
         "properties": {
+          "access_lost": {
+            "default": false,
+            "title": "Access Lost",
+            "type": "boolean"
+          },
           "chunk_id": {
             "anyOf": [
               {
@@ -54,8 +59,15 @@
             "title": "Page"
           },
           "passage": {
-            "title": "Passage",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passage"
           }
         },
         "required": [
