@@ -27,6 +27,7 @@ from docent_api.documents import finish_upload, start_upload
 from docent_api.ingestion import run_batch
 from docent_api.invites import invite
 from docent_api.library import ensure_user, list_collections
+from docent_api.retrieval import readable_scope, retrieve
 from docent_api.storage import get_file_store
 
 SECRET = b"""# Leave for the board
@@ -34,9 +35,11 @@ SECRET = b"""# Leave for the board
 Board members carry over up to 40 days of leave. Code word: PERIWINKLE.
 """
 
-# Endpoints that hold no Collection's data: health checks, the scheduler's own trigger
-# (authenticated by its token, tested in test_documents), and starting an ingestion batch
-# (it reports only counts).
+# Endpoints that hold no Collection's content: health checks, the scheduler's own trigger
+# (authenticated by its token, tested in test_documents), and starting an ingestion batch,
+# which reports how many Documents the shared queue holds, across Collections: counts only,
+# never a name or a word of them. The Role matrix for Members' writes is test_roles.py;
+# this file covers Members against another Collection, and outsiders against theirs.
 EXEMPT = {
     ("GET", "/health"),
     ("GET", "/health/database"),
@@ -266,6 +269,106 @@ def test_a_removed_member_keeps_their_answers_but_not_the_passages(
     hers = owner.get(f"/conversations/{world.alice_conversation}").json()
     assert hers["messages"][1]["citations"][0]["passage"]
     assert hers["messages"][1]["citations"][0]["access_lost"] is False
+
+    # Deleting the Document later doesn't bring the text back for them, while Alice, still a
+    # Member, keeps it (ADR 0004).
+    assert owner.delete(f"/documents/{world.doc_a}").status_code == 204
+    client = client_for(database_url, world.users["removed"])
+    gone = client.get(f"/conversations/{world.removed_conversation}").json()
+    assert gone["messages"][1]["citations"][0]["passage"] is None
+    owner = client_for(database_url, world.users["owner"])
+    kept = owner.get(f"/conversations/{world.alice_conversation}").json()
+    assert kept["messages"][1]["citations"][0]["passage"]
+
+
+def test_retrieval_filters_by_membership_at_every_layer(
+    conn: Connection[DictRow], world: World
+) -> None:
+    """Both filters on their own: the Scope a question may use, and the passage query."""
+    owner = world.users["owner"].id
+
+    assert readable_scope(conn, owner, [world.team_b]) == []
+    assert readable_scope(conn, owner, [world.team_a, world.team_b]) == [world.team_a]
+    found = retrieve(conn, owner, [world.team_b], "board leave code word periwinkle", None)
+    assert found == []
+    conn.commit()
+
+
+def test_a_removed_member_continuing_their_conversation_gets_nothing_new(
+    database_url: str, world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = ScriptedModel(["I couldn’t find that."])
+    monkeypatch.setattr(main, "answer_generator", lambda: model)
+    client = client_for(database_url, world.users["removed"])
+
+    response = client.post(
+        "/answers",
+        json={"question": "And how far ahead?", "conversation_id": str(world.removed_conversation)},
+    )
+
+    assert response.status_code == 200
+    assert "notice using form HR-27" not in " ".join(model.prompts)
+    sources = [
+        s for name, data in sse_events(response.text) if name == "start" for s in data["sources"]
+    ]  # type: ignore[union-attr]
+    assert str(world.doc_a) not in [s["document_id"] for s in sources]
+
+
+def test_members_of_one_collection_cant_touch_another(
+    database_url: str, conn: Connection[DictRow], world: World
+) -> None:
+    def team_b() -> object:
+        row = conn.execute(
+            """
+            select c.name, d.collection_id, d.effective_date,
+                (select count(*) from app.memberships where collection_id = c.id)
+            from app.collections c join app.documents d on d.collection_id = c.id
+            where c.id = %s and d.id = %s
+            """,
+            (world.team_b, world.doc_b),
+        ).fetchone()
+        conn.commit()
+        return None if row is None else tuple(row.values())
+
+    before = team_b()
+    b, doc = world.team_b, world.doc_b
+    bob = world.users["bob"].id
+    for kind in MEMBERS:
+        client = client_for(database_url, world.users[kind])
+        new_doc = {"collection_id": str(b), "name": "x.md", "size_bytes": 3, "sha256": "0" * 64}
+        attempts: list[tuple[str, str, dict[str, object] | None, int]] = [
+            ("POST", "/documents", new_doc, 404),
+            ("POST", f"/documents/{doc}/uploaded", None, 404),
+            ("POST", f"/documents/{doc}/retry", None, 404),
+            ("PATCH", f"/documents/{doc}", {"effective_date": "2001-01-01"}, 404),
+            ("DELETE", f"/documents/{doc}", None, 204),
+            ("POST", f"/documents/{doc}/move", {"collection_id": str(world.team_a)}, 404),
+            ("PATCH", f"/collections/{b}", {"name": "Taken"}, 404),
+            ("DELETE", f"/collections/{b}", None, 204),
+            (
+                "POST",
+                f"/collections/{b}/invites",
+                {"email": "me@example.com", "role": "editor"},
+                404,
+            ),
+            ("PATCH", f"/collections/{b}/members/{bob}", {"role": "viewer"}, 404),
+            ("DELETE", f"/collections/{b}/members/{bob}", None, 404),
+            ("POST", f"/collections/{b}/owner", {"user_id": str(bob)}, 404),
+        ]
+        for method, path, body, expected in attempts:
+            response = client.request(method, path, json=body)
+            assert response.status_code == expected, (kind, method, path, response.text)
+
+    # An Editor of Team A can't move its Document into Team B either.
+    editor = client_for(database_url, world.users["editor"])
+    moved = editor.post(f"/documents/{world.doc_a}/move", json={"collection_id": str(b)})
+    assert moved.status_code == 404
+    assert team_b() == before
+    row = conn.execute(
+        "select collection_id from app.documents where id = %s", (world.doc_a,)
+    ).fetchone()
+    conn.commit()
+    assert row is not None and row["collection_id"] == world.team_a
 
 
 def test_answers_never_cross_collections(
