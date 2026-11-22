@@ -70,6 +70,20 @@
         "title": "CitationOut",
         "type": "object"
       },
+      "CollectionName": {
+        "properties": {
+          "name": {
+            "maxLength": 500,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CollectionName",
+        "type": "object"
+      },
       "CollectionSummary": {
         "properties": {
           "id": {
@@ -907,6 +921,173 @@
         "summary": "Ask",
         "tags": [
           "answers"
+        ]
+      }
+    },
+    "/collections": {
+      "post": {
+        "description": "Create an empty Collection, owned by the signed-in User.",
+        "operationId": "createCollection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionName"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "The name is empty or too long"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "New Collection",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/collections/{collection_id}": {
+      "delete": {
+        "description": "Delete a Collection with all its Documents (its Owner). Repeating the call is harmless.",
+        "operationId": "deleteCollection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Owner can delete it"
+          },
+          "409": {
+            "description": "The Personal or Demo Collection"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Collection",
+        "tags": [
+          "library"
+        ]
+      },
+      "patch": {
+        "description": "Rename a Collection (its Owner).",
+        "operationId": "renameCollection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionName"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "The name is empty or too long"
+          },
+          "403": {
+            "description": "Only the Owner can rename it"
+          },
+          "404": {
+            "description": "No such Collection, or not a Member"
+          },
+          "409": {
+            "description": "The Personal or Demo Collection"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rename",
+        "tags": [
+          "library"
         ]
       }
     },

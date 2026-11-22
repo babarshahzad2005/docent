@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CheckIcon, CircleAlertIcon, UploadIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { formatDate } from "@/lib/dates";
 
 import {
@@ -73,17 +73,22 @@ export function LibraryDocuments({
   collection,
   initialDocuments,
   demoHref,
+  settings,
 }: {
   collection: {
     id: string;
     name: string;
     role: "owner" | "editor" | "viewer";
     is_demo: boolean;
+    is_personal?: boolean;
   };
   initialDocuments: DocumentSummary[];
   /** Where the Demo Collection is, offered while this Library is empty. */
   demoHref?: string;
+  /** The Owner's controls for the Collection itself (Rename, Delete), beside its name. */
+  settings?: ReactNode;
 }) {
+  const personal = collection.is_personal ?? true;
   const [documents, setDocuments] = useState(() =>
     onlyIn(collection.id, initialDocuments),
   );
@@ -573,15 +578,16 @@ export function LibraryDocuments({
       <div className="relative mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-4 py-12 text-center">
         {dropHint}
         <h1 className="font-serif text-question font-medium text-balance">
-          Your library is empty
+          {personal ? "Your library is empty" : `${collection.name} is empty`}
         </h1>
         <p className="text-muted-foreground text-pretty">
           Docent answers questions only from documents you add. Upload PDFs,
-          Word documents, Markdown, or plain text to your {collection.name}{" "}
-          collection to get started. You can choose several at once, or drop
-          them here.
+          Word documents, Markdown, or plain text to{" "}
+          {personal ? `your ${collection.name} collection` : "this collection"}{" "}
+          to get started. You can choose several at once, or drop them here.
         </p>
         <div className="mt-2">{picker}</div>
+        {settings}
         {demoHref && (
           <p className="text-muted-foreground text-pretty">
             Or try Docent first with the{" "}
@@ -604,10 +610,15 @@ export function LibraryDocuments({
       {dropHint}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="font-serif text-question font-medium">Library</h1>
+          <h1 className="font-serif text-question font-medium">
+            {personal ? "Library" : collection.name}
+          </h1>
           <p className="text-muted-foreground">
-            Documents in your {collection.name} collection
+            {personal
+              ? `Documents in your ${collection.name} collection`
+              : "Documents in this collection"}
           </p>
+          {settings && <div className="-ml-2.5">{settings}</div>}
         </div>
         {picker}
       </div>

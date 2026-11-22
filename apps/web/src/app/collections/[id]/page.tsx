@@ -4,6 +4,7 @@ import { Suspense } from "react";
 
 import { listDocuments } from "@/app/documents-actions";
 import { AppShell } from "@/components/app-shell";
+import { CollectionSettings } from "@/components/collection-settings";
 import { LibraryDocuments } from "@/components/library-documents";
 import { LibraryHome } from "@/components/library-home";
 import { getMe } from "@/lib/me";
@@ -38,7 +39,22 @@ async function Collection({ params }: { params: Promise<{ id: string }> }) {
       defaultScope={[collection.id]}
       label={`Ask a question about the ${collection.name}`}
     >
-      <LibraryDocuments collection={collection} initialDocuments={documents.value} />
+      <LibraryDocuments
+        collection={collection}
+        initialDocuments={documents.value}
+        settings={
+          collection.role === "owner" &&
+          !collection.is_demo && (
+            <CollectionSettings
+              collection={collection}
+              documentCount={
+                documents.value.filter((document) => document.collection_id === collection.id)
+                  .length
+              }
+            />
+          )
+        }
+      />
     </LibraryHome>
   );
 }
