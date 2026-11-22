@@ -17,7 +17,7 @@ const ROLES: { value: InviteSummary["role"]; label: string; hint: string }[] = [
   {
     value: "editor",
     label: "Editor",
-    hint: "can also add, replace, and delete documents",
+    hint: "can also manage documents",
   },
 ];
 
@@ -125,7 +125,7 @@ export function SharePanel({
             className="h-9 rounded-md border border-border-strong bg-background px-2 text-foreground pointer-coarse:h-11"
           />
         </span>
-        <span className="flex flex-col gap-1">
+        <span className="flex min-w-0 flex-1 basis-56 flex-col gap-1">
           <label htmlFor={roleId} className="text-meta text-muted-foreground">
             Role
           </label>
@@ -135,7 +135,7 @@ export function SharePanel({
             onChange={(event) =>
               setRole(event.target.value as InviteSummary["role"])
             }
-            className="h-9 rounded-md border border-border-strong bg-background px-2 text-foreground pointer-coarse:h-11"
+            className="h-9 w-full min-w-0 rounded-md border border-border-strong bg-background px-2 text-foreground pointer-coarse:h-11"
           >
             {ROLES.map((r) => (
               <option key={r.value} value={r.value}>
