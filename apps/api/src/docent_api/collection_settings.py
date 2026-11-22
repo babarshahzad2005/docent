@@ -117,20 +117,27 @@ def delete_collection(
 def require_owner(conn: Connection[DictRow], user_id: UUID, collection_id: UUID) -> None:
     """Lock the Collection, and check the User owns it and it may change or be shared: the
     Personal Collection is always private (PRD decision log), and the Demo Collection has no
-    Owner."""
-    row = conn.execute(
+    Owner.
+
+    The Role is read after the lock, in a statement of its own: one that waited for the lock
+    would otherwise see the Role from before, and a second, racing transfer (two tabs) would
+    leave two Owners.
+    """
+    collection = conn.execute(
         """
-        select c.personal_owner_id is not null as is_personal, c.is_demo, m.role
-        from app.collections c
-        join app.memberships m on m.collection_id = c.id and m.user_id = %(user_id)s
-        where c.id = %(id)s
-        for update of c
+        select personal_owner_id is not null as is_personal, is_demo
+        from app.collections where id = %s
+        for update
         """,
-        {"id": collection_id, "user_id": user_id},
+        (collection_id,),
     ).fetchone()
-    if row is None:
+    member = conn.execute(
+        "select role from app.memberships where collection_id = %s and user_id = %s",
+        (collection_id, user_id),
+    ).fetchone()
+    if collection is None or member is None:
         raise CollectionNotFound(collection_id)
-    if row["role"] != "owner":
+    if member["role"] != "owner":
         raise NotOwner(collection_id)
-    if row["is_personal"] or row["is_demo"]:
+    if collection["is_personal"] or collection["is_demo"]:
         raise FixedCollection(collection_id)

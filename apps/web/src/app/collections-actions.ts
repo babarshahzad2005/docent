@@ -118,3 +118,70 @@ export async function acceptInvite(
   if (response.status === 403) return { ok: false, message, wrongAccount: true };
   return { ok: false, message };
 }
+
+export type MemberSummary = components["schemas"]["MemberSummary"];
+/** The Roles an Owner can give: ownership moves only by transfer. */
+export type MemberRole = components["schemas"]["RoleChange"]["role"];
+
+/** Everyone with access to a Collection, Owner first (any Member). */
+export async function listMembers(collectionId: string): Promise<Result<MemberSummary[]>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { data, error, response } = await caller.api.GET("/collections/{collection_id}/members", {
+    headers: caller.headers,
+    params: { path: { collection_id: collectionId } },
+  });
+  if (data) return { ok: true, value: data };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
+}
+
+/** Make a Member an Editor or a Viewer (the Owner). */
+export async function changeRole(
+  collectionId: string,
+  memberId: string,
+  role: MemberRole,
+): Promise<Result<null>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { error, response } = await caller.api.PATCH(
+    "/collections/{collection_id}/members/{member_id}",
+    {
+      headers: caller.headers,
+      params: { path: { collection_id: collectionId, member_id: memberId } },
+      body: { role },
+    },
+  );
+  if (response.ok) return { ok: true, value: null };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
+}
+
+/** Remove a Member (the Owner), or leave: pass the User's own id. */
+export async function removeMember(collectionId: string, memberId: string): Promise<Result<null>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { error, response } = await caller.api.DELETE(
+    "/collections/{collection_id}/members/{member_id}",
+    {
+      headers: caller.headers,
+      params: { path: { collection_id: collectionId, member_id: memberId } },
+    },
+  );
+  if (response.ok) return { ok: true, value: null };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
+}
+
+/** Make another Member the Owner; the User stays, as an Editor. */
+export async function transferOwnership(
+  collectionId: string,
+  memberId: string,
+): Promise<Result<null>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { error, response } = await caller.api.POST("/collections/{collection_id}/owner", {
+    headers: caller.headers,
+    params: { path: { collection_id: collectionId } },
+    body: { user_id: memberId },
+  });
+  if (response.ok) return { ok: true, value: null };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
+}

@@ -539,6 +539,7 @@ export function LibraryDocuments({
               You can ask about these documents.
             </p>
           )}
+          {settings && <div className="-ml-2">{settings}</div>}
         </div>
         {progress}
         {documents.length === 0 && (

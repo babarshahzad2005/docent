@@ -61,6 +61,17 @@ from docent_api.invites import (
     revoke_invite,
 )
 from docent_api.library import CollectionSummary, ensure_user, list_collections
+from docent_api.members import (
+    MemberRole,
+    MemberSummary,
+    NotAMember,
+    NotShared,
+    OwnerCantLeave,
+    change_role,
+    list_members,
+    remove_member,
+    transfer_ownership,
+)
 from docent_api.providers.registry import answer_generator, embedder
 from docent_api.retrieval import PassageNotFound, passage_in_context
 from docent_api.scheduler import is_valid_trigger
@@ -416,6 +427,117 @@ def accept(invite_id: UUID, user: User, conn: Db) -> CollectionSummary:
     if joined is None:  # removed again in the moment since
         raise HTTPException(status.HTTP_404_NOT_FOUND, _INVITE_GONE)
     return joined
+
+
+class RoleChange(BaseModel):
+    role: MemberRole
+
+
+class NewOwner(BaseModel):
+    user_id: UUID
+
+
+_NOT_A_MEMBER = "That person doesn\u2019t have access to this collection any more. Reload the page."
+_NOT_SHARED = "Your Personal Collection and the Demo Collection have no members to manage."
+_OWNER_CANT_LEAVE = (
+    "You own this collection. Make someone else the owner first, or delete the collection."
+)
+
+
+@app.get(
+    "/collections/{collection_id}/members",
+    operation_id="listMembers",
+    tags=["sharing"],
+    responses={
+        404: {"description": "No such Collection, or not a Member"},
+        409: {"description": "The Personal or Demo Collection"},
+    },
+)
+def members(collection_id: UUID, user: User, conn: Db) -> list[MemberSummary]:
+    """Everyone with access to the Collection and their Roles, Owner first (any Member)."""
+    try:
+        return list_members(conn, user.id, collection_id)
+    except CollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotShared:
+        raise HTTPException(status.HTTP_409_CONFLICT, _NOT_SHARED) from None
+
+
+@app.patch(
+    "/collections/{collection_id}/members/{member_id}",
+    operation_id="changeRole",
+    tags=["sharing"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"description": "Only the Owner changes Roles"},
+        404: {"description": "No such Collection or Member"},
+    },
+)
+def role(collection_id: UUID, member_id: UUID, body: RoleChange, user: User, conn: Db) -> None:
+    """Make a Member an Editor or a Viewer (the Owner)."""
+    try:
+        change_role(conn, user.id, collection_id, member_id, body.role)
+    except CollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotOwner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(status.HTTP_409_CONFLICT, _NOT_SHARED) from None
+    except NotAMember:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_A_MEMBER) from None
+
+
+@app.delete(
+    "/collections/{collection_id}/members/{member_id}",
+    operation_id="removeMember",
+    tags=["sharing"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"description": "Only the Owner removes others"},
+        404: {"description": "No such Collection or Member"},
+        409: {"description": "The Owner can't leave; or the Personal or Demo Collection"},
+    },
+)
+def remove(collection_id: UUID, member_id: UUID, user: User, conn: Db) -> None:
+    """Remove a Member (the Owner), or leave: pass your own id (anyone but the Owner)."""
+    try:
+        remove_member(conn, user.id, collection_id, member_id)
+    except CollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotOwner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(status.HTTP_409_CONFLICT, _NOT_SHARED) from None
+    except NotAMember:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_A_MEMBER) from None
+    except OwnerCantLeave:
+        raise HTTPException(status.HTTP_409_CONFLICT, _OWNER_CANT_LEAVE) from None
+    except NotShared:
+        raise HTTPException(status.HTTP_409_CONFLICT, _NOT_SHARED) from None
+
+
+@app.post(
+    "/collections/{collection_id}/owner",
+    operation_id="transferOwnership",
+    tags=["sharing"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"description": "Only the Owner transfers ownership"},
+        404: {"description": "No such Collection or Member"},
+    },
+)
+def transfer(collection_id: UUID, body: NewOwner, user: User, conn: Db) -> None:
+    """Make another Member the Owner; you stay, as an Editor."""
+    try:
+        transfer_ownership(conn, user.id, collection_id, body.user_id)
+    except CollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotOwner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(status.HTTP_409_CONFLICT, _NOT_SHARED) from None
+    except NotAMember:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_A_MEMBER) from None
 
 
 @app.get("/documents", operation_id="listDocuments", tags=["documents"])
