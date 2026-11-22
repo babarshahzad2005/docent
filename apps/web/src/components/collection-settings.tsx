@@ -8,6 +8,7 @@ import {
   createCollection,
   deleteCollection,
   type InviteSummary,
+  type MemberSummary,
   renameCollection,
 } from "@/app/collections-actions";
 import {
@@ -19,6 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { MembersList } from "@/components/members-list";
 import { SharePanel } from "@/components/share-panel";
 import { Button } from "@/components/ui/button";
 
@@ -73,12 +75,15 @@ export function CollectionSettings({
   collection,
   documentCount,
   invites,
+  members,
 }: {
   collection: { id: string; name: string };
   /** How many Documents deleting it removes, said in the confirmation. */
   documentCount: number;
   /** Invites still waiting, shown when sharing opens. */
   invites: InviteSummary[];
+  /** Everyone with access, shown when sharing opens. */
+  members: MemberSummary[];
 }) {
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
@@ -150,7 +155,18 @@ export function CollectionSettings({
       </div>
       {/* Hidden, not unmounted, when closed: its invites survive closing and opening it. */}
       <div id={panelId} hidden={!sharing}>
-        <SharePanel collectionId={collection.id} initialInvites={invites} />
+        <div className="flex flex-col gap-4">
+          <SharePanel collectionId={collection.id} initialInvites={invites} />
+          {members.length > 1 && (
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <MembersList
+                collection={collection}
+                initialMembers={members}
+                isOwner
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

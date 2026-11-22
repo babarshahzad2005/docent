@@ -42,6 +42,7 @@ Solid arrows: main path. Dotted: edge paths and the follow-up loop.
 - Personal Collection is never shared; Demo Collection has no Owner
 - Role change or revoke takes effect on next query (permissions live in retrieval SQL)
 - Pending invites: copy link again, cancel
+- People with access: every Member sees the list (not for the Demo Collection, whose Members are every User); the Owner changes Roles, removes Members, and transfers ownership (the old Owner stays as an Editor); anyone else can leave; the Owner can't leave without transferring first
 
 ## Publish
 

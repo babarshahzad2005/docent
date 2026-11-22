@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 
-import { listInvites } from "@/app/collections-actions";
+import { listInvites, listMembers } from "@/app/collections-actions";
 import { listDocuments } from "@/app/documents-actions";
 import { AppShell } from "@/components/app-shell";
 import { CollectionSettings } from "@/components/collection-settings";
 import { LibraryDocuments } from "@/components/library-documents";
 import { LibraryHome } from "@/components/library-home";
+import { MemberSettings } from "@/components/members-list";
 import { getMe } from "@/lib/me";
 
 export const metadata: Metadata = { title: "Collection · Docent" };
@@ -32,12 +33,16 @@ async function Collection({ params }: { params: Promise<{ id: string }> }) {
   if (!collection) notFound();
   if (collection.is_personal) redirect("/");
   const owned = collection.role === "owner" && !collection.is_demo;
-  const [documents, invites] = await Promise.all([
+  const [documents, invites, members] = await Promise.all([
     listDocuments(),
     owned ? listInvites(collection.id) : null,
+    // The Demo Collection's Members are every User: it has no list to show.
+    collection.is_demo ? null : listMembers(collection.id),
   ]);
   if (!documents.ok) throw new Error(documents.message);
   if (invites && !invites.ok) throw new Error(invites.message);
+  if (members && !members.ok) throw new Error(members.message);
+  const people = members?.ok ? members.value : [];
 
   return (
     <LibraryHome
@@ -49,15 +54,18 @@ async function Collection({ params }: { params: Promise<{ id: string }> }) {
         collection={collection}
         initialDocuments={documents.value}
         settings={
-          owned && (
+          owned ? (
             <CollectionSettings
               collection={collection}
               invites={invites?.ok ? invites.value : []}
+              members={people}
               documentCount={
                 documents.value.filter((document) => document.collection_id === collection.id)
                   .length
               }
             />
+          ) : (
+            !collection.is_demo && <MemberSettings collection={collection} members={people} />
           )
         }
       />
