@@ -113,8 +113,8 @@ export function CollectionSettings({
     );
   }
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-1">
+    <div className="flex w-full flex-col gap-3">
+      <div data-settings-row className="flex flex-wrap items-center gap-1">
         <Button
           variant="ghost"
           size="sm"

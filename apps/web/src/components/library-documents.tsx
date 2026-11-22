@@ -587,7 +587,10 @@ export function LibraryDocuments({
           to get started. You can choose several at once, or drop them here.
         </p>
         <div className="mt-2">{picker}</div>
-        {settings}
+        {/* Full width, so sharing has room; its buttons centred like the rest. */}
+        {settings && (
+          <div className="w-full [&_[data-settings-row]]:justify-center">{settings}</div>
+        )}
         {demoHref && (
           <p className="text-muted-foreground text-pretty">
             Or try Docent first with the{" "}
