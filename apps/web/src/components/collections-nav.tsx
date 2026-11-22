@@ -1,3 +1,4 @@
+import { NewCollection } from "@/components/collection-settings";
 import { NavLink } from "@/components/nav-link";
 import { getMe } from "@/lib/me";
 
@@ -18,6 +19,7 @@ export async function CollectionsNav() {
           </li>
         ))}
       </ul>
+      <NewCollection />
     </section>
   );
 }

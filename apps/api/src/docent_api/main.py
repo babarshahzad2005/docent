@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection
+from psycopg.errors import ForeignKeyViolation
 from psycopg.rows import DictRow
 from pydantic import BaseModel, Field, field_validator
 
@@ -22,6 +23,15 @@ from docent_api.answers import (
     to_sse,
 )
 from docent_api.auth import AuthUser, current_user
+from docent_api.collection_settings import (
+    BadName,
+    CollectionNotFound,
+    FixedCollection,
+    NotOwner,
+    create_collection,
+    delete_collection,
+    rename_collection,
+)
 from docent_api.db import get_connection
 from docent_api.documents import (
     DocumentNotFound,
@@ -210,6 +220,82 @@ def me(user: User, conn: Db) -> Me:
     return Me(email=user.email, collections=list_collections(conn, user.id))
 
 
+class CollectionName(BaseModel):
+    name: str = Field(max_length=500)
+    """1 to 120 characters once spaces are tidied."""
+
+
+_COLLECTION_NOT_FOUND = (
+    "That collection doesn’t exist, or you no longer have access to it. Reload the page."
+)
+_FIXED = "Your Personal Collection and the Demo Collection can’t be renamed or deleted."
+_NOT_OWNER = "Only the collection’s owner can do that."
+
+
+@app.post(
+    "/collections",
+    operation_id="createCollection",
+    tags=["library"],
+    status_code=status.HTTP_201_CREATED,
+    responses={400: {"description": "The name is empty or too long"}},
+)
+def new_collection(body: CollectionName, user: User, conn: Db) -> CollectionSummary:
+    """Create an empty Collection, owned by the signed-in User."""
+    ensure_user(conn, user)
+    try:
+        return create_collection(conn, user.id, body.name)
+    except BadName as bad:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(bad)) from None
+
+
+@app.patch(
+    "/collections/{collection_id}",
+    operation_id="renameCollection",
+    tags=["library"],
+    responses={
+        400: {"description": "The name is empty or too long"},
+        403: {"description": "Only the Owner can rename it"},
+        404: {"description": "No such Collection, or not a Member"},
+        409: {"description": "The Personal or Demo Collection"},
+    },
+)
+def rename(collection_id: UUID, body: CollectionName, user: User, conn: Db) -> CollectionSummary:
+    """Rename a Collection (its Owner)."""
+    try:
+        return rename_collection(conn, user.id, collection_id, body.name)
+    except BadName as bad:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(bad)) from None
+    except CollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotOwner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(status.HTTP_409_CONFLICT, _FIXED) from None
+
+
+@app.delete(
+    "/collections/{collection_id}",
+    operation_id="deleteCollection",
+    tags=["library"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"description": "Only the Owner can delete it"},
+        409: {"description": "The Personal or Demo Collection"},
+    },
+)
+def remove_collection(collection_id: UUID, user: User, conn: Db, files: Files) -> None:
+    """Delete a Collection with all its Documents (its Owner). Repeating the call is harmless,
+    so a Collection that is gone, or never visible to the User, answers 204 like `delete`."""
+    try:
+        delete_collection(conn, files, user.id, collection_id)
+    except CollectionNotFound:
+        return  # already gone, or never visible to this User
+    except NotOwner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(status.HTTP_409_CONFLICT, _FIXED) from None
+
+
 @app.get("/documents", operation_id="listDocuments", tags=["documents"])
 def documents(user: User, conn: Db) -> list[DocumentSummary]:
     """Every Document in the signed-in User's Collections, newest first."""
@@ -248,6 +334,8 @@ def new_document(body: NewDocument, user: User, conn: Db, files: Files) -> Start
         raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_EDIT) from None
     except DocumentNotFound:  # the Document to replace
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That document doesn’t exist.") from None
+    except ForeignKeyViolation:  # its Collection was deleted while the upload started
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
     except StorageError:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,

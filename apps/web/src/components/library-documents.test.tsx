@@ -19,7 +19,13 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: vi.fn() }));
 
 import { LibraryDocuments } from "./library-documents";
 
-const PERSONAL = { id: "c1", name: "Personal", role: "owner" as const, is_demo: false };
+const PERSONAL = {
+  id: "c1",
+  name: "Personal",
+  role: "owner" as const,
+  is_demo: false,
+  is_personal: true,
+};
 
 function aDocument(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
   return {
@@ -280,6 +286,29 @@ describe("Many Documents at once", () => {
   });
 });
 
+describe("A Collection besides the Personal one", () => {
+  const TEAM = { ...PERSONAL, id: "c2", name: "Team handbook", is_personal: false };
+
+  it("is headed by its name, with the Owner's settings beside it", () => {
+    render(
+      <LibraryDocuments
+        collection={TEAM}
+        initialDocuments={[aDocument({ collection_id: "c2" })]}
+        settings={<button type="button">Rename</button>}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { level: 1, name: "Team handbook" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeTruthy();
+  });
+
+  it("says it is empty by name", () => {
+    render(<LibraryDocuments collection={TEAM} initialDocuments={[]} />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Team handbook is empty" })).toBeTruthy();
+  });
+});
+
 describe("The Effective Date", () => {
   it("isn't shown for a failed Document, nor its size: the file is gone", () => {
     const failed = aDocument({ status: "failed", size_bytes: 0, failure_reason: "This PDF is scanned." });
@@ -425,7 +454,7 @@ describe("Deleting a Document", () => {
 });
 
 describe("the Demo Collection", () => {
-  const DEMO = { id: "demo", name: "Demo Collection", role: "viewer" as const, is_demo: true };
+  const DEMO = { ...PERSONAL, id: "demo", name: "Demo Collection", role: "viewer" as const, is_demo: true, is_personal: false };
 
   it("shows only its own documents, each credited with a link to its source", () => {
     render(
