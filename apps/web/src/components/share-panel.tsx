@@ -69,7 +69,7 @@ export function SharePanel({
   return (
     <section
       aria-labelledby={headingId}
-      className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4"
+      className="flex w-full flex-col gap-4 self-stretch rounded-lg border border-border bg-surface p-4 text-left"
     >
       <div className="flex flex-col gap-1">
         <h2 id={headingId} className="font-sans text-ui font-semibold">
