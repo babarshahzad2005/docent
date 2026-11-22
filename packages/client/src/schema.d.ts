@@ -245,6 +245,26 @@ export interface paths {
         patch: operations["updateDocument"];
         trace?: never;
     };
+    "/documents/{document_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move
+         * @description Move a Document, with its passages, to another Collection (Owner or Editor of both).
+         */
+        post: operations["moveDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/documents/{document_id}/retry": {
         parameters: {
             query?: never;
@@ -516,6 +536,14 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** Destination */
+        Destination: {
+            /**
+             * Collection Id
+             * Format: uuid
+             */
+            collection_id: string;
         };
         /** DocumentChanges */
         DocumentChanges: {
@@ -1510,6 +1538,62 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentSummary"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    moveDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Destination"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentSummary"];
+                };
+            };
+            /** @description Not an Owner or Editor of both Collections */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such Document or Collection, or not a Member */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not settled yet, or the destination has the same content */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

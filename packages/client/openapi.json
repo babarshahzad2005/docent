@@ -218,6 +218,20 @@
         "title": "ConversationSummary",
         "type": "object"
       },
+      "Destination": {
+        "properties": {
+          "collection_id": {
+            "format": "uuid",
+            "title": "Collection Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_id"
+        ],
+        "title": "Destination",
+        "type": "object"
+      },
       "DocumentChanges": {
         "properties": {
           "effective_date": {
@@ -1865,6 +1879,74 @@
           }
         ],
         "summary": "Update",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/documents/{document_id}/move": {
+      "post": {
+        "description": "Move a Document, with its passages, to another Collection (Owner or Editor of both).",
+        "operationId": "moveDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Destination"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Not an Owner or Editor of both Collections"
+          },
+          "404": {
+            "description": "No such Document or Collection, or not a Member"
+          },
+          "409": {
+            "description": "Not settled yet, or the destination has the same content"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move",
         "tags": [
           "documents"
         ]
