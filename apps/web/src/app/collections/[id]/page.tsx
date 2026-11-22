@@ -10,6 +10,7 @@ import { LibraryDocuments } from "@/components/library-documents";
 import { LibraryHome } from "@/components/library-home";
 import { MemberSettings } from "@/components/members-list";
 import { getMe } from "@/lib/me";
+import { moveTargets } from "@/lib/scope";
 
 export const metadata: Metadata = { title: "Collection · Docent" };
 
@@ -53,6 +54,7 @@ async function Collection({ params }: { params: Promise<{ id: string }> }) {
       <LibraryDocuments
         collection={collection}
         initialDocuments={documents.value}
+        moveTargets={moveTargets(me.collections, collection.id)}
         settings={
           owned ? (
             <CollectionSettings

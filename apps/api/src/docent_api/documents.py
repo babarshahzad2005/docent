@@ -341,6 +341,98 @@ def set_effective_date(
     return DocumentSummary.model_validate(row)
 
 
+class NotMovable(Exception):
+    """The Document can't move now; the message says why."""
+
+
+def move_document(
+    conn: Connection[DictRow], user_id: UUID, document_id: UUID, destination_id: UUID
+) -> DocumentSummary:
+    """Move a Document to another Collection, with its passages (GLOSSARY: Move).
+
+    Needs Editor or Owner in both. Its history comes with it: Citations point at its passages,
+    which keep their ids, so earlier answers still open them for whoever can read the new
+    Collection. Only a settled Document moves (Ready or Failed, no replacement under way), so
+    no ingestion step or swap is half done. The file stays where it is: its storage path is a
+    name, not a place in a Collection.
+
+    Locks the two Collections (KEY SHARE, by id), then the Document: the order deleting a
+    Collection takes (the Collection, then its Documents), so the two never deadlock.
+    """
+    with conn.transaction():
+        found = conn.execute(
+            "select collection_id from app.documents where id = %s and replaces_id is null",
+            (document_id,),
+        ).fetchone()
+        if found is None:
+            raise DocumentNotFound(document_id)
+        source_id = found["collection_id"]
+        if source_id == destination_id:
+            return DocumentSummary.model_validate(_editable(conn, user_id, document_id))
+        conn.execute(
+            "select 1 from app.collections where id = any(%s) order by id for key share",
+            ([source_id, destination_id],),
+        )
+        row = _editable(conn, user_id, document_id)
+        _require_editor(conn, user_id, destination_id)
+        demo = conn.execute(
+            "select bool_or(is_demo) as demo from app.collections where id = any(%s)",
+            ([source_id, destination_id],),
+        ).fetchone()
+        if demo and demo["demo"]:
+            raise NotAllowed(destination_id)
+        conn.execute("select 1 from app.documents where id = %s for update", (document_id,))
+        # Read again under the lock: a Move or ingestion step that got there first shows now.
+        state = conn.execute(
+            """
+            select collection_id, status, content_hash,
+                exists (select 1 from app.documents v where v.replaces_id = d.id) as replacing
+            from app.documents d where d.id = %s
+            """,
+            (document_id,),
+        ).fetchone()
+        if state is None:
+            raise DocumentNotFound(document_id)  # deleted meanwhile
+        if state["collection_id"] != source_id:
+            raise NotMovable(f"{row['name']} was just moved. Reload the page.")
+        if state["status"] not in ("indexed", "failed"):
+            raise NotMovable(f"{row['name']} is still being added. Move it once it shows Ready.")
+        if state["replacing"]:
+            raise NotMovable(
+                f"{row['name']} has a replacement on the way. Move it once that finishes, "
+                "or dismiss it."
+            )
+        if state["content_hash"] is not None and state["status"] != "failed":
+            twin = conn.execute(
+                """
+                select d.name, c.name as collection from app.documents d
+                join app.collections c on c.id = d.collection_id
+                where d.collection_id = %s and d.content_hash = %s and d.status <> 'failed'
+                  and d.replaces_id is null
+                limit 1
+                """,
+                (destination_id, state["content_hash"]),
+            ).fetchone()
+            if twin is not None:
+                raise DuplicateDocument(
+                    f"The {twin['collection']} collection already has this content, as "
+                    f"{twin['name']}. Use that one, or delete it there first."
+                )
+        conn.execute(
+            "update app.chunks set collection_id = %s where document_id = %s",
+            (destination_id, document_id),
+        )
+        moved = conn.execute(
+            f"""
+            update app.documents d set collection_id = %s, updated_at = now()
+            where d.id = %s
+            returning {_SUMMARY_COLUMNS}
+            """,
+            (destination_id, document_id),
+        ).fetchone()
+    return DocumentSummary.model_validate(moved)
+
+
 def delete_document(
     conn: Connection[DictRow], store: FileStore, user_id: UUID, document_id: UUID
 ) -> None:

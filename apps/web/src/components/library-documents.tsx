@@ -7,6 +7,7 @@ import { formatDate } from "@/lib/dates";
 
 import {
   deleteDocument,
+  moveDocument,
   type DocumentSummary,
   finishUpload,
   listDocuments,
@@ -74,6 +75,7 @@ export function LibraryDocuments({
   initialDocuments,
   demoHref,
   settings,
+  moveTargets = [],
 }: {
   collection: {
     id: string;
@@ -87,6 +89,8 @@ export function LibraryDocuments({
   demoHref?: string;
   /** The Owner's controls for the Collection itself (Rename, Delete), beside its name. */
   settings?: ReactNode;
+  /** Where its Documents can be Moved: the User's other Collections they can edit. */
+  moveTargets?: { id: string; name: string }[];
 }) {
   const personal = collection.is_personal;
   const [documents, setDocuments] = useState(() =>
@@ -713,6 +717,23 @@ export function LibraryDocuments({
               );
               setRefreshes((n) => n + 1);
             }}
+            moveTargets={
+              canEdit &&
+              (document.status === "indexed" || document.status === "failed") &&
+              !document.replacement
+                ? moveTargets
+                : []
+            }
+            onMove={async (destination) => {
+              const moved = await moveDocument(document.id, destination.id).catch(() => null);
+              if (!moved) {
+                return `${document.name} couldn’t be moved. Check your connection and try again.`;
+              }
+              if (!moved.ok) return moved.message;
+              setAnnouncement(`${document.name} was moved to ${destination.name}.`);
+              setDocuments((current) => current.filter((d) => d.id !== document.id));
+              return null;
+            }}
             onDate={async (date) => {
               try {
                 const changed = await setEffectiveDate(document.id, date);
@@ -774,6 +795,8 @@ function DocumentRow({
   onReplace,
   onCancelReplacement,
   onRetryReplacement,
+  moveTargets = [],
+  onMove,
 }: {
   document: DocumentSummary;
   canRetry: boolean;
@@ -793,6 +816,10 @@ function DocumentRow({
   onRetry: () => Promise<boolean>;
   /** Resolves to null once deleted, or to a message saying why it wasn't. */
   onDelete: () => Promise<string | null>;
+  /** Where it can be Moved now; empty hides Move (GLOSSARY: Move). */
+  moveTargets?: { id: string; name: string }[];
+  /** Resolves to null once moved, or to a message saying why it wasn't. */
+  onMove?: (destination: { id: string; name: string }) => Promise<string | null>;
 }) {
   const failed = document.status === "failed";
   const [retrying, setRetrying] = useState(false);
@@ -875,6 +902,14 @@ function DocumentRow({
                 onReplace(file);
                 requestAnimationFrame(() => row.current?.focus());
               }}
+            />
+          )}
+          {moveTargets.length > 0 && onMove && (
+            <MoveDocument
+              name={document.name}
+              targets={moveTargets}
+              afterMove={afterDelete}
+              onMove={onMove}
             />
           )}
           {canDelete && (
@@ -1136,6 +1171,96 @@ function EffectiveDate({
   );
 }
 
+
+/** Move to another Collection the User can edit, chosen in a dialog (GLOSSARY: Move). */
+function MoveDocument({
+  name,
+  targets,
+  afterMove,
+  onMove,
+}: {
+  name: string;
+  targets: { id: string; name: string }[];
+  /** Where focus goes once the Document (and so its row) has left this Collection. */
+  afterMove: React.RefObject<HTMLButtonElement | null>;
+  onMove: (destination: { id: string; name: string }) => Promise<string | null>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [moved, setMoved] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [choice, setChoice] = useState(targets[0]?.id ?? "");
+  const [problem, setProblem] = useState<string | null>(null);
+  const groupId = useId();
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (moving) return;
+        setOpen(next);
+        setProblem(null);
+      }}
+    >
+      <AlertDialogTrigger
+        render={<Button variant="ghost" size="sm" aria-label={`Move ${name}`} />}
+      >
+        Move
+      </AlertDialogTrigger>
+      <AlertDialogContent finalFocus={moved ? afterMove : undefined}>
+        <AlertDialogTitle>Move {name}</AlertDialogTitle>
+        <AlertDialogDescription>
+          It moves with everything Docent made from it. Earlier answers keep their sources,
+          for whoever can read the collection it moves to.
+        </AlertDialogDescription>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-meta text-muted-foreground">
+            Move to
+          </legend>
+          {targets.map((target) => (
+            <label
+              key={target.id}
+              className="flex items-center gap-2 rounded-md px-2 py-1 pointer-coarse:min-h-11"
+            >
+              <input
+                type="radio"
+                name={groupId}
+                value={target.id}
+                checked={choice === target.id}
+                onChange={() => setChoice(target.id)}
+              />
+              {target.name}
+            </label>
+          ))}
+        </fieldset>
+        {problem && (
+          <p role="alert" className="text-destructive">
+            {problem}
+          </p>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={moving}>Cancel</AlertDialogCancel>
+          <Button
+            disabled={moving || !choice}
+            onClick={async () => {
+              const destination = targets.find((t) => t.id === choice);
+              if (!destination) return;
+              setMoving(true);
+              const failure = await onMove(destination);
+              setMoving(false);
+              if (failure) {
+                setProblem(failure);
+              } else {
+                setMoved(true);
+                setOpen(false);
+              }
+            }}
+          >
+            {moving ? "Moving…" : "Move"}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 /** Delete, after a confirmation that names the Document. */
 function DeleteDocument({

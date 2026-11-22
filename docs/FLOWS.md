@@ -33,6 +33,7 @@ Solid arrows: main path. Dotted: edge paths and the follow-up loop.
 - Bad file fails alone; batch continues
 - Replace (from the Document, or when an upload's name matches one): chunk-hash diff, re-embed changed only; the Document answers as it is until the replacement is indexed, then they swap; one replacement at a time, identical content refused; a failed replacement shows why, with retry or dismiss; the Effective Date stays
 - Delete: confirm → chunks + vectors purged together; old citations show “source removed”
+- Move: to another Collection where the User is Owner or Editor (never the Demo); only Ready or Failed Documents with no replacement on the way; passages move with it, so retrieval follows at once and earlier citations open for whoever can read the new Collection; the same content already there is refused
 
 ## Share
 

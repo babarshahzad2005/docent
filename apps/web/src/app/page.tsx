@@ -5,7 +5,7 @@ import { listDocuments } from "@/app/documents-actions";
 import { AppShell } from "@/components/app-shell";
 import { LibraryDocuments } from "@/components/library-documents";
 import { LibraryHome } from "@/components/library-home";
-import { defaultScope } from "@/lib/scope";
+import { defaultScope, moveTargets } from "@/lib/scope";
 import { getMe } from "@/lib/me";
 
 export default function LibraryPage() {
@@ -46,6 +46,7 @@ async function Library() {
         collection={personal}
         initialDocuments={documents.value}
         demoHref={demo && `/collections/${demo.id}`}
+        moveTargets={moveTargets(me.collections, personal.id)}
       />
     </LibraryHome>
   );

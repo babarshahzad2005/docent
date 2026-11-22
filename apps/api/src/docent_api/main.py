@@ -39,11 +39,13 @@ from docent_api.documents import (
     DuplicateDocument,
     NotAllowed,
     NotAMemberOf,
+    NotMovable,
     NotRetryable,
     UploadRejected,
     delete_document,
     finish_upload,
     list_documents,
+    move_document,
     retry_document,
     set_effective_date,
     start_upload,
@@ -645,6 +647,41 @@ def update(document_id: UUID, changes: DocumentChanges, user: User, conn: Db) ->
         ) from None
     except NotAllowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_CHANGE) from None
+
+
+class Destination(BaseModel):
+    collection_id: UUID
+    """The Collection to move the Document to."""
+
+
+@app.post(
+    "/documents/{document_id}/move",
+    operation_id="moveDocument",
+    tags=["documents"],
+    responses={
+        403: {"description": "Not an Owner or Editor of both Collections"},
+        404: {"description": "No such Document or Collection, or not a Member"},
+        409: {"description": "Not settled yet, or the destination has the same content"},
+    },
+)
+def move(document_id: UUID, body: Destination, user: User, conn: Db) -> DocumentSummary:
+    """Move a Document, with its passages, to another Collection (Owner or Editor of both)."""
+    try:
+        return move_document(conn, user.id, document_id, body.collection_id)
+    except DocumentNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_FOUND) from None
+    except NotAMemberOf:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotAllowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _CANT_MOVE) from None
+    except (NotMovable, DuplicateDocument) as refused:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(refused)) from None
+
+
+_CANT_MOVE = (
+    "You can move documents only between collections where you\u2019re an owner or editor, "
+    "and never into or out of the Demo Collection."
+)
 
 
 @app.post("/documents/{document_id}/retry", operation_id="retryDocument", tags=["documents"])

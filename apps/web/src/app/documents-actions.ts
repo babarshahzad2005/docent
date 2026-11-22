@@ -82,6 +82,22 @@ export async function deleteDocument(documentId: string): Promise<Result<null>> 
   return { ok: false, message: detail(error) ?? problem(response.status) };
 }
 
+/** Move a Document, with its passages, to another Collection (Owner or Editor of both). */
+export async function moveDocument(
+  documentId: string,
+  collectionId: string,
+): Promise<Result<DocumentSummary>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { data, error, response } = await caller.api.POST("/documents/{document_id}/move", {
+    headers: caller.headers,
+    params: { path: { document_id: documentId } },
+    body: { collection_id: collectionId },
+  });
+  if (data) return { ok: true, value: data };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
+}
+
 /** Set the date a Document's content applies from (Owners and Editors). */
 export async function setEffectiveDate(
   documentId: string,

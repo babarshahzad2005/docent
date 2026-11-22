@@ -318,8 +318,15 @@ def _replace(conn: Connection[DictRow], version_id: UUID, document_id: UUID) -> 
         """,
         (document_id,),
     )
+    # The new passages join the Document where it is now: it may have been Moved while the
+    # replacement was being indexed (documents.move_document).
     conn.execute(
-        "update app.chunks set document_id = %s where document_id = %s", (document_id, version_id)
+        """
+        update app.chunks c set document_id = d.id, collection_id = d.collection_id
+        from app.documents d
+        where d.id = %s and c.document_id = %s
+        """,
+        (document_id, version_id),
     )
     new = conn.execute(
         """

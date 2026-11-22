@@ -10,6 +10,7 @@ const actions = vi.hoisted(() => ({
   deleteDocument: vi.fn(),
   finishUpload: vi.fn(),
   listDocuments: vi.fn(),
+  moveDocument: vi.fn(),
   retryDocument: vi.fn(),
   setEffectiveDate: vi.fn(),
   startUpload: vi.fn(),
@@ -338,6 +339,72 @@ describe("A Collection besides the Personal one", () => {
     render(<LibraryDocuments collection={TEAM} initialDocuments={[]} />);
 
     expect(screen.getByRole("heading", { level: 1, name: "Team handbook is empty" })).toBeTruthy();
+  });
+});
+
+describe("Moving a Document", () => {
+  const TARGETS = [
+    { id: "c2", name: "Team handbook" },
+    { id: "c3", name: "Archive" },
+  ];
+
+  it("moves it to the chosen collection, and says so", async () => {
+    actions.moveDocument.mockResolvedValue({
+      ok: true,
+      value: aDocument({ collection_id: "c3" }),
+    });
+    render(
+      <LibraryDocuments
+        collection={PERSONAL}
+        initialDocuments={[aDocument()]}
+        moveTargets={TARGETS}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Move policy.pdf" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Archive" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    expect(actions.moveDocument).toHaveBeenCalledWith("d1", "c3");
+    expect(screen.queryByText("policy.pdf")).toBeNull();
+    expect(screen.getByText("policy.pdf was moved to Archive.")).toBeTruthy();
+  });
+
+  it("keeps the dialog open and says why when it can't move", async () => {
+    actions.moveDocument.mockResolvedValue({
+      ok: false,
+      message: "The Archive collection already has this content, as policy.pdf.",
+    });
+    render(
+      <LibraryDocuments
+        collection={PERSONAL}
+        initialDocuments={[aDocument()]}
+        moveTargets={TARGETS}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Move policy.pdf" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("already has");
+    expect(screen.getAllByText("policy.pdf").length).toBeGreaterThan(0);
+  });
+
+  it("isn't offered while a document is still being added, or with nowhere to go", () => {
+    render(
+      <LibraryDocuments
+        collection={PERSONAL}
+        initialDocuments={[aDocument({ status: "embedding" })]}
+        moveTargets={TARGETS}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Move policy.pdf" })).toBeNull();
+    cleanup();
+
+    render(<LibraryDocuments collection={PERSONAL} initialDocuments={[aDocument()]} />);
+    expect(screen.queryByRole("button", { name: "Move policy.pdf" })).toBeNull();
   });
 });
 
