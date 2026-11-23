@@ -57,8 +57,8 @@ export default function PrivacyPage() {
           <li>
             <strong>Counts for rate limits:</strong> to limit how often people can ask public
             collections, Docent counts each visitor&rsquo;s questions under a one-way, keyed
-            hash of their network address, never the address itself. The counts are deleted
-            after two days.
+            hash of their network address, never the address itself. Counts more than two days
+            old are deleted when the next question arrives.
           </li>
         </ul>
         <h2>Who processes it</h2>

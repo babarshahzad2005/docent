@@ -38,7 +38,11 @@ class Settings(BaseSettings):
     visitor_hash_key: str = ""
     # Sites whose pages may call the API from the browser: a Visitor's questions go straight
     # to it, so the limits count the Visitor's own address (limits.client_address).
-    web_origins: list[str] = ["https://docent-tan.vercel.app", "http://localhost:3000"]
+    # Comma-separated; and a pattern for the web app's preview deployments.
+    web_origins: str = "https://docent-tan.vercel.app,http://localhost:3000"
+    web_origin_pattern: str = (
+        r"https://docent-[a-z0-9-]+-babarshahzad2005-8329s-projects\.vercel\.app"
+    )
 
     @property
     def auth_issuer(self) -> str:

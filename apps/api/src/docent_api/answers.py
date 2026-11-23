@@ -32,6 +32,7 @@ from psycopg.types.json import Jsonb
 from docent_api.conflicts import INSTRUCTIONS as CONFLICT_INSTRUCTIONS
 from docent_api.conflicts import Version, as_records, notice, split_disagreements
 from docent_api.db import get_pool
+from docent_api.limits import check_visitor
 from docent_api.providers.base import (
     Embedder,
     Generator,
@@ -267,17 +268,22 @@ async def start_turn(
     return await asyncio.to_thread(_begin, user_id, question, conversation_id, scope)
 
 
-async def start_visitor_turn(collection_id: UUID, question: str) -> Turn:
+async def start_visitor_turn(collection_id: UUID, question: str, address: str) -> Turn:
     """A Visitor's question to a Public Collection (GLOSSARY: Visitor): nothing is saved but
     the Answer Log entry, and each question stands alone (there is no history to follow).
 
-    Raises PublicCollectionNotFound unless the Collection is public now. Retrieval checks
-    again as it reads, so a Collection turned private meanwhile gives no passages.
+    Raises PublicCollectionNotFound unless the Collection is public now, then RateLimited if
+    the Visitor at `address`, or all Visitors today, have asked enough (limits.py): only
+    questions to a public Collection count. Retrieval checks again as it reads, so a
+    Collection turned private meanwhile gives no passages. One short-lived connection, off
+    the event loop, so a long answer holds none.
     """
 
     def begin() -> Turn:
         with get_pool().connection() as conn:
             public_collection(conn, collection_id)
+            conn.commit()  # so the count below is its own transaction, committed at once
+            check_visitor(conn, address)
         return Turn(None, question, [collection_id], None, None, channel="public")
 
     return await asyncio.to_thread(begin)

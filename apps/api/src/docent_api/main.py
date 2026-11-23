@@ -66,7 +66,7 @@ from docent_api.invites import (
     revoke_invite,
 )
 from docent_api.library import CollectionSummary, ensure_user, list_collections
-from docent_api.limits import RateLimited, check_visitor, client_address
+from docent_api.limits import RateLimited, client_address
 from docent_api.members import (
     MemberRole,
     MemberSummary,
@@ -96,9 +96,11 @@ app = FastAPI(title="Docent API", version=__version__)
 # signed-in calls carry a bearer token the browser never sends by itself.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=get_settings().web_origins,
+    allow_origins=[o.strip() for o in get_settings().web_origins.split(",") if o.strip()],
+    allow_origin_regex=get_settings().web_origin_pattern or None,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
+    expose_headers=["Retry-After"],
 )
 
 User = Annotated[AuthUser, Depends(current_user)]
@@ -888,7 +890,7 @@ def public_info(collection_id: UUID, conn: Db) -> PublicCollection:
     },
 )
 async def ask_public(
-    collection_id: UUID, body: VisitorQuestion, request: Request, conn: Db
+    collection_id: UUID, body: VisitorQuestion, request: Request
 ) -> StreamingResponse:
     """Answer a Visitor's question from a Public Collection, streamed like `POST /answers`.
 
@@ -897,10 +899,7 @@ async def ask_public(
     is public count.
     """
     try:
-        public_collection(conn, collection_id)
-        conn.commit()  # so the count below commits at once, not when the request ends
-        check_visitor(conn, client_address(request))
-        turn = await start_visitor_turn(collection_id, body.question)
+        turn = await start_visitor_turn(collection_id, body.question, client_address(request))
     except PublicCollectionNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _UNAVAILABLE) from None
     except RateLimited as limited:

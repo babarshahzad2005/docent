@@ -155,7 +155,8 @@ def test_the_api_refuses_with_retry_after_and_only_counts_public_questions(
 
 def test_the_web_app_may_call_it_from_the_browser() -> None:
     client = TestClient(main.app)
-    origin = get_settings().web_origins[0]
+    origin = get_settings().web_origins.split(",")[0]
+    preview = "https://docent-git-feat-x-babarshahzad2005-8329s-projects.vercel.app"
 
     allowed = client.options(
         "/public/x/answers",
@@ -167,4 +168,9 @@ def test_the_web_app_may_call_it_from_the_browser() -> None:
     )
 
     assert allowed.headers.get("access-control-allow-origin") == origin
+    previewed = client.options(
+        "/public/x/answers",
+        headers={"Origin": preview, "Access-Control-Request-Method": "POST"},
+    )
+    assert previewed.headers.get("access-control-allow-origin") == preview
     assert "access-control-allow-origin" not in other.headers

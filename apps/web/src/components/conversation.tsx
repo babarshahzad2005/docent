@@ -131,7 +131,11 @@ export function Conversation({
         update((turn) => ({
           ...turn,
           status: "failed",
-          error: detail?.detail ?? "Docent couldn’t answer right now. Try again in a minute.",
+          // FastAPI's validation errors carry a list, not a message to show.
+          error:
+            typeof detail?.detail === "string"
+              ? detail.detail
+              : "Docent couldn’t answer right now. Try again in a minute.",
         }));
         return;
       }

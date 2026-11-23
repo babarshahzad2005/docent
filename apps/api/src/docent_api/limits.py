@@ -16,7 +16,6 @@ import hmac
 import ipaddress
 import os
 import secrets
-from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
 
@@ -32,12 +31,13 @@ Period = Literal["hour", "day"]
 _KEEP = "2 days"
 
 
-@dataclass
 class RateLimited(Exception):
     """Over a limit; `retry_after` seconds until its window ends."""
 
-    retry_after: int
-    message: str
+    def __init__(self, retry_after: int, message: str) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+        self.message = message
 
 
 def client_address(request: Request) -> str:
@@ -63,6 +63,9 @@ def _hash_key() -> bytes:
         return hmac.new(
             settings.supabase_secret_key.encode(), b"docent visitor address", hashlib.sha256
         ).digest()
+    if os.environ.get("VERCEL"):
+        # A key per instance would split each Visitor's count, quietly disabling the limits.
+        raise RuntimeError("Set VISITOR_HASH_KEY or SUPABASE_SECRET_KEY for rate limits.")
     return secrets.token_bytes(32)  # local development: fresh each run, which is fine
 
 
@@ -88,10 +91,15 @@ def count(conn: Connection[DictRow], bucket: str, period: Period) -> tuple[int, 
         on conflict (bucket, window_start) do update set hits = app.rate_limits.hits + 1
         returning hits,
             ceil(extract(epoch from
-                date_trunc(%(period)s, now(), 'UTC') + ('1 ' || %(period)s)::interval - now()
+                date_trunc(%(period)s, now(), 'UTC') + %(length)s::interval - now()
             ))::integer as retry_after
         """,
-        {"bucket": bucket, "period": period},
+        # Fixed lengths: a "day" in a time zone with summer time isn't always 24 hours.
+        {
+            "bucket": bucket,
+            "period": period,
+            "length": "1 hour" if period == "hour" else "24 hours",
+        },
     ).fetchone()
     assert row is not None
     return row["hits"], max(row["retry_after"], 1)
