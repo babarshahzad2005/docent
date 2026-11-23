@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { getPublicCollection } from "@/app/public-actions";
 import { VisitorConversation } from "@/components/visitor-conversation";
@@ -9,19 +10,30 @@ import { formatLocalDate } from "@/lib/dates";
 const LINK =
   "text-brand underline underline-offset-2 [@media(hover:hover)_and_(pointer:fine)]:hover:text-brand-strong";
 
-export async function generateMetadata({ params }: PageProps<"/public/[id]">): Promise<Metadata> {
-  const collection = await getPublicCollection((await params).id);
-  return {
-    title: collection ? `${collection.name} · Docent` : "Unavailable · Docent",
-    robots: { index: false }, // shared by link, not meant for search engines
-  };
-}
+export const metadata: Metadata = {
+  title: "Ask a collection · Docent",
+  robots: { index: false }, // shared by link, not meant for search engines
+};
 
 /**
  * A Public Collection's link (FLOWS › Publish): anyone can ask it without signing in, and
  * answers come only from its Documents. Off or expired, it says so.
  */
-export default async function PublicCollectionPage({ params }: PageProps<"/public/[id]">) {
+export default function PublicCollectionPage({ params }: PageProps<"/public/[id]">) {
+  return (
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-muted-foreground">
+          Opening the collection…
+        </p>
+      }
+    >
+      <PublicCollection params={params} />
+    </Suspense>
+  );
+}
+
+async function PublicCollection({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const collection = await getPublicCollection(id);
 
@@ -43,6 +55,7 @@ export default async function PublicCollectionPage({ params }: PageProps<"/publi
 
   return (
     <main className="flex min-h-dvh flex-col">
+      <title>{`${collection.name} · Docent`}</title>
       <VisitorConversation
         collectionId={collection.id}
         intro={
