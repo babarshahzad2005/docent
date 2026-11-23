@@ -73,8 +73,11 @@ export function Conversation({
   scope?: string[];
   /** The User's Collections, to choose the Scope from and name it. */
   collections?: CollectionChoice[];
-  /** A Visitor asking this Public Collection. */
-  visitor?: { collectionId: string };
+  /**
+   * A Visitor asking this Public Collection. Their browser asks the API at `apiUrl` itself,
+   * so its rate limits count the Visitor's own address (#94).
+   */
+  visitor?: { collectionId: string; apiUrl: string };
   /** Shown above the questions: a Public Collection's page heading. */
   intro?: ReactNode;
 }) {
@@ -112,7 +115,9 @@ export function Conversation({
     answerSoFar.current = "";
     try {
       const response = await fetch(
-        visitor ? `/api/public/${encodeURIComponent(visitor.collectionId)}/answers` : "/api/answers",
+        visitor
+          ? `${visitor.apiUrl}/public/${encodeURIComponent(visitor.collectionId)}/answers`
+          : "/api/answers",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

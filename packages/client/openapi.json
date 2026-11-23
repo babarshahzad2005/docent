@@ -2546,7 +2546,7 @@
     },
     "/public/{collection_id}/answers": {
       "post": {
-        "description": "Answer a Visitor's question from a Public Collection, streamed like `POST /answers`.\n\nNothing is saved but the Answer Log entry; each question stands alone.",
+        "description": "Answer a Visitor's question from a Public Collection, streamed like `POST /answers`.\n\nNothing is saved but the Answer Log entry; each question stands alone. Rate-limited per\nnetwork address and across all Visitors (limits.py); only questions to a Collection that\nis public count.",
         "operationId": "askPublicCollection",
         "parameters": [
           {
@@ -2589,6 +2589,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many questions; `Retry-After` says when to ask again"
           }
         },
         "summary": "Ask Public",

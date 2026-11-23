@@ -145,6 +145,7 @@ No fixed deadline; each milestone has a target duration to keep scope honest. Ea
 | Date | Decision | Why |
 |---|---|---|
 | 2026-11-23 | A Public Collection's link is `/public/{collection id}`. A Visitor's questions each stand alone (no follow-up rewriting), and only the Answer Log keeps them, marked as asked publicly | The id is unguessable, so no separate link secret is needed; with no saved Conversation there is no history to follow up from, and keeping one in the browser can wait for real demand |
+| 2026-11-23 | Visitors are limited to 20 questions an hour per network address (an IPv6 /64 counts as one) and 200 a day together, counted in Postgres under an HMAC of the address keyed by a server secret. A Visitor's browser asks the API directly, not through the web app | Keeps most of the free model quota for signed-in Users; Postgres avoids another service; a keyed hash can't be reversed by trying every address. Only a direct request lets the API see the Visitor's real address, which Vercel sets and the Visitor can't forge |
 | 2026-11-15 | Primary audience: small teams; site owners secondary | Collections, roles, and sharing serve teams; the widget serves site owners without extra core work |
 | 2026-11-15 | $0 budget, free tiers only | Personal project; provider interface keeps paid upgrades a config change |
 | 2026-11-15 | Hosted services only, no local models or containers | Development laptop has 2 cores and no GPU |

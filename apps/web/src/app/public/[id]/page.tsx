@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { getPublicCollection } from "@/app/public-actions";
 import { VisitorConversation } from "@/components/visitor-conversation";
 import { Wordmark } from "@/components/wordmark";
+import { apiBaseUrl } from "@/lib/api-status";
 import { formatLocalDate } from "@/lib/dates";
 
 const LINK =
@@ -58,6 +59,7 @@ async function PublicCollection({ params }: { params: Promise<{ id: string }> })
       <title>{`${collection.name} · Docent`}</title>
       <VisitorConversation
         collectionId={collection.id}
+        apiUrl={apiBaseUrl()}
         intro={
           <header className="flex flex-col gap-4">
             <Link href="/" aria-label="Docent home" className="-ml-2 self-start">

@@ -4,7 +4,10 @@ export type ApiStatus =
   | { kind: "connected"; version: string }
   | { kind: "unreachable"; reason: string };
 
-/** Server-side base URL of the API. Never exposed to the browser. */
+/**
+ * The API's base URL. Called from the server, except by a Visitor's browser asking a Public
+ * Collection, so the API counts the Visitor's own address against its rate limits (#94).
+ */
 export function apiBaseUrl(): string {
   return process.env.API_BASE_URL ?? "http://localhost:8000";
 }

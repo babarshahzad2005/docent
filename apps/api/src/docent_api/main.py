@@ -5,7 +5,8 @@ from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection
@@ -65,6 +66,7 @@ from docent_api.invites import (
     revoke_invite,
 )
 from docent_api.library import CollectionSummary, ensure_user, list_collections
+from docent_api.limits import RateLimited, check_visitor, client_address
 from docent_api.members import (
     MemberRole,
     MemberSummary,
@@ -86,9 +88,18 @@ from docent_api.public import (
 )
 from docent_api.retrieval import PassageNotFound, passage_in_context
 from docent_api.scheduler import is_valid_trigger
+from docent_api.settings import get_settings
 from docent_api.storage import FileStore, StorageError, get_file_store
 
 app = FastAPI(title="Docent API", version=__version__)
+# A Visitor's browser asks Public Collections directly (#94). Nothing here relies on cookies:
+# signed-in calls carry a bearer token the browser never sends by itself.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().web_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 User = Annotated[AuthUser, Depends(current_user)]
 Db = Annotated[Connection[DictRow], Depends(get_connection)]
@@ -873,17 +884,31 @@ def public_info(collection_id: UUID, conn: Db) -> PublicCollection:
     responses={
         200: {"content": {"text/event-stream": {}}, "description": _SSE_DESCRIPTION},
         404: {"description": "No such Collection, or it isn't public now"},
+        429: {"description": "Too many questions; `Retry-After` says when to ask again"},
     },
 )
-async def ask_public(collection_id: UUID, body: VisitorQuestion) -> StreamingResponse:
+async def ask_public(
+    collection_id: UUID, body: VisitorQuestion, request: Request, conn: Db
+) -> StreamingResponse:
     """Answer a Visitor's question from a Public Collection, streamed like `POST /answers`.
 
-    Nothing is saved but the Answer Log entry; each question stands alone.
+    Nothing is saved but the Answer Log entry; each question stands alone. Rate-limited per
+    network address and across all Visitors (limits.py); only questions to a Collection that
+    is public count.
     """
     try:
+        public_collection(conn, collection_id)
+        conn.commit()  # so the count below commits at once, not when the request ends
+        check_visitor(conn, client_address(request))
         turn = await start_visitor_turn(collection_id, body.question)
     except PublicCollectionNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _UNAVAILABLE) from None
+    except RateLimited as limited:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            limited.message,
+            headers={"Retry-After": str(limited.retry_after)},
+        ) from None
 
     async def events() -> AsyncIterator[str]:
         async for event in answer(turn, embedder(), answer_generator()):

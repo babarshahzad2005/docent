@@ -84,7 +84,11 @@ describe("A Visitor on a Public Collection's page", () => {
     });
     const path = window.location.pathname;
     const { container } = render(
-      <VisitorConversation collectionId="pub-1" intro={<h1>Staff handbook</h1>} />,
+      <VisitorConversation
+        collectionId="pub-1"
+        apiUrl="https://api.example"
+        intro={<h1>Staff handbook</h1>}
+      />,
     );
 
     await userEvent.type(screen.getByRole("textbox", { name: "Ask a question" }), "Leave?");
@@ -92,7 +96,7 @@ describe("A Visitor on a Public Collection's page", () => {
 
     const citation = await screen.findByRole("button", { name: "Source 1, leave.pdf, page 9" });
     const [url, init] = fetch.mock.calls[0];
-    expect(url).toBe("/api/public/pub-1/answers");
+    expect(url).toBe("https://api.example/public/pub-1/answers"); // straight to the API
     expect(JSON.parse(init.body)).toEqual({ question: "Leave?" });
     expect(window.location.pathname).toBe(path); // no Conversation to go to
     // The Collection's name is the page's heading; the question sits under it.
@@ -128,12 +132,28 @@ describe("A Visitor on a Public Collection's page", () => {
         ),
       ),
     );
-    render(<VisitorConversation collectionId="pub-1" intro={null} />);
+    render(<VisitorConversation collectionId="pub-1" apiUrl="https://api.example" intro={null} />);
 
     await userEvent.type(screen.getByRole("textbox", { name: "Ask a question" }), "Parking?");
     await userEvent.click(screen.getByRole("button", { name: "Ask" }));
 
     expect(await screen.findByText("The closest passages in its documents:")).toBeTruthy();
     expect(screen.queryByText(/your library/)).toBeNull();
+  });
+
+  it("says when to ask again after too many questions", async () => {
+    const wait = "You’ve asked a lot of questions in a short time. Try again in 12 minutes.";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({ detail: wait }, { status: 429, headers: { "Retry-After": "700" } }),
+      ),
+    );
+    render(<VisitorConversation collectionId="pub-1" apiUrl="https://api.example" intro={null} />);
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Ask a question" }), "Leave?");
+    await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(wait);
   });
 });

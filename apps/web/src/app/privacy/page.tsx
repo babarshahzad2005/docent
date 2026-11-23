@@ -54,6 +54,12 @@ export default function PrivacyPage() {
             collection&rsquo;s link can ask it without signing in. Their questions and answers go
             to the answer log, not linked to anyone, and are deleted after 90 days.
           </li>
+          <li>
+            <strong>Counts for rate limits:</strong> to limit how often people can ask public
+            collections, Docent counts each visitor&rsquo;s questions under a one-way, keyed
+            hash of their network address, never the address itself. The counts are deleted
+            after two days.
+          </li>
         </ul>
         <h2>Who processes it</h2>
         <p>
@@ -65,13 +71,6 @@ export default function PrivacyPage() {
           receive to improve their products, so{" "}
           <strong>don&rsquo;t upload confidential or personal documents.</strong>
         </p>
-        <h2>Coming later</h2>
-        <ul>
-          <li>
-            <strong>Rate limits for public collections:</strong> visitors&rsquo; network
-            addresses will be stored only as one-way hashes, to limit how often they can ask.
-          </li>
-        </ul>
         <h2>Deleting your data</h2>
         <p>
           Self-service deletion isn&rsquo;t available yet. Until it is, ask through the link below
