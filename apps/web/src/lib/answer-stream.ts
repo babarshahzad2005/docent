@@ -38,8 +38,9 @@ export type RemovedClaim = { text: string; reason: string; original: string };
 export type AnswerEvent =
   | {
       event: "start";
-      conversation_id: string;
-      message_id: string;
+      /** Null for a Visitor, whose answers aren't saved; message_id too. */
+      conversation_id: string | null;
+      message_id: string | null;
       sources: Source[];
       /** The Collections it is answered from, as recorded (only those the User can read). */
       scope?: string[];
@@ -47,7 +48,7 @@ export type AnswerEvent =
   | { event: "delta"; text: string }
   | {
       event: "done";
-      message_id: string;
+      message_id: string | null;
       outcome: Outcome;
       /** The passages the answer cites; for a Decline, the closest passages. */
       cited: number[];

@@ -3,7 +3,8 @@ cross-collection leaks").
 
 One world: Team A (Alice owns it; an Editor, a Viewer, and a Member removed since) and Team B
 (Bob's, holding a secret), plus a stranger. Every API endpoint is called as each kind of User,
-and each sees only what their Membership allows. A new endpoint without a place here fails
+and each sees only what their Membership allows; a Visitor, signed out, sees only a Collection
+while it is public (#93). A new endpoint without a place here fails
 `test_every_endpoint_is_covered`.
 """
 
@@ -20,6 +21,7 @@ from psycopg.rows import DictRow, dict_row
 from test_answers import LEAVE, QUOTES, MemoryStore, ScriptedModel, WordsEmbedder, sse_events
 
 from docent_api import main
+from docent_api.answers import DECLINE
 from docent_api.auth import AuthUser, current_user
 from docent_api.collection_settings import create_collection
 from docent_api.db import get_connection
@@ -74,6 +76,14 @@ COVERED = {
         "test_outsiders_change_nothing"
     ),
     ("POST", "/collections/{collection_id}/owner"): "test_outsiders_change_nothing",
+    ("PUT", "/collections/{collection_id}/public"): "test_outsiders_change_nothing",
+    ("GET", "/public/{collection_id}"): "test_visitors_see_a_collection_only_while_public",
+    ("POST", "/public/{collection_id}/answers"): (
+        "test_visitors_see_a_collection_only_while_public"
+    ),
+    ("GET", "/public/{collection_id}/passages/{chunk_id}"): (
+        "test_visitors_see_a_collection_only_while_public"
+    ),
 }
 
 MEMBERS = ("owner", "editor", "viewer")
@@ -320,7 +330,7 @@ def test_members_of_one_collection_cant_touch_another(
     def team_b() -> object:
         row = conn.execute(
             """
-            select c.name, d.collection_id, d.effective_date,
+            select c.name, c.public, d.collection_id, d.effective_date,
                 (select count(*) from app.memberships where collection_id = c.id)
             from app.collections c join app.documents d on d.collection_id = c.id
             where c.id = %s and d.id = %s
@@ -354,6 +364,7 @@ def test_members_of_one_collection_cant_touch_another(
             ("PATCH", f"/collections/{b}/members/{bob}", {"role": "viewer"}, 404),
             ("DELETE", f"/collections/{b}/members/{bob}", None, 404),
             ("POST", f"/collections/{b}/owner", {"user_id": str(bob)}, 404),
+            ("PUT", f"/collections/{b}/public", {"public": True}, 404),
         ]
         for method, path, body, expected in attempts:
             response = client.request(method, path, json=body)
@@ -411,7 +422,7 @@ def state(conn: Connection[DictRow], world: World) -> dict[str, object]:
         return None if row is None else tuple(row.values())
 
     snapshot = {
-        "collection": one("select name from app.collections where id = %s", world.team_a),
+        "collection": one("select name, public from app.collections where id = %s", world.team_a),
         "document": one(
             "select collection_id, effective_date, status from app.documents where id = %s",
             world.doc_a,
@@ -463,6 +474,7 @@ def test_outsiders_change_nothing(
             ("PATCH", f"/collections/{a}/members/{viewer}", {"role": "editor"}, {404}),
             ("DELETE", f"/collections/{a}/members/{viewer}", None, {404}),
             ("POST", f"/collections/{a}/owner", {"user_id": str(outsider.id)}, {404}),
+            ("PUT", f"/collections/{a}/public", {"public": True}, {404}),
         ]
         for method, path, body, allowed in attempts:
             response = client.request(method, path, json=body)
@@ -479,3 +491,104 @@ def test_outsiders_change_nothing(
         conn.commit()
 
     assert state(conn, world) == before
+
+
+def visitor_client(database_url: str) -> TestClient:
+    """Signed out: no User at all."""
+
+    def connection() -> Iterator[Connection[DictRow]]:
+        with psycopg.connect(database_url, row_factory=dict_row) as own:
+            yield own
+
+    main.app.dependency_overrides.clear()
+    main.app.dependency_overrides[get_connection] = connection
+    return TestClient(main.app)
+
+
+def visitor_can_reach(client: TestClient, world: World) -> dict[str, int]:
+    a = world.team_a
+    return {
+        "info": client.get(f"/public/{a}").status_code,
+        "ask": client.post(f"/public/{a}/answers", json={"question": "Leave?"}).status_code,
+        "passage": client.get(f"/public/{a}/passages/{world.chunk_a}").status_code,
+    }
+
+
+def test_visitors_see_a_collection_only_while_public(
+    database_url: str, conn: Connection[DictRow], world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    visitor = visitor_client(database_url)
+    closed = {"info": 404, "ask": 404, "passage": 404}
+    assert visitor_can_reach(visitor, world) == closed  # private: nothing at all
+
+    owner = client_for(database_url, world.users["owner"])
+    made = owner.put(f"/collections/{world.team_a}/public", json={"public": True})
+    assert made.status_code == 200 and made.json() == {"public": True, "public_until": None}
+    assert visitor_can_reach(visitor_client(database_url), world) == {
+        "info": 200,
+        "ask": 200,
+        "passage": 200,
+    }
+
+    # Asking it reads only its own passages, never Team B's, and saves no Conversation.
+    model = ScriptedModel(["Up to 10 days [1].", QUOTES])
+    monkeypatch.setattr(main, "answer_generator", lambda: model)
+    conversations = conn.execute("select count(*) as n from app.conversations").fetchone()
+    visitor = visitor_client(database_url)
+    response = visitor.post(
+        f"/public/{world.team_a}/answers",
+        json={"question": "How much leave carries over, and what is the code word?"},
+    )
+    events = sse_events(response.text)
+    sent = " ".join(model.prompts)
+    assert "PERIWINKLE" not in sent and "40 days" not in sent
+    start = next(data for name, data in events if name == "start")
+    assert isinstance(start, dict)
+    assert start["conversation_id"] is None and start["message_id"] is None
+    sources = {s["document_id"] for s in start["sources"]}
+    assert sources == {str(world.doc_a)}
+    assert conn.execute("select count(*) as n from app.conversations").fetchone() == conversations
+    log = conn.execute(
+        "select user_id, message_id, channel, scope from app.answer_logs "
+        "order by created_at desc limit 1"
+    ).fetchone()
+    assert log == {
+        "user_id": None,
+        "message_id": None,
+        "channel": "public",
+        "scope": [world.team_a],
+    }
+    conn.commit()
+
+    # A Decline speaks of the Collection's documents: a Visitor has none of their own.
+    monkeypatch.setattr(main, "answer_generator", lambda: ScriptedModel([DECLINE]))
+    declined = visitor.post(f"/public/{world.team_a}/answers", json={"question": "Parking?"})
+    done = next(data for name, data in sse_events(declined.text) if name == "done")
+    assert isinstance(done, dict)
+    assert done["outcome"] == "declined"
+    assert "this collection’s documents" in done["answer"]
+
+    # Team B stays closed, and Team A's link doesn't open Team B's passages.
+    assert visitor.get(f"/public/{world.team_b}").status_code == 404
+    b_answers = visitor.post(f"/public/{world.team_b}/answers", json={"question": "x"})
+    assert b_answers.status_code == 404
+    assert visitor.get(f"/public/{world.team_a}/passages/{world.chunk_b}").status_code == 404
+    assert retrieve(conn, None, [world.team_b], "board leave code word periwinkle", None) == []
+    conn.commit()
+
+    # Expired, it closes at once; so does turning it off.
+    conn.execute(
+        "update app.collections set public_until = now() - interval '1 second' where id = %s",
+        (world.team_a,),
+    )
+    conn.commit()
+    assert visitor_can_reach(visitor_client(database_url), world) == closed
+    assert retrieve(conn, None, [world.team_a], "leave carries over", None) == []
+    conn.commit()
+    owner = client_for(database_url, world.users["owner"])
+    again = owner.put(f"/collections/{world.team_a}/public", json={"public": True})
+    assert again.status_code == 200
+    owner = client_for(database_url, world.users["owner"])
+    off = owner.put(f"/collections/{world.team_a}/public", json={"public": False})
+    assert off.json() == {"public": False, "public_until": None}
+    assert visitor_can_reach(visitor_client(database_url), world) == closed

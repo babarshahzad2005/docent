@@ -1,11 +1,25 @@
 "use client";
 
 import { XIcon } from "lucide-react";
-import { type RefObject, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  type RefObject,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { getPassage, type PassageInContext } from "@/app/passages-actions";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+
+/** How a Citation's passage is loaded with the text around it. */
+export type PassageLoader = (chunkId: string) => ReturnType<typeof getPassage>;
+
+/** A signed-in User's passages by default; a Public Collection's page loads its own. */
+export const PassageLoaderContext = createContext<PassageLoader>(getPassage);
 
 /** What a Citation itself knows: shown at once, while the text around it loads. */
 export type CitedSource = {
@@ -147,11 +161,12 @@ function SourceBody({
   const heading = useRef<HTMLHeadingElement>(null);
   const mark = useRef<HTMLElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const load = useContext(PassageLoaderContext);
 
   useEffect(() => {
     if (!source.chunk_id) return;
     let current = true;
-    getPassage(source.chunk_id)
+    load(source.chunk_id)
       .then((result) => {
         if (!current) return;
         if (!result.ok) setContext({ state: "failed", message: result.message });
@@ -162,7 +177,7 @@ function SourceBody({
     return () => {
       current = false;
     };
-  }, [source.chunk_id]);
+  }, [source.chunk_id, load]);
 
   // Focus moves into the pane when it opens (the sheet does this itself).
   useEffect(() => {

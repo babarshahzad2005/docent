@@ -53,6 +53,9 @@ const FADE_MS = 150;
 /**
  * A Conversation: each question with its streamed answer, Citations, and the sources they
  * point to, then a box for the next question. Starts by asking `startQuestion` if given.
+ *
+ * For a `visitor` (signed out, on a Public Collection's page) nothing is saved, and each
+ * question stands alone: it asks that Collection only.
  */
 export function Conversation({
   conversationId: initialId,
@@ -60,6 +63,8 @@ export function Conversation({
   startQuestion,
   scope: initialScope,
   collections = [],
+  visitor,
+  intro,
 }: {
   conversationId: string | null;
   initialTurns: Turn[];
@@ -68,6 +73,10 @@ export function Conversation({
   scope?: string[];
   /** The User's Collections, to choose the Scope from and name it. */
   collections?: CollectionChoice[];
+  /** A Visitor asking this Public Collection. */
+  visitor?: { collectionId: string };
+  /** Shown above the questions: a Public Collection's page heading. */
+  intro?: ReactNode;
 }) {
   const [scope, setScope] = useState(() => usableScope(initialScope, collections));
   const [turns, setTurns] = useState(initialTurns);
@@ -90,16 +99,28 @@ export function Conversation({
     asking.current = true;
     setTurns((current) => [
       ...current,
-      { question, answer: "", sources: [], cited: [], status: "streaming", scope },
+      {
+        question,
+        answer: "",
+        sources: [],
+        cited: [],
+        status: "streaming",
+        scope: visitor ? undefined : scope,
+      },
     ]);
     setAnnouncement("");
     answerSoFar.current = "";
     try {
-      const response = await fetch("/api/answers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, conversation_id: conversationId.current, scope }),
-      });
+      const response = await fetch(
+        visitor ? `/api/public/${encodeURIComponent(visitor.collectionId)}/answers` : "/api/answers",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            visitor ? { question } : { question, conversation_id: conversationId.current, scope },
+          ),
+        },
+      );
       if (!response.ok || !response.body) {
         const detail = await response.json().catch(() => null);
         update((turn) => ({
@@ -111,7 +132,7 @@ export function Conversation({
       }
       for await (const event of readAnswerEvents(response.body)) {
         if (event.event === "start") {
-          if (conversationId.current === null) {
+          if (conversationId.current === null && event.conversation_id) {
             conversationId.current = event.conversation_id;
             // The Conversation now exists: give it its own address without reloading.
             // (Pushed, so Back returns to the Library.)
@@ -120,8 +141,8 @@ export function Conversation({
           update((turn) => ({
             ...turn,
             sources: event.sources,
-            messageId: event.message_id,
-            scope: event.scope ?? turn.scope,
+            messageId: event.message_id ?? undefined,
+            scope: visitor ? undefined : (event.scope ?? turn.scope),
           }));
         } else if (event.event === "delta") {
           answerSoFar.current += event.text;
@@ -197,6 +218,7 @@ export function Conversation({
   return (
     <div className="flex flex-1">
       <div className="mx-auto flex w-full max-w-[40rem] min-w-0 flex-1 flex-col gap-10 px-4 py-8">
+        {intro}
         {turns.map((turn, index) => (
           <TurnView
             key={index}
@@ -204,6 +226,7 @@ export function Conversation({
             first={index === 0}
             canRetry={!streaming}
             collections={collections}
+            visitor={Boolean(visitor)}
             onRetry={() => void ask(turn.question)}
             onOpenSource={(source, opener) => {
               openedBy.current = opener;
@@ -215,10 +238,16 @@ export function Conversation({
           {announcement}
         </p>
         <div className="sticky bottom-4 mt-auto flex flex-col gap-2 bg-background pt-2">
-          <ScopeChips collections={collections} value={scope} onChange={setScope} />
+          {!visitor && <ScopeChips collections={collections} value={scope} onChange={setScope} />}
           <AskBox
-            label="Ask a follow-up question"
-            placeholder="Ask a follow-up…"
+            label={
+              visitor
+                ? turns.length === 0
+                  ? "Ask a question"
+                  : "Ask another question"
+                : "Ask a follow-up question"
+            }
+            placeholder={visitor ? "Ask a question…" : "Ask a follow-up…"}
             disabled={streaming}
             onAsk={(question) => void ask(question)}
           />
@@ -234,6 +263,7 @@ function TurnView({
   first,
   canRetry,
   collections,
+  visitor,
   onRetry,
   onOpenSource,
 }: {
@@ -241,10 +271,14 @@ function TurnView({
   first: boolean;
   canRetry: boolean;
   collections: CollectionChoice[];
+  /** Asked by a Visitor: the documents are the Collection's, not theirs. */
+  visitor: boolean;
   onRetry: () => void;
   onOpenSource: (source: CitedSource, opener: HTMLElement) => void;
 }) {
-  const Heading = first ? "h1" : "h2";
+  // Under a Visitor's page heading (the Collection's name), every question is an h2.
+  const top = first && !visitor;
+  const Heading = top ? "h1" : "h2";
   const asked = turn.scope ? scopeNames(turn.scope, collections) : null;
   const closestId = useId();
   const available = new Set(turn.sources.map((source) => source.number));
@@ -338,7 +372,7 @@ function TurnView({
           <span aria-hidden="true" className="ml-0.5 inline-block h-[1em] w-0.5 translate-y-0.5 bg-foreground" />
         )}
       </div>
-      {turn.outcome === "no_documents" && (
+      {turn.outcome === "no_documents" && !visitor && (
         <p>
           <Link
             href="/"
@@ -352,7 +386,8 @@ function TurnView({
         <ConflictNotice
           versions={turn.conflict}
           chip={(n) => chip(n)}
-          level={first ? "h2" : "h3"}
+          level={top ? "h2" : "h3"}
+          visitor={visitor}
         />
       )}
       {turn.verified && turn.status !== "streaming" && (
@@ -372,7 +407,7 @@ function TurnView({
       {cited.length > 0 && turn.outcome === "declined" && (
         // DESIGN.md › Writing: a Decline is followed by the closest passages.
         <p id={closestId} className="text-meta text-text-secondary">
-          The closest passages in your documents:
+          {visitor ? "The closest passages in its documents:" : "The closest passages in your documents:"}
         </p>
       )}
       {cited.length > 0 && (
@@ -492,11 +527,13 @@ function ConflictNotice({
   versions,
   chip,
   level,
+  visitor = false,
 }: {
   versions: ConflictVersion[];
   chip: (n: number) => ReactNode;
   /** One below the question's heading. */
   level: "h2" | "h3";
+  visitor?: boolean;
 }) {
   const headingId = useId();
   const Heading = level;
@@ -512,7 +549,7 @@ function ConflictNotice({
     >
       <Heading id={headingId} className="flex items-center gap-2 font-sans text-ui font-semibold">
         <TriangleAlertIcon aria-hidden="true" className="size-4 shrink-0 text-warning-icon" />
-        Your documents disagree
+        {visitor ? "The documents disagree" : "Your documents disagree"}
       </Heading>
       <p className="text-meta text-text-secondary">
         {newestWins

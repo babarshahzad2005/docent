@@ -122,6 +122,7 @@ def owner_actions(team: Team) -> list[tuple[str, str, dict[str, object] | None]]
         ("PATCH", f"/collections/{team.id}/members/{viewer}", {"role": "editor"}),
         ("DELETE", f"/collections/{team.id}/members/{viewer}", None),
         ("POST", f"/collections/{team.id}/owner", {"user_id": str(viewer)}),
+        ("PUT", f"/collections/{team.id}/public", {"public": True}),
     ]
 
 

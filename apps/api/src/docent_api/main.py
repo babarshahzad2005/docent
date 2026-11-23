@@ -20,6 +20,7 @@ from docent_api.answers import (
     list_conversations,
     load_conversation,
     start_turn,
+    start_visitor_turn,
     to_sse,
 )
 from docent_api.auth import AuthUser, current_user
@@ -76,6 +77,13 @@ from docent_api.members import (
     transfer_ownership,
 )
 from docent_api.providers.registry import answer_generator, embedder
+from docent_api.public import (
+    PublicCollection,
+    PublicCollectionNotFound,
+    PublicState,
+    public_collection,
+    set_public,
+)
 from docent_api.retrieval import PassageNotFound, passage_in_context
 from docent_api.scheduler import is_valid_trigger
 from docent_api.storage import FileStore, StorageError, get_file_store
@@ -137,7 +145,7 @@ class StartedUpload(BaseModel):
     upload: UploadTarget
 
 
-class Question(BaseModel):
+class VisitorQuestion(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
 
     @field_validator("question")
@@ -148,6 +156,8 @@ class Question(BaseModel):
             raise ValueError("Ask a question.")
         return question
 
+
+class Question(VisitorQuestion):
     conversation_id: UUID | None = None
     """Continue this Conversation; a new one starts when omitted."""
     scope: list[UUID] | None = None
@@ -256,6 +266,12 @@ def me(user: User, conn: Db) -> Me:
     return Me(email=user.email, collections=list_collections(conn, user.id))
 
 
+class PublicSetting(BaseModel):
+    public: bool
+    expires_in_days: Literal[1, 7, 30] | None = None
+    """Stop being public after this many days; never, when omitted."""
+
+
 class CollectionName(BaseModel):
     name: str = Field(max_length=500)
     """1 to 120 characters once spaces are tidied."""
@@ -307,6 +323,30 @@ def rename(collection_id: UUID, body: CollectionName, user: User, conn: Db) -> C
         raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
     except FixedCollection:
         raise HTTPException(status.HTTP_409_CONFLICT, _FIXED) from None
+
+
+@app.put(
+    "/collections/{collection_id}/public",
+    operation_id="setCollectionPublic",
+    tags=["public"],
+    responses={
+        403: {"description": "Only the Owner can make it public"},
+        404: {"description": "No such Collection, or not a Member"},
+        409: {"description": "The Personal or Demo Collection"},
+    },
+)
+def make_public(collection_id: UUID, body: PublicSetting, user: User, conn: Db) -> PublicState:
+    """Let anyone with the link ask a Collection without signing in, or stop (its Owner)."""
+    try:
+        return set_public(conn, user.id, collection_id, body.public, body.expires_in_days)
+    except CollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotOwner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Your personal collection is always private."
+        ) from None
 
 
 @app.delete(
@@ -735,7 +775,8 @@ def _run_batch(conn: Connection[DictRow], files: FileStore) -> IngestionRun:
 _SSE_DESCRIPTION = """Server-sent events, in order:
 
 - `start`: `{conversation_id, message_id, sources: [{number, document_id, document_name,
-  heading_path, page}]}`, the passages the answer may cite, numbered as in `[n]`
+  heading_path, page}]}`, the passages the answer may cite, numbered as in `[n]`;
+  `conversation_id` and `message_id` are null for a Visitor, whose answers aren't saved
 - `delta`: `{text}`, the next piece of the answer
 - `done`: `{message_id, outcome: "answered" | "declined", cited: [n, ...]}`
 - `error`: `{message, partial}`, the answer stopped; `partial` if some text was sent
@@ -801,4 +842,72 @@ def passage(chunk_id: UUID, user: User, conn: Db) -> PassageOut:
     except PassageNotFound:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, "That passage isn\u2019t available any more."
+        ) from None
+
+
+# --- Public Collections: no sign-in (GLOSSARY: Visitor) --------------------------------------
+
+_UNAVAILABLE = "This collection isn’t available. Its owner may have stopped sharing it."
+
+
+@app.get(
+    "/public/{collection_id}",
+    operation_id="getPublicCollection",
+    tags=["public"],
+    responses={404: {"description": "No such Collection, or it isn't public now"}},
+)
+def public_info(collection_id: UUID, conn: Db) -> PublicCollection:
+    """A Public Collection's name, for a Visitor."""
+    try:
+        return public_collection(conn, collection_id)
+    except PublicCollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _UNAVAILABLE) from None
+
+
+@app.post(
+    "/public/{collection_id}/answers",
+    operation_id="askPublicCollection",
+    tags=["public"],
+    response_class=StreamingResponse,
+    responses={
+        200: {"content": {"text/event-stream": {}}, "description": _SSE_DESCRIPTION},
+        404: {"description": "No such Collection, or it isn't public now"},
+    },
+)
+async def ask_public(collection_id: UUID, body: VisitorQuestion) -> StreamingResponse:
+    """Answer a Visitor's question from a Public Collection, streamed like `POST /answers`.
+
+    Nothing is saved but the Answer Log entry; each question stands alone.
+    """
+    try:
+        turn = await start_visitor_turn(collection_id, body.question)
+    except PublicCollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _UNAVAILABLE) from None
+
+    async def events() -> AsyncIterator[str]:
+        async for event in answer(turn, embedder(), answer_generator()):
+            yield to_sse(event)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get(
+    "/public/{collection_id}/passages/{chunk_id}",
+    operation_id="getPublicPassage",
+    tags=["public"],
+    responses={404: {"description": "Not in this Collection, or it isn't public now"}},
+)
+def public_passage(collection_id: UUID, chunk_id: UUID, conn: Db) -> PassageOut:
+    """A passage of a Public Collection with its neighbours, for a Visitor's Citation."""
+    try:
+        return PassageOut.model_validate(
+            passage_in_context(conn, None, chunk_id, public_collection=collection_id)
+        )
+    except PassageNotFound:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "That passage isn’t available any more."
         ) from None

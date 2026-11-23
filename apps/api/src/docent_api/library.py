@@ -1,5 +1,6 @@
 """Users, Collections, and Memberships (see GLOSSARY.md)."""
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -14,12 +15,22 @@ Role = Literal["owner", "editor", "viewer"]
 PERSONAL_COLLECTION_NAME = "Personal"
 
 
+def public_now(alias: str) -> str:
+    """SQL: the Collection `alias` is public at this moment (GLOSSARY: Public Collection).
+    Checked as each query runs, so turning it off, or its expiry, applies at once."""
+    return f"({alias}.public and ({alias}.public_until is null or {alias}.public_until > now()))"
+
+
 class CollectionSummary(BaseModel):
     id: UUID
     name: str
     is_personal: bool
     is_demo: bool
     role: Role
+    public: bool = False
+    """Anyone with its link can ask it now, without signing in."""
+    public_until: datetime | None = None
+    """When it stops being public, if it has an expiry."""
 
 
 def ensure_user(conn: Connection[DictRow], user: AuthUser) -> None:
@@ -100,9 +111,11 @@ def ensure_user(conn: Connection[DictRow], user: AuthUser) -> None:
 
 def list_collections(conn: Connection[DictRow], user_id: UUID) -> list[CollectionSummary]:
     """Every Collection the User is a Member of, Personal Collection first."""
+    public = public_now("c")
     rows = conn.execute(
-        """
-        select c.id, c.name, c.personal_owner_id is not null as is_personal, c.is_demo, m.role
+        f"""
+        select c.id, c.name, c.personal_owner_id is not null as is_personal, c.is_demo, m.role,
+               {public} as public, case when {public} then c.public_until end as public_until
         from app.memberships m
         join app.collections c on c.id = m.collection_id
         where m.user_id = %(user_id)s

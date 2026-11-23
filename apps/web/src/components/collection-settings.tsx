@@ -21,6 +21,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { MembersList } from "@/components/members-list";
+import { PublicPanel } from "@/components/public-panel";
 import { SharePanel } from "@/components/share-panel";
 import { Button } from "@/components/ui/button";
 
@@ -77,7 +78,7 @@ export function CollectionSettings({
   invites,
   members,
 }: {
-  collection: { id: string; name: string };
+  collection: { id: string; name: string; public?: boolean; public_until?: string | null };
   /** How many Documents deleting it removes, said in the confirmation. */
   documentCount: number;
   /** Invites still waiting, shown when sharing opens. */
@@ -87,8 +88,8 @@ export function CollectionSettings({
 }) {
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
-  // Opens at once when invites are waiting, so the Owner sees them.
-  const [sharing, setSharing] = useState(invites.length > 0);
+  // Opens at once when invites are waiting, or it is public, so the Owner sees that.
+  const [sharing, setSharing] = useState(invites.length > 0 || Boolean(collection.public));
   const panelId = useId();
   const rename = useRef<HTMLButtonElement>(null);
 
@@ -157,6 +158,13 @@ export function CollectionSettings({
       <div id={panelId} hidden={!sharing}>
         <div className="flex flex-col gap-4">
           <SharePanel collectionId={collection.id} initialInvites={invites} />
+          <PublicPanel
+            collectionId={collection.id}
+            initial={{
+              public: collection.public ?? false,
+              public_until: collection.public_until ?? null,
+            }}
+          />
           {members.length > 0 && (
             <div className="rounded-lg border border-border bg-surface p-4">
               <MembersList

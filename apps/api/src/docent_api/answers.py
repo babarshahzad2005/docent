@@ -41,6 +41,7 @@ from docent_api.providers.base import (
     TextDelta,
     Usage,
 )
+from docent_api.public import public_collection
 from docent_api.retrieval import Passage, documents_state, readable_scope, retrieve
 from docent_api.rewriting import HISTORY_TURNS, EarlierTurn, standalone_question
 from docent_api.settings import get_settings
@@ -98,6 +99,19 @@ NOTHING_VERIFIED = (
     "Try asking in a different way."
 )
 
+# The fixed replies as a Visitor reads them: the Documents are the Collection's, not theirs.
+_VISITOR_WORDING = {
+    DECLINE: "I couldn’t find that in this collection’s documents.",
+    NO_DOCUMENTS: "This collection has no documents to search yet.",
+    STILL_PROCESSING: (
+        "This collection’s documents are still being prepared. Try again in a few minutes."
+    ),
+    NOTHING_VERIFIED: (
+        "Docent couldn’t check this answer against the documents, so it isn’t shown. "
+        "Try asking in a different way."
+    ),
+}
+
 # Models sometimes write a citation with CJK lenticular brackets (【11】); accept both.
 _CITATION = re.compile(r"[\[【](\d{1,2})(?:†[^\]】\n]{0,20})?[\]】]")  # also 【1†L1-L4】
 
@@ -119,8 +133,9 @@ class SourceInfo:
 
 @dataclass(frozen=True)
 class Started:
-    conversation_id: str
-    message_id: str
+    # Both None for a Visitor, whose questions and answers aren't saved.
+    conversation_id: str | None
+    message_id: str | None
     sources: list[SourceInfo]
     scope: list[str] = field(default_factory=list)  # the Collections it is answered from
     event: str = "start"
@@ -134,7 +149,7 @@ class Delta:
 
 @dataclass(frozen=True)
 class Completed:
-    message_id: str
+    message_id: str | None
     # "answered"; "declined" (the Documents don't contain the answer); "unverified" (nothing in
     # it could be checked); or "no_documents" (nothing in Scope to search).
     outcome: str
@@ -211,11 +226,11 @@ def cited_numbers(answer: str, available: int) -> list[int]:
 
 @dataclass
 class Turn:
-    user_id: UUID
+    user_id: UUID | None  # None: a Visitor asking a Public Collection
     question: str
     scope: list[UUID]
-    conversation_id: UUID
-    message_id: UUID
+    conversation_id: UUID | None  # None (and message_id too) when nothing is saved: a Visitor
+    message_id: UUID | None
     passages: list[Passage] = field(default_factory=list)
     prompt: str = ""
     answer: str = ""  # what the reader sees
@@ -226,6 +241,11 @@ class Turn:
     history: list[EarlierTurn] = field(default_factory=list)  # earlier turns, oldest first
     rewritten: str | None = None  # a follow-up, rewritten to stand on its own
     conflict: list[Version] | None = None  # when its Documents disagree
+    channel: str = "app"  # where it was asked, for the Answer Log: "app" or "public"
+
+    def says(self, text: str) -> str:
+        """One of the fixed replies, worded for whoever asked: a Visitor's aren't "yours"."""
+        return text if self.channel == "app" else _VISITOR_WORDING.get(text, text)
 
     @property
     def standalone(self) -> str:
@@ -241,6 +261,22 @@ async def start_turn(
     Raises ConversationNotFound for a Conversation that isn't the User's.
     """
     return await asyncio.to_thread(_begin, user_id, question, conversation_id, scope)
+
+
+async def start_visitor_turn(collection_id: UUID, question: str) -> Turn:
+    """A Visitor's question to a Public Collection (GLOSSARY: Visitor): nothing is saved but
+    the Answer Log entry, and each question stands alone (there is no history to follow).
+
+    Raises PublicCollectionNotFound unless the Collection is public now. Retrieval checks
+    again as it reads, so a Collection turned private meanwhile gives no passages.
+    """
+
+    def begin() -> Turn:
+        with get_pool().connection() as conn:
+            public_collection(conn, collection_id)
+        return Turn(None, question, [collection_id], None, None, channel="public")
+
+    return await asyncio.to_thread(begin)
 
 
 async def answer(
@@ -263,8 +299,8 @@ async def answer(
         turn.passages = await asyncio.to_thread(_retrieve, turn, vector)
         started = True
         yield Started(
-            conversation_id=str(turn.conversation_id),
-            message_id=str(turn.message_id),
+            conversation_id=_text(turn.conversation_id),
+            message_id=_text(turn.message_id),
             sources=[_source(number, p) for number, p in enumerate(turn.passages, start=1)],
             scope=[str(collection) for collection in turn.scope],
         )
@@ -273,10 +309,11 @@ async def answer(
         if not turn.passages or weak:
             # Declined before asking the model: nothing to read, or nothing close enough.
             if state != "indexed":
-                turn.answer = STILL_PROCESSING if state == "processing" else NO_DOCUMENTS
+                turn.answer = turn.says(STILL_PROCESSING if state == "processing" else NO_DOCUMENTS)
                 outcome, turn.decline_reason = "no_documents", "no_documents"
             else:
-                turn.answer, outcome, turn.decline_reason = DECLINE, "declined", "weak_retrieval"
+                turn.answer, outcome = turn.says(DECLINE), "declined"
+                turn.decline_reason = "weak_retrieval"
             status = "complete"
             yield Delta(turn.answer)
         else:
@@ -314,7 +351,7 @@ async def answer(
             else cited_numbers(turn.answer, len(turn.passages))
         )
         yield Completed(
-            message_id=str(turn.message_id),
+            message_id=_text(turn.message_id),
             outcome=outcome,
             cited=turn.cited,
             answer=turn.answer,
@@ -327,7 +364,7 @@ async def answer(
         logger.exception("answering message %s failed", turn.message_id)
         status = "failed"
         if not started:
-            yield Started(str(turn.conversation_id), str(turn.message_id), [])
+            yield Started(_text(turn.conversation_id), _text(turn.message_id), [])
         yield _failure(turn)
     finally:
         # Runs on success, on failure, and when the reader goes away mid-answer.
@@ -344,6 +381,10 @@ async def answer(
                 generator.name,
             )
         )
+
+
+def _text(value: UUID | None) -> str | None:
+    return None if value is None else str(value)
 
 
 def _weak_retrieval(question: str, passages: Sequence[Passage]) -> bool:
@@ -398,7 +439,7 @@ def _verify(turn: Turn) -> str:
     reply, disagreements = split_disagreements(normalize_citations(turn.raw))
     text, quotes = split_answer(reply)
     if is_decline(text):
-        turn.answer, turn.decline_reason = DECLINE, "model"
+        turn.answer, turn.decline_reason = turn.says(DECLINE), "model"
         return "declined"
     turn.verification = verify(text, quotes, [p.content for p in turn.passages])
     turn.answer = turn.verification.answer
@@ -407,7 +448,7 @@ def _verify(turn: Turn) -> str:
     )
     if not turn.verification.checked:
         # Nothing it says could be tied to a passage: say so rather than show it.
-        turn.answer = NOTHING_VERIFIED
+        turn.answer = turn.says(NOTHING_VERIFIED)
         return "unverified"
     return "answered"
 
@@ -523,37 +564,20 @@ def _finish(
     turn.answer = normalize_citations(turn.answer)
     with get_pool().connection() as conn:
         verification = turn.verification
-        conn.execute(
-            """
-            update app.messages
-            set content = %s, status = %s, outcome = %s, verified = %s, removed = %s,
-                conflict = %s
-            where id = %s
-            """,
-            (
-                turn.answer,
-                status,
-                outcome if status == "complete" else None,
-                verification is not None,
-                Jsonb([asdict(r) for r in verification.removed] if verification else []),
-                Jsonb(as_records(turn.conflict))
-                if turn.conflict and outcome == "answered"
-                else None,
-                turn.message_id,
-            ),
-        )
-        _save_citations(conn, turn)
+        if turn.message_id is not None:
+            _save_message(conn, turn, status, outcome)
         conn.execute(
             """
             insert into app.answer_logs
                 (message_id, user_id, question, scope, retrieved, prompt, answer, outcome,
                  model, model_version, fell_back_from, latency_ms, first_token_ms,
                  input_tokens, output_tokens, raw_answer, verification, decline_reason,
-                 rewritten_question, conflict)
+                 rewritten_question, conflict, channel)
             values (%(message_id)s, %(user_id)s, %(question)s, %(scope)s, %(retrieved)s,
                     %(prompt)s, %(answer)s, %(outcome)s, %(model)s, %(version)s,
                     %(fell_back_from)s, %(latency)s, %(first_token)s, %(input)s, %(output)s,
-                    %(raw)s, %(verification)s, %(decline_reason)s, %(rewritten)s, %(conflict)s)
+                    %(raw)s, %(verification)s, %(decline_reason)s, %(rewritten)s, %(conflict)s,
+                    %(channel)s)
             """,
             {
                 "message_id": turn.message_id,
@@ -579,8 +603,32 @@ def _finish(
                 "decline_reason": turn.decline_reason,
                 "rewritten": turn.rewritten,
                 "conflict": Jsonb(as_records(turn.conflict)) if turn.conflict else None,
+                "channel": turn.channel,
             },
         )
+
+
+def _save_message(conn: Connection[DictRow], turn: Turn, status: str, outcome: str) -> None:
+    """The answer, as its saved Message, with its Citations."""
+    verification = turn.verification
+    conn.execute(
+        """
+        update app.messages
+        set content = %s, status = %s, outcome = %s, verified = %s, removed = %s,
+            conflict = %s
+        where id = %s
+        """,
+        (
+            turn.answer,
+            status,
+            outcome if status == "complete" else None,
+            verification is not None,
+            Jsonb([asdict(r) for r in verification.removed] if verification else []),
+            Jsonb(as_records(turn.conflict)) if turn.conflict and outcome == "answered" else None,
+            turn.message_id,
+        ),
+    )
+    _save_citations(conn, turn)
 
 
 def _save_citations(conn: Connection[DictRow], turn: Turn) -> None:
