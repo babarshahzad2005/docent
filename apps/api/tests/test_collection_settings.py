@@ -136,7 +136,8 @@ def test_the_demo_collection_stays(
     row = conn.execute("select id from app.collections where is_demo").fetchone()
     if row is None:
         row = conn.execute(
-            "insert into app.collections (name, is_demo) values ('Demo Collection', true) "
+            "insert into app.collections (name, is_demo, public) "
+            "values ('Demo Collection', true, true) "
             "returning id"
         ).fetchone()
     assert row is not None

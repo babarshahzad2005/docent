@@ -22,7 +22,8 @@ export function PublicCollectionView({
 }) {
   return (
     <main className="flex min-h-dvh flex-col">
-      <title>{`${collection.name} · Docent`}</title>
+      {/* The demo's page has its own title ("Try the demo"). */}
+      {!demo && <title>{`${collection.name} · Docent`}</title>}
       <VisitorConversation
         collectionId={collection.id}
         apiUrl={apiBaseUrl()}

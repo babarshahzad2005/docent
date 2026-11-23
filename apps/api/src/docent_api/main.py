@@ -877,7 +877,7 @@ def public_demo(conn: Db) -> PublicCollection:
     try:
         return demo_collection(conn)
     except PublicCollectionNotFound:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, _UNAVAILABLE) from None
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The demo isn’t set up yet.") from None
 
 
 @app.get(

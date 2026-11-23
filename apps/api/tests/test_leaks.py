@@ -78,7 +78,7 @@ COVERED = {
     ("POST", "/collections/{collection_id}/owner"): "test_outsiders_change_nothing",
     ("PUT", "/collections/{collection_id}/public"): "test_outsiders_change_nothing",
     ("GET", "/public/{collection_id}"): "test_visitors_see_a_collection_only_while_public",
-    ("GET", "/public/demo"): "test_demo.py: test_anyone_can_try_the_demo",
+    ("GET", "/public/demo"): "test_anyone_can_try_the_demo",  # in test_demo.py
     ("POST", "/public/{collection_id}/answers"): (
         "test_visitors_see_a_collection_only_while_public"
     ),
