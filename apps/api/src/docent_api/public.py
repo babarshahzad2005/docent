@@ -64,6 +64,18 @@ def set_public(
     return PublicState.model_validate(row)
 
 
+def demo_collection(conn: Connection[DictRow]) -> PublicCollection:
+    """The Demo Collection, which is always public (migration 0019); PublicCollectionNotFound
+    before it is seeded."""
+    row = conn.execute(
+        f"select c.id, c.name, c.public_until from app.collections c "
+        f"where c.is_demo and {public_now('c')}"
+    ).fetchone()
+    if row is None:
+        raise PublicCollectionNotFound("demo")
+    return PublicCollection.model_validate(row)
+
+
 def public_collection(conn: Connection[DictRow], collection_id: UUID) -> PublicCollection:
     """The Collection, if it is public now; otherwise PublicCollectionNotFound."""
     row = conn.execute(

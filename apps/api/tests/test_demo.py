@@ -189,3 +189,45 @@ def test_new_users_can_ask_the_demo_collection_but_not_change_it(
         start_upload(conn, store, user.id, demo_id, "mine.md", 10)
     with pytest.raises(NotAllowed):
         delete_document(conn, store, user.id, one.id)
+
+
+def test_anyone_can_try_the_demo(conn: Connection[DictRow], database_url: str) -> None:
+    """Public from the start, for good: a Visitor finds and asks it without signing in (#95)."""
+    from collections.abc import Iterator
+
+    import psycopg
+    from fastapi.testclient import TestClient
+    from psycopg.errors import CheckViolation
+    from psycopg.rows import dict_row
+
+    from docent_api import main
+    from docent_api.collection_settings import NotOwner
+    from docent_api.db import get_connection
+    from docent_api.public import set_public
+
+    def connection() -> Iterator[Connection[DictRow]]:
+        with psycopg.connect(database_url, row_factory=dict_row) as own:
+            yield own
+
+    main.app.dependency_overrides[get_connection] = connection
+    try:
+        client = TestClient(main.app)
+        assert client.get("/public/demo").status_code == 404  # not seeded yet
+
+        demo_id = demo_collection(conn)
+        conn.commit()
+        found = client.get("/public/demo")
+        assert found.status_code == 200
+        assert found.json() == {"id": str(demo_id), "name": "Demo Collection", "public_until": None}
+        assert client.get(f"/public/{demo_id}").status_code == 200
+    finally:
+        main.app.dependency_overrides.clear()
+
+    # A Member can't turn it off (it has no Owner), and nor can any write.
+    user = make_user(conn, "viewer@example.com")
+    with pytest.raises(NotOwner):
+        set_public(conn, user.id, demo_id, False)
+    conn.rollback()
+    with pytest.raises(CheckViolation):
+        conn.execute("update app.collections set public = false where id = %s", (demo_id,))
+    conn.rollback()

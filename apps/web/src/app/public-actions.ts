@@ -17,6 +17,14 @@ export async function getPublicCollection(collectionId: string): Promise<PublicC
   throw new Error(`The collection couldn’t be loaded (${response.status}).`);
 }
 
+/** The Demo Collection, which anyone can ask; null before it is seeded. */
+export async function getDemoCollection(): Promise<PublicCollection | null> {
+  const { data, response } = await apiAsVisitor().GET("/public/demo");
+  if (data) return data;
+  if (response.status === 404) return null;
+  throw new Error(`The demo couldn’t be loaded (${response.status}).`);
+}
+
 /** A Public Collection's cited passage with the text around it, for a Visitor. */
 export async function getPublicPassage(
   collectionId: string,

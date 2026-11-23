@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { buttonVariants } from "@/components/ui/button";
 import { Wordmark } from "@/components/wordmark";
 
 import { SignInForm } from "./sign-in-form";
@@ -23,6 +24,12 @@ export default function SignInPage() {
           <Suspense fallback={null}>
             <SignInForm />
           </Suspense>
+        </div>
+        <div className="flex flex-col gap-2 border-t border-border px-2 pt-6">
+          <p className="text-muted-foreground">Not ready to sign in?</p>
+          <Link href="/demo" className={buttonVariants({ variant: "outline" })}>
+            Try the demo
+          </Link>
         </div>
         <p className="px-2 text-meta text-muted-foreground">
           What Docent stores and why is described in the{" "}

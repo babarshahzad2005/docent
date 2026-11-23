@@ -83,6 +83,7 @@ from docent_api.public import (
     PublicCollection,
     PublicCollectionNotFound,
     PublicState,
+    demo_collection,
     public_collection,
     set_public,
 )
@@ -862,6 +863,21 @@ def passage(chunk_id: UUID, user: User, conn: Db) -> PassageOut:
 # --- Public Collections: no sign-in (GLOSSARY: Visitor) --------------------------------------
 
 _UNAVAILABLE = "This collection isn’t available. Its owner may have stopped sharing it."
+
+
+# Declared before "/public/{collection_id}", which would otherwise take "demo" as an id.
+@app.get(
+    "/public/demo",
+    operation_id="getDemoCollection",
+    tags=["public"],
+    responses={404: {"description": "The Demo Collection isn't seeded yet"}},
+)
+def public_demo(conn: Db) -> PublicCollection:
+    """The Demo Collection, which anyone can ask without signing in."""
+    try:
+        return demo_collection(conn)
+    except PublicCollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The demo isn’t set up yet.") from None
 
 
 @app.get(

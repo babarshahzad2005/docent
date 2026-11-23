@@ -49,6 +49,7 @@ Solid arrows: main path. Dotted: edge paths and the follow-up loop.
 
 - Owner toggles public (+ optional expiry: never, 1, 7, or 30 days; turning it on again starts afresh) → link + embed snippet
 - The link is `/public/{collection id}`; the Personal Collection is never public
+- The Demo Collection is always public: "Try the demo" on the sign-in page opens it at `/demo`; its questions count toward the same Visitor limits, so a busy demo can use up the day's cap for every Public Collection (accepted while traffic is small)
 - Visitor asks anonymously, rate-limited per IP (20 questions an hour) and across all Visitors (200 a day), then told when to ask again; answers cite only that collection; each question stands alone (no follow-ups) and nothing is saved but the Answer Log entry
 - Off or expired: widget shows “unavailable”, API returns 404
 

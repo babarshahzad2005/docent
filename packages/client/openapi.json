@@ -2497,6 +2497,31 @@
         ]
       }
     },
+    "/public/demo": {
+      "get": {
+        "description": "The Demo Collection, which anyone can ask without signing in.",
+        "operationId": "getDemoCollection",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCollection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "The Demo Collection isn't seeded yet"
+          }
+        },
+        "summary": "Public Demo",
+        "tags": [
+          "public"
+        ]
+      }
+    },
     "/public/{collection_id}": {
       "get": {
         "description": "A Public Collection's name, for a Visitor.",

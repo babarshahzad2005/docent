@@ -17,6 +17,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     test("the sign-in page meets WCAG 2.2 AA", async ({ page }) => {
       await page.goto("/sign-in");
       await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Try the demo" })).toHaveAttribute("href", "/demo");
 
       await expectNoViolations(page);
     });
