@@ -22,3 +22,8 @@ export async function apiAsUser() {
     headers: { Authorization: `Bearer ${session.access_token}` },
   };
 }
+
+/** The Docent API as a Visitor: no session, so it reaches Public Collections only. */
+export function apiAsVisitor() {
+  return createDocentClient(apiBaseUrl());
+}

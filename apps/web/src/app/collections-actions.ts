@@ -185,3 +185,25 @@ export async function transferOwnership(
   if (response.ok) return { ok: true, value: null };
   return { ok: false, message: detail(error) ?? problem(response.status) };
 }
+
+export type PublicState = components["schemas"]["PublicState"];
+
+/**
+ * Let anyone with the link ask a Collection without signing in, stopping after `days` if
+ * given; or make it private again (its Owner).
+ */
+export async function setCollectionPublic(
+  collectionId: string,
+  makePublic: boolean,
+  days: 1 | 7 | 30 | null,
+): Promise<Result<PublicState>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { data, error, response } = await caller.api.PUT("/collections/{collection_id}/public", {
+    headers: caller.headers,
+    params: { path: { collection_id: collectionId } },
+    body: { public: makePublic, expires_in_days: days },
+  });
+  if (data) return { ok: true, value: data };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
+}

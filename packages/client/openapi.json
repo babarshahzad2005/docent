@@ -115,6 +115,23 @@
             "title": "Name",
             "type": "string"
           },
+          "public": {
+            "default": false,
+            "title": "Public",
+            "type": "boolean"
+          },
+          "public_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Until"
+          },
           "role": {
             "enum": [
               "owner",
@@ -800,6 +817,94 @@
         "title": "PassageOut",
         "type": "object"
       },
+      "PublicCollection": {
+        "description": "What a Visitor sees of a Public Collection.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "public_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Until"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "public_until"
+        ],
+        "title": "PublicCollection",
+        "type": "object"
+      },
+      "PublicSetting": {
+        "properties": {
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "enum": [
+                  1,
+                  7,
+                  30
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Days"
+          },
+          "public": {
+            "title": "Public",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "public"
+        ],
+        "title": "PublicSetting",
+        "type": "object"
+      },
+      "PublicState": {
+        "properties": {
+          "public": {
+            "title": "Public",
+            "type": "boolean"
+          },
+          "public_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Until"
+          }
+        },
+        "required": [
+          "public",
+          "public_until"
+        ],
+        "title": "PublicState",
+        "type": "object"
+      },
       "Question": {
         "properties": {
           "conversation_id": {
@@ -1011,6 +1116,21 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "VisitorQuestion": {
+        "properties": {
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "VisitorQuestion",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1045,7 +1165,7 @@
             "content": {
               "text/event-stream": {}
             },
-            "description": "Server-sent events, in order:\n\n- `start`: `{conversation_id, message_id, sources: [{number, document_id, document_name,\n  heading_path, page}]}`, the passages the answer may cite, numbered as in `[n]`\n- `delta`: `{text}`, the next piece of the answer\n- `done`: `{message_id, outcome: \"answered\" | \"declined\", cited: [n, ...]}`\n- `error`: `{message, partial}`, the answer stopped; `partial` if some text was sent\n"
+            "description": "Server-sent events, in order:\n\n- `start`: `{conversation_id, message_id, sources: [{number, document_id, document_name,\n  heading_path, page}]}`, the passages the answer may cite, numbered as in `[n]`;\n  `conversation_id` and `message_id` are null for a Visitor, whose answers aren't saved\n- `delta`: `{text}`, the next piece of the answer\n- `done`: `{message_id, outcome: \"answered\" | \"declined\", cited: [n, ...]}`\n- `error`: `{message, partial}`, the answer stopped; `partial` if some text was sent\n"
           },
           "404": {
             "description": "No such Conversation"
@@ -1608,6 +1728,74 @@
         "summary": "Transfer",
         "tags": [
           "sharing"
+        ]
+      }
+    },
+    "/collections/{collection_id}/public": {
+      "put": {
+        "description": "Let anyone with the link ask a Collection without signing in, or stop (its Owner).",
+        "operationId": "setCollectionPublic",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicSetting"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Owner can make it public"
+          },
+          "404": {
+            "description": "No such Collection, or not a Member"
+          },
+          "409": {
+            "description": "The Personal or Demo Collection"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Make Public",
+        "tags": [
+          "public"
         ]
       }
     },
@@ -2306,6 +2494,163 @@
         "summary": "Passage",
         "tags": [
           "answers"
+        ]
+      }
+    },
+    "/public/{collection_id}": {
+      "get": {
+        "description": "A Public Collection's name, for a Visitor.",
+        "operationId": "getPublicCollection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCollection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such Collection, or it isn't public now"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Info",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/public/{collection_id}/answers": {
+      "post": {
+        "description": "Answer a Visitor's question from a Public Collection, streamed like `POST /answers`.\n\nNothing is saved but the Answer Log entry; each question stands alone.",
+        "operationId": "askPublicCollection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisitorQuestion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Server-sent events, in order:\n\n- `start`: `{conversation_id, message_id, sources: [{number, document_id, document_name,\n  heading_path, page}]}`, the passages the answer may cite, numbered as in `[n]`;\n  `conversation_id` and `message_id` are null for a Visitor, whose answers aren't saved\n- `delta`: `{text}`, the next piece of the answer\n- `done`: `{message_id, outcome: \"answered\" | \"declined\", cited: [n, ...]}`\n- `error`: `{message, partial}`, the answer stopped; `partial` if some text was sent\n"
+          },
+          "404": {
+            "description": "No such Collection, or it isn't public now"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask Public",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/public/{collection_id}/passages/{chunk_id}": {
+      "get": {
+        "description": "A passage of a Public Collection with its neighbours, for a Visitor's Citation.",
+        "operationId": "getPublicPassage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "chunk_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chunk Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not in this Collection, or it isn't public now"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Passage",
+        "tags": [
+          "public"
         ]
       }
     }

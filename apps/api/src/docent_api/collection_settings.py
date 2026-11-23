@@ -7,7 +7,7 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 
 from docent_api.documents import UPLOAD_LINK_HOURS, remove_files
-from docent_api.library import CollectionSummary
+from docent_api.library import CollectionSummary, public_now
 from docent_api.storage import FileStore
 
 MAX_NAME_LENGTH = 120  # the column's check constraint (migration 0001)
@@ -62,9 +62,17 @@ def rename_collection(
     name = clean_collection_name(name)
     with conn.transaction():
         require_owner(conn, user_id, collection_id)
-        conn.execute("update app.collections set name = %s where id = %s", (name, collection_id))
+        row = conn.execute(
+            f"""
+            update app.collections c set name = %s where id = %s
+            returning {public_now("c")} as public,
+                      case when {public_now("c")} then c.public_until end as public_until
+            """,
+            (name, collection_id),
+        ).fetchone()
+    assert row is not None
     return CollectionSummary(
-        id=collection_id, name=name, is_personal=False, is_demo=False, role="owner"
+        id=collection_id, name=name, is_personal=False, is_demo=False, role="owner", **row
     )
 
 

@@ -49,6 +49,11 @@ export default function PrivacyPage() {
             improve answer quality. Entries are deleted after 90 days, and are kept for those
             90 days even if you delete the conversation or your account.
           </li>
+          <li>
+            <strong>Questions asked of a public collection:</strong> anyone with a public
+            collection&rsquo;s link can ask it without signing in. Their questions and answers go
+            to the answer log, not linked to anyone, and are deleted after 90 days.
+          </li>
         </ul>
         <h2>Who processes it</h2>
         <p>
@@ -63,8 +68,8 @@ export default function PrivacyPage() {
         <h2>Coming later</h2>
         <ul>
           <li>
-            <strong>Public collections:</strong> visitors&rsquo; network addresses will be stored
-            only as one-way hashes, for rate limiting.
+            <strong>Rate limits for public collections:</strong> visitors&rsquo; network
+            addresses will be stored only as one-way hashes, to limit how often they can ask.
           </li>
         </ul>
         <h2>Deleting your data</h2>

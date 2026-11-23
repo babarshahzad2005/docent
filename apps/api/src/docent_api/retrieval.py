@@ -17,6 +17,8 @@ from uuid import UUID
 from psycopg import Connection
 from psycopg.rows import DictRow
 
+from docent_api.library import public_now
+
 CANDIDATES = 30  # how many each search contributes before fusion
 PASSAGES = 8  # how many passages an answer is given
 # At most this many passages from one Document, so one long Document can't crowd out the
@@ -32,6 +34,19 @@ _READABLE = """
     join app.memberships m on m.collection_id = c.collection_id and m.user_id = %(user_id)s
     where c.collection_id = any(%(scope)s) and c.superseded_at is null
 """
+# The passages a Visitor may read: the same, in Collections that are public now.
+_PUBLIC_READABLE = f"""
+    from app.chunks c
+    join app.documents d on d.id = c.document_id and d.status = 'indexed'
+        and d.replaces_id is null
+    join app.collections p on p.id = c.collection_id and {public_now("p")}
+    where c.collection_id = any(%(scope)s) and c.superseded_at is null
+"""
+
+
+def _readable(user_id: UUID | None) -> str:
+    """Who reads: a User through their Memberships, or a Visitor (None) through publicity."""
+    return _PUBLIC_READABLE if user_id is None else _READABLE
 
 
 @dataclass(frozen=True)
@@ -76,7 +91,7 @@ def readable_scope(
 
 def retrieve(
     conn: Connection[DictRow],
-    user_id: UUID,
+    user_id: UUID | None,
     scope: Sequence[UUID],
     question: str,
     question_vector: Sequence[float] | None,
@@ -85,8 +100,9 @@ def retrieve(
     """The passages most likely to answer `question`, best first.
 
     Without a question vector (the embedding provider was unavailable), keyword search alone
-    still finds passages.
+    still finds passages. A Visitor (`user_id` None) reads only Collections public now.
     """
+    readable = _readable(user_id)
     params = {"user_id": user_id, "scope": list(scope), "k": CANDIDATES, "question": question}
     vector_ids: list[UUID] = []
     similarity: dict[UUID, float] = {}
@@ -102,7 +118,7 @@ def retrieve(
                     select c.id,
                            c.embedding operator(extensions.<=>) %(vector)s::extensions.vector
                                as distance
-                    {_READABLE} and c.embedding is not null
+                    {readable} and c.embedding is not null
                     order by distance
                     limit %(k)s
                 )
@@ -123,7 +139,7 @@ def retrieve(
                 select to_tsquery('simple', string_agg(quote_literal(lexeme), ' | ')) as query
                 from unnest(tsvector_to_array(to_tsvector('english', %(question)s))) lexeme
             )
-            select c.id {_READABLE} and c.search @@ (select query from q)
+            select c.id {readable} and c.search @@ (select query from q)
             order by ts_rank_cd(c.search, (select query from q)) desc
             limit %(k)s
             """,
@@ -216,15 +232,21 @@ def _details(
     return passages
 
 
-def documents_state(conn: Connection[DictRow], user_id: UUID, scope: Sequence[UUID]) -> str:
-    """What the User can search in `scope`: "indexed" (some Document is ready), "processing"
-    (none is ready, but some is still on its way), or "none"."""
+def documents_state(conn: Connection[DictRow], user_id: UUID | None, scope: Sequence[UUID]) -> str:
+    """What the User (or a Visitor, None) can search in `scope`: "indexed" (some Document is
+    ready), "processing" (none is ready, but some is still on its way), or "none"."""
+    access = (
+        f"join app.collections p on p.id = d.collection_id and {public_now('p')}"
+        if user_id is None
+        else "join app.memberships m on m.collection_id = d.collection_id"
+        " and m.user_id = %(user_id)s"
+    )
     row = conn.execute(
-        """
+        f"""
         select bool_or(d.status = 'indexed') as indexed,
                bool_or(d.status not in ('indexed', 'failed')) as processing
         from app.documents d
-        join app.memberships m on m.collection_id = d.collection_id and m.user_id = %(user_id)s
+        {access}
         where d.collection_id = any(%(scope)s::uuid[])
         """,
         {"user_id": user_id, "scope": list(scope)},
@@ -245,27 +267,43 @@ def _vector_literal(vector: Sequence[float]) -> str:
 
 
 class PassageNotFound(Exception):
-    """No such passage that the User can read."""
+    """No such passage that the User (or Visitor) can read."""
 
 
 def passage_in_context(
-    conn: Connection[DictRow], user_id: UUID, chunk_id: UUID
+    conn: Connection[DictRow],
+    user_id: UUID | None,
+    chunk_id: UUID,
+    public_collection: UUID | None = None,
 ) -> dict[str, object]:
     """A passage with the passages just before and after it in the same section.
 
-    Readable only through a Membership of its Collection, like every other read of passages.
+    Readable only through a Membership of its Collection, like every other read of passages;
+    or, for a Visitor (`user_id` None), only in `public_collection` while it is public.
     """
+    if user_id is None:
+        if public_collection is None:
+            raise PassageNotFound(chunk_id)
+        access = (
+            "join app.collections p on p.id = c.collection_id and p.id = %(public)s"
+            f" and {public_now('p')}"
+        )
+    else:
+        access = (
+            "join app.memberships m on m.collection_id = c.collection_id"
+            " and m.user_id = %(user_id)s"
+        )
     row = conn.execute(
-        """
+        f"""
         select c.id as chunk_id, c.document_id, d.name as document_name, c.heading_path,
                c.page, c.content, c.ordinal, c.superseded_at is not null as replaced,
                c.superseded_at
         from app.chunks c
         join app.documents d on d.id = c.document_id and d.status = 'indexed'
-        join app.memberships m on m.collection_id = c.collection_id and m.user_id = %s
-        where c.id = %s
+        {access}
+        where c.id = %(chunk)s
         """,
-        (user_id, chunk_id),
+        {"user_id": user_id, "public": public_collection, "chunk": chunk_id},
     ).fetchone()
     if row is None:
         raise PassageNotFound(chunk_id)
