@@ -21,7 +21,7 @@ A Collection that anyone with its link (or its Widget) can ask, without signing 
 _Avoid_: Shared link collection, open collection
 
 **Demo Collection**:
-The Collection of openly licensed Documents that every User can ask, read-only, and that the Eval Set is built on. It has no Owner: maintainers change it by editing its source list and seeding it again. It becomes a Public Collection, open to Visitors, with M4.
+The Collection of openly licensed Documents that every User can ask, read-only, and that the Eval Set is built on. It has no Owner: maintainers change it by editing its source list and seeding it again. It is also a Public Collection with no expiry: anyone can try it without signing in, from "Try the demo".
 _Avoid_: Sample data, showcase
 
 **Widget**:

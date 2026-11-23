@@ -330,7 +330,9 @@ def demo_collection(conn: Connection[DictRow]) -> UUID:
         row = conn.execute("select id from app.collections where is_demo").fetchone()
         if row is None:
             row = conn.execute(
-                "insert into app.collections (name, is_demo) values (%s, true) returning id",
+                # Public from the start: anyone can try it without signing in (#95).
+                "insert into app.collections (name, is_demo, public) values (%s, true, true) "
+                "returning id",
                 (json.loads(SOURCES.read_text(encoding="utf-8"))["collection"],),
             ).fetchone()
         assert row is not None
