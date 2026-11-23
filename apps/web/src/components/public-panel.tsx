@@ -10,9 +10,9 @@ import { formatLocalDate } from "@/lib/dates";
 const CONNECTION = "Can’t reach the server. Check your connection and try again.";
 const EXPIRIES: { value: string; label: string }[] = [
   { value: "", label: "Never" },
-  { value: "1", label: "After 1 day" },
-  { value: "7", label: "After 7 days" },
-  { value: "30", label: "After 30 days" },
+  { value: "1", label: "1 day" },
+  { value: "7", label: "7 days" },
+  { value: "30", label: "30 days" },
 ];
 
 /** Where a Public Collection's link leads (FLOWS › Publish). */
@@ -53,7 +53,10 @@ export function PublicPanel({
   const problemId = useId();
   const linkInput = useRef<HTMLInputElement>(null);
   const turnOn = useRef<HTMLButtonElement>(null);
-  const link = useOrigin() + publicPath(collectionId);
+  const origin = useOrigin();
+  const link = origin + publicPath(collectionId);
+  // Dates are shown in the reader's time zone, known only in the browser.
+  const until = origin && state.public_until ? formatLocalDate(state.public_until) : null;
 
   const save = async (makePublic: boolean) => {
     setSaving(true);
@@ -96,10 +99,10 @@ export function PublicPanel({
         </h2>
         <p className="text-meta text-pretty text-text-secondary">
           {state.public
-            ? state.public_until
-              ? `Anyone with the link can ask this collection, without signing in, until ${formatLocalDate(state.public_until)}.`
+            ? until
+              ? `Anyone with the link can ask this collection, without signing in, until ${until}.`
               : "Anyone with the link can ask this collection, without signing in."
-            : "Let anyone with the link ask this collection, without signing in. They see answers and the passages cited, not the list of documents, and they can’t change anything."}
+            : "Let anyone with the link ask this collection, without signing in. They see answers and the passages cited, not the list of documents, and they can’t change anything. The link is always the same: making it public again reopens it."}
         </p>
       </div>
 
@@ -134,7 +137,7 @@ export function PublicPanel({
         <div className="flex flex-wrap items-end gap-2">
           <span className="flex min-w-0 flex-1 basis-56 flex-col gap-1">
             <label htmlFor={expiryId} className="text-meta text-muted-foreground">
-              Stop sharing
+              Stop sharing after
             </label>
             <select
               id={expiryId}

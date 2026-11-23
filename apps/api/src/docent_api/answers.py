@@ -41,7 +41,7 @@ from docent_api.providers.base import (
     TextDelta,
     Usage,
 )
-from docent_api.public import public_collection
+from docent_api.public import PublicCollectionNotFound, public_collection
 from docent_api.retrieval import Passage, documents_state, readable_scope, retrieve
 from docent_api.rewriting import HISTORY_TURNS, EarlierTurn, standalone_question
 from docent_api.settings import get_settings
@@ -99,6 +99,9 @@ NOTHING_VERIFIED = (
     "Try asking in a different way."
 )
 
+# A Visitor's question to a Collection that stopped being public while it was answered.
+UNAVAILABLE = "This collection isn’t available any more. Its owner may have stopped sharing it."
+
 # The fixed replies as a Visitor reads them: the Documents are the Collection's, not theirs.
 _VISITOR_WORDING = {
     DECLINE: "I couldn’t find that in this collection’s documents.",
@@ -107,7 +110,8 @@ _VISITOR_WORDING = {
         "This collection’s documents are still being prepared. Try again in a few minutes."
     ),
     NOTHING_VERIFIED: (
-        "Docent couldn’t check this answer against the documents, so it isn’t shown. "
+        "Docent couldn’t check this answer against this collection’s documents, so "
+        "it isn’t shown. "
         "Try asking in a different way."
     ),
 }
@@ -308,7 +312,11 @@ async def answer(
         state = "indexed" if turn.passages else await asyncio.to_thread(_documents_state, turn)
         if not turn.passages or weak:
             # Declined before asking the model: nothing to read, or nothing close enough.
-            if state != "indexed":
+            if state == "unavailable":
+                # Turned private, or expired, since the question arrived.
+                turn.answer, outcome = UNAVAILABLE, "no_documents"
+                turn.decline_reason = "unavailable"
+            elif state != "indexed":
                 turn.answer = turn.says(STILL_PROCESSING if state == "processing" else NO_DOCUMENTS)
                 outcome, turn.decline_reason = "no_documents", "no_documents"
             else:
@@ -415,6 +423,11 @@ def _documents_state(turn: Turn) -> str:
     if not turn.scope:
         return "none"
     with get_pool().connection() as conn:
+        if turn.user_id is None:
+            try:
+                public_collection(conn, turn.scope[0])
+            except PublicCollectionNotFound:
+                return "unavailable"
         return documents_state(conn, turn.user_id, turn.scope)
 
 

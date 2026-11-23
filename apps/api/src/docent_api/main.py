@@ -345,7 +345,8 @@ def make_public(collection_id: UUID, body: PublicSetting, user: User, conn: Db) 
         raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
     except FixedCollection:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "Your personal collection is always private."
+            status.HTTP_409_CONFLICT,
+            "This collection can’t be made public. Personal collections are always private.",
         ) from None
 
 

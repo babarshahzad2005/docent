@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useCallback } from "react";
 
 import { getPublicPassage } from "@/app/public-actions";
 import { Conversation } from "@/components/conversation";
@@ -14,8 +14,13 @@ export function VisitorConversation({
   collectionId: string;
   intro: ReactNode;
 }) {
+  // Stable, so an open source isn't loaded again on every render.
+  const load = useCallback(
+    (chunkId: string) => getPublicPassage(collectionId, chunkId),
+    [collectionId],
+  );
   return (
-    <PassageLoaderContext value={(chunkId) => getPublicPassage(collectionId, chunkId)}>
+    <PassageLoaderContext value={load}>
       <Conversation
         conversationId={null}
         initialTurns={[]}

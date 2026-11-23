@@ -585,6 +585,18 @@ def test_visitors_see_a_collection_only_while_public(
     assert visitor_can_reach(visitor_client(database_url), world) == closed
     assert retrieve(conn, None, [world.team_a], "leave carries over", None) == []
     conn.commit()
+    # A question already on its way when it closed says so, rather than "no documents".
+    from docent_api.answers import UNAVAILABLE, Turn, answer
+
+    turn = Turn(None, "Leave?", [world.team_a], None, None, channel="public")
+
+    async def run() -> list[object]:
+        return [e async for e in answer(turn, WordsEmbedder(), ScriptedModel(["x"]))]
+
+    import asyncio
+
+    asyncio.run(run())
+    assert turn.answer == UNAVAILABLE
     owner = client_for(database_url, world.users["owner"])
     again = owner.put(f"/collections/{world.team_a}/public", json={"public": True})
     assert again.status_code == 200
