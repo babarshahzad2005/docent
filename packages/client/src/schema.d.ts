@@ -499,7 +499,9 @@ export interface paths {
          * Ask Public
          * @description Answer a Visitor's question from a Public Collection, streamed like `POST /answers`.
          *
-         *     Nothing is saved but the Answer Log entry; each question stands alone.
+         *     Nothing is saved but the Answer Log entry; each question stands alone. Rate-limited per
+         *     network address and across all Visitors (limits.py); only questions to a Collection that
+         *     is public count.
          */
         post: operations["askPublicCollection"];
         delete?: never;
@@ -2131,6 +2133,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Too many questions; `Retry-After` says when to ask again */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

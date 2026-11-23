@@ -30,6 +30,19 @@ class Settings(BaseSettings):
     # unanswerable questions are declined here and all 36 answerable ones reach the model
     # (the lowest scores 0.686); the model can still decline what gets through.
     decline_below_similarity: float = 0.68
+    # Visitors' questions to Public Collections (#94): per network address each hour, and all
+    # Visitors together each day, keeping most of the free model quota for signed-in Users.
+    visitor_questions_per_hour: int = 20
+    visitor_questions_per_day: int = 200
+    # Keys the hash of Visitors' network addresses; derived from supabase_secret_key if unset.
+    visitor_hash_key: str = ""
+    # Sites whose pages may call the API from the browser: a Visitor's questions go straight
+    # to it, so the limits count the Visitor's own address (limits.client_address).
+    # Comma-separated; and a pattern for the web app's preview deployments.
+    web_origins: str = "https://docent-tan.vercel.app,http://localhost:3000"
+    web_origin_pattern: str = (
+        r"https://docent-[a-z0-9-]+-babarshahzad2005-8329s-projects\.vercel\.app"
+    )
 
     @property
     def auth_issuer(self) -> str:

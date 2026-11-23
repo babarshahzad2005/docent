@@ -16,6 +16,7 @@ TABLES = [
     "invites",
     "memberships",
     "messages",
+    "rate_limits",
     "storage_deletions",
     "trigger_tokens",
     "users",
