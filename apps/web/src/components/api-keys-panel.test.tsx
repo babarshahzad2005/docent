@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
@@ -69,7 +69,9 @@ describe("API keys", () => {
     await userEvent.click(screen.getByRole("button", { name: "Revoke key" }));
 
     expect(actions.revokeApiKey).toHaveBeenCalledWith("k1");
-    expect(screen.queryByText("Help centre")).toBeNull();
+    await waitFor(() => expect(screen.queryByText("Help centre")).toBeNull());
+    // Focus moves on to naming another key, not to the page.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Key name")));
     expect(screen.getByRole("status").textContent).toContain("revoked");
   });
 
