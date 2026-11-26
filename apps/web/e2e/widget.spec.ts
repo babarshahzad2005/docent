@@ -1,13 +1,16 @@
 import { expect, test } from "@playwright/test";
 
 const COLLECTION = "7b0e2f4a-1c3d-4e5f-8a9b-0c1d2e3f4a5b";
+// Another origin (127.0.0.1, not localhost) that stays on this machine: Chrome won't let a
+// public https page load scripts from localhost.
+const HOST_PAGE = "http://127.0.0.1:3100/__host-page";
 
-// A plain page on another domain whose styles try hard to change everything (#96).
+// A plain page on another origin whose styles try hard to change everything (#96).
 test("the Widget loader works on another site, untouched by its styles", async ({
   page,
   baseURL,
 }) => {
-  await page.route("https://host.example/", (route) =>
+  await page.route(HOST_PAGE, (route) =>
     route.fulfill({
       contentType: "text/html",
       body: `<!doctype html><html><head><style>
@@ -18,7 +21,7 @@ test("the Widget loader works on another site, untouched by its styles", async (
       </body></html>`,
     }),
   );
-  await page.goto("https://host.example/");
+  await page.goto(HOST_PAGE);
 
   const open = page.getByRole("button", { name: "Ask a question" });
   await expect(open).toBeVisible();
@@ -44,13 +47,13 @@ test("a phone sees the Widget full screen, with its own Close button", async ({
   baseURL,
 }) => {
   await page.setViewportSize({ width: 375, height: 667 });
-  await page.route("https://host.example/", (route) =>
+  await page.route(HOST_PAGE, (route) =>
     route.fulfill({
       contentType: "text/html",
       body: `<!doctype html><body><script src="${baseURL}/widget.js" data-collection="${COLLECTION}"></script></body>`,
     }),
   );
-  await page.goto("https://host.example/");
+  await page.goto(HOST_PAGE);
 
   await page.getByRole("button", { name: "Ask a question" }).click();
   const panel = page.getByRole("dialog", { name: "Ask Docent" });
