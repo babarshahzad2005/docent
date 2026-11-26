@@ -311,6 +311,11 @@ function Confirm({
         setOpen(next);
         setProblem(null);
       }}
+      // Done once the dialog has closed, so it can still send focus on (finalFocus); a row
+      // removed sooner takes the dialog with it, and focus falls to the page.
+      onOpenChangeComplete={(isOpen) => {
+        if (!isOpen && done) onDone();
+      }}
     >
       <AlertDialogTrigger
         render={<Button variant="ghost" size="sm" aria-label={triggerLabel} />}
@@ -338,7 +343,6 @@ function Confirm({
               if (!result.ok) return setProblem(result.message);
               setDone(true);
               setOpen(false);
-              onDone();
             }}
           >
             {working ? busy : confirm}
