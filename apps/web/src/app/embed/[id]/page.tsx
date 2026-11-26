@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { getPublicCollection } from "@/app/public-actions";
-import { EmbedBridge } from "@/components/embed-bridge";
+import { EmbedBridge, EmbedEscape } from "@/components/embed-bridge";
 import { VisitorConversation } from "@/components/visitor-conversation";
 import { apiBaseUrl } from "@/lib/api-status";
 
@@ -21,7 +21,7 @@ const LINK =
 export default function EmbedPage({ params }: PageProps<"/embed/[id]">) {
   return (
     <>
-      <EmbedBridge />
+      <EmbedEscape />
       <Suspense
         fallback={
           <p role="status" className="p-4 text-muted-foreground">
@@ -41,6 +41,7 @@ async function Embed({ params }: { params: Promise<{ id: string }> }) {
   if (!collection) {
     return (
       <main className="flex min-h-dvh flex-col justify-center gap-3 px-4 py-8">
+        <EmbedBridge />
         <h1 className="font-serif text-heading font-medium text-balance">
           This collection isn’t available
         </h1>
@@ -51,6 +52,7 @@ async function Embed({ params }: { params: Promise<{ id: string }> }) {
   return (
     <main className="flex min-h-dvh flex-col">
       <title>{`${collection.name} · Docent`}</title>
+      <EmbedBridge />
       <VisitorConversation
         collectionId={collection.id}
         apiUrl={apiBaseUrl()}
