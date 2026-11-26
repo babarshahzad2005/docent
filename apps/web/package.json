@@ -15,10 +15,10 @@
     "@base-ui/react": "^1.9.0",
     "@docent/client": "workspace:*",
     "@supabase/ssr": "^0.12.7",
-    "@supabase/supabase-js": "^2.119.0",
+    "@supabase/supabase-js": "^2.119.2",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
-    "lucide-react": "^1.73.0",
+    "lucide-react": "^1.78.0",
     "next": "16.4.6",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -31,7 +31,7 @@
     "@tailwindcss/postcss": "^4.3.5",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.10",
+    "@testing-library/user-event": "^14.6.13",
     "@types/node": "^22.20.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -43,7 +43,7 @@
     "shadcn": "^4.23.0",
     "tailwindcss": "^4.3.5",
     "typescript": "^5",
-    "vitest": "^5.1.0",
+    "vitest": "^5.1.1",
     "vitest-axe": "^0.1.0"
   }
 }
