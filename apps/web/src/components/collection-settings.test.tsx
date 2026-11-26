@@ -65,7 +65,7 @@ describe("New collection", () => {
 describe("Collection settings", () => {
   it("renames the collection", async () => {
     actions.renameCollection.mockResolvedValue(created("Handbook"));
-    render(<CollectionSettings collection={TEAM} documentCount={0} invites={[]} members={[]} />);
+    render(<CollectionSettings collection={TEAM} documentCount={0} invites={[]} members={[]} apiKeys={[]} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Rename Team handbook" }));
     const name = screen.getByLabelText("New name");
@@ -79,7 +79,7 @@ describe("Collection settings", () => {
 
   it("deletes it after a confirmation that says how many documents go with it", async () => {
     actions.deleteCollection.mockResolvedValue({ ok: true, value: null });
-    render(<CollectionSettings collection={TEAM} documentCount={3} invites={[]} members={[]} />);
+    render(<CollectionSettings collection={TEAM} documentCount={3} invites={[]} members={[]} apiKeys={[]} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Delete collection" }));
     const dialog = await screen.findByRole("alertdialog");
@@ -96,7 +96,7 @@ describe("Collection settings", () => {
       ok: false,
       message: "Only the collection’s owner can do that.",
     });
-    render(<CollectionSettings collection={TEAM} documentCount={1} invites={[]} members={[]} />);
+    render(<CollectionSettings collection={TEAM} documentCount={1} invites={[]} members={[]} apiKeys={[]} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Delete collection" }));
     const dialog = await screen.findByRole("alertdialog");

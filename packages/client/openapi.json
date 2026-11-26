@@ -1,6 +1,58 @@
 {
   "components": {
     "schemas": {
+      "ApiKeyName": {
+        "properties": {
+          "name": {
+            "maxLength": 500,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ApiKeyName",
+        "type": "object"
+      },
+      "ApiKeySummary": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "last_used_at"
+        ],
+        "title": "ApiKeySummary",
+        "type": "object"
+      },
       "CitationOut": {
         "properties": {
           "access_lost": {
@@ -655,6 +707,23 @@
         "title": "MessageOut",
         "type": "object"
       },
+      "NewApiKey": {
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/ApiKeySummary"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "secret"
+        ],
+        "title": "NewApiKey",
+        "type": "object"
+      },
       "NewDocument": {
         "properties": {
           "allow_duplicate": {
@@ -1192,6 +1261,51 @@
         ]
       }
     },
+    "/api-keys/{key_id}": {
+      "delete": {
+        "description": "Revoke an API Key; it stops working at once. Repeating the call is harmless.",
+        "operationId": "revokeApiKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Owner revokes API Keys"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Key",
+        "tags": [
+          "api keys"
+        ]
+      }
+    },
     "/collections": {
       "post": {
         "description": "Create an empty Collection, owned by the signed-in User.",
@@ -1356,6 +1470,134 @@
         "summary": "Rename",
         "tags": [
           "library"
+        ]
+      }
+    },
+    "/collections/{collection_id}/api-keys": {
+      "get": {
+        "description": "The Collection's API Keys, without their secrets (its Owner).",
+        "operationId": "listApiKeys",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApiKeySummary"
+                  },
+                  "title": "Response Listapikeys",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Owner sees API Keys"
+          },
+          "404": {
+            "description": "No such Collection, or not a Member"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Api Keys",
+        "tags": [
+          "api keys"
+        ]
+      },
+      "post": {
+        "description": "Create an API Key that can only ask this Collection. Its secret is in this response\nonly: Docent stores a hash of it and can't show it again.",
+        "operationId": "createApiKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyName"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewApiKey"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "The name is empty or too long"
+          },
+          "403": {
+            "description": "Only the Owner creates API Keys"
+          },
+          "404": {
+            "description": "No such Collection, or not a Member"
+          },
+          "409": {
+            "description": "The Personal or Demo Collection"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "New Api Key",
+        "tags": [
+          "api keys"
         ]
       }
     },

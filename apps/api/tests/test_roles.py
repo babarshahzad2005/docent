@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from psycopg import Connection
 from psycopg.rows import DictRow, dict_row
 
+from docent_api.api_keys import create_api_key
 from docent_api.auth import AuthUser, current_user
 from docent_api.collection_settings import create_collection
 from docent_api.db import get_connection
@@ -65,6 +66,7 @@ class Team:
         finish_upload(conn, self.owner.id, document.id)
         conn.commit()
         self.document = document.id
+        self.api_key = create_api_key(conn, self.owner.id, self.id, "Site").key.id
 
 
 @pytest.fixture
@@ -123,6 +125,9 @@ def owner_actions(team: Team) -> list[tuple[str, str, dict[str, object] | None]]
         ("DELETE", f"/collections/{team.id}/members/{viewer}", None),
         ("POST", f"/collections/{team.id}/owner", {"user_id": str(viewer)}),
         ("PUT", f"/collections/{team.id}/public", {"public": True}),
+        ("GET", f"/collections/{team.id}/api-keys", None),
+        ("POST", f"/collections/{team.id}/api-keys", {"name": "Site"}),
+        ("DELETE", f"/api-keys/{team.api_key}", None),
     ]
 
 

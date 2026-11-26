@@ -22,6 +22,7 @@ from test_answers import LEAVE, QUOTES, MemoryStore, ScriptedModel, WordsEmbedde
 
 from docent_api import main
 from docent_api.answers import DECLINE
+from docent_api.api_keys import create_api_key
 from docent_api.auth import AuthUser, current_user
 from docent_api.collection_settings import create_collection
 from docent_api.db import get_connection
@@ -58,6 +59,7 @@ COVERED = {
     ("GET", "/conversations/{conversation_id}"): "test_reads",
     ("GET", "/collections/{collection_id}/members"): "test_reads",
     ("GET", "/collections/{collection_id}/invites"): "test_reads",
+    ("GET", "/collections/{collection_id}/api-keys"): "test_reads",
     ("POST", "/answers"): "test_answers_never_cross_collections",
     ("POST", "/documents"): "test_outsiders_change_nothing",
     ("POST", "/documents/{document_id}/uploaded"): "test_outsiders_change_nothing",
@@ -77,6 +79,8 @@ COVERED = {
     ),
     ("POST", "/collections/{collection_id}/owner"): "test_outsiders_change_nothing",
     ("PUT", "/collections/{collection_id}/public"): "test_outsiders_change_nothing",
+    ("POST", "/collections/{collection_id}/api-keys"): "test_outsiders_change_nothing",
+    ("DELETE", "/api-keys/{key_id}"): "test_outsiders_change_nothing",
     ("GET", "/public/{collection_id}"): "test_visitors_see_a_collection_only_while_public",
     ("GET", "/public/demo"): "test_anyone_can_try_the_demo",  # in test_demo.py
     ("POST", "/public/{collection_id}/answers"): (
@@ -101,6 +105,7 @@ class World:
     chunk_a: UUID
     chunk_b: UUID
     invite_a: UUID
+    key_a: UUID
     alice_conversation: UUID
     removed_conversation: UUID
 
@@ -194,6 +199,7 @@ def world(database_url: str, conn: Connection[DictRow]) -> World:
     doc_a, chunk_a = ingest(conn, users["owner"], team_a, "leave.md", LEAVE)
     doc_b, chunk_b = ingest(conn, users["bob"], team_b, "board-leave.md", SECRET)
     invite_a = invite(conn, users["owner"].id, team_a, "pending@example.com", "viewer").id
+    key_a = create_api_key(conn, users["owner"].id, team_a, "Site").key.id
 
     alice = ask(client_for(database_url, users["owner"]), "How much leave carries over?", [team_a])
     removed = ask(
@@ -214,6 +220,7 @@ def world(database_url: str, conn: Connection[DictRow]) -> World:
         chunk_a=chunk_a,
         chunk_b=chunk_b,
         invite_a=invite_a,
+        key_a=key_a,
         alice_conversation=UUID(str(alice[0][1]["conversation_id"])),
         removed_conversation=UUID(str(removed[0][1]["conversation_id"])),
     )
@@ -260,6 +267,9 @@ def test_reads(database_url: str, world: World) -> None:
         invites = client.get(f"/collections/{world.team_a}/invites")
         expected = {"owner": 200, "editor": 403, "viewer": 403}.get(kind, 404)
         assert invites.status_code == expected, kind
+        keys = client.get(f"/collections/{world.team_a}/api-keys")
+        assert keys.status_code == expected, kind
+        assert client.get(f"/collections/{world.team_b}/api-keys").status_code == 404, kind
 
 
 def test_a_removed_member_keeps_their_answers_but_not_the_passages(
@@ -366,6 +376,7 @@ def test_members_of_one_collection_cant_touch_another(
             ("DELETE", f"/collections/{b}/members/{bob}", None, 404),
             ("POST", f"/collections/{b}/owner", {"user_id": str(bob)}, 404),
             ("PUT", f"/collections/{b}/public", {"public": True}, 404),
+            ("POST", f"/collections/{b}/api-keys", {"name": "Mine"}, 404),
         ]
         for method, path, body, expected in attempts:
             response = client.request(method, path, json=body)
@@ -438,6 +449,7 @@ def state(conn: Connection[DictRow], world: World) -> dict[str, object]:
             world.team_a,
         ),
         "invite": one("select role from app.invites where id = %s", world.invite_a),
+        "keys": one("select count(*) from app.api_keys where collection_id = %s", world.team_a),
     }
     conn.commit()
     return snapshot
@@ -476,6 +488,8 @@ def test_outsiders_change_nothing(
             ("DELETE", f"/collections/{a}/members/{viewer}", None, {404}),
             ("POST", f"/collections/{a}/owner", {"user_id": str(outsider.id)}, {404}),
             ("PUT", f"/collections/{a}/public", {"public": True}, {404}),
+            ("POST", f"/collections/{a}/api-keys", {"name": "Mine"}, {404}),
+            ("DELETE", f"/api-keys/{world.key_a}", None, {204}),  # "already gone", for them
         ]
         for method, path, body, allowed in attempts:
             response = client.request(method, path, json=body)

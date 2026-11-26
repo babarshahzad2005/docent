@@ -207,3 +207,44 @@ export async function setCollectionPublic(
   if (data) return { ok: true, value: data };
   return { ok: false, message: detail(error) ?? problem(response.status) };
 }
+
+export type ApiKeySummary = components["schemas"]["ApiKeySummary"];
+export type NewApiKey = components["schemas"]["NewApiKey"];
+
+/** The Collection's API Keys, without their secrets (its Owner). */
+export async function listApiKeys(collectionId: string): Promise<Result<ApiKeySummary[]>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { data, error, response } = await caller.api.GET("/collections/{collection_id}/api-keys", {
+    headers: caller.headers,
+    params: { path: { collection_id: collectionId } },
+  });
+  if (data) return { ok: true, value: data };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
+}
+
+/** A new API Key for the Collection; its secret is in the result only, never again. */
+export async function createApiKey(collectionId: string, name: string): Promise<Result<NewApiKey>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { data, error, response } = await caller.api.POST("/collections/{collection_id}/api-keys", {
+    headers: caller.headers,
+    params: { path: { collection_id: collectionId } },
+    body: { name },
+  });
+  if (data) return { ok: true, value: data };
+  if (response.status === 422) return { ok: false, message: "Keep the name to 80 characters or fewer." };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
+}
+
+/** Revoke an API Key; it stops working at once. */
+export async function revokeApiKey(keyId: string): Promise<Result<null>> {
+  const caller = await apiAsUser();
+  if (!caller) return { ok: false, message: SIGNED_OUT };
+  const { error, response } = await caller.api.DELETE("/api-keys/{key_id}", {
+    headers: caller.headers,
+    params: { path: { key_id: keyId } },
+  });
+  if (response.ok) return { ok: true, value: null };
+  return { ok: false, message: detail(error) ?? problem(response.status) };
+}

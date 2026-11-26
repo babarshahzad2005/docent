@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
 import {
+  type ApiKeySummary,
   createCollection,
   deleteCollection,
   type InviteSummary,
@@ -20,6 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { ApiKeysPanel } from "@/components/api-keys-panel";
 import { MembersList } from "@/components/members-list";
 import { PublicPanel } from "@/components/public-panel";
 import { SharePanel } from "@/components/share-panel";
@@ -71,12 +73,13 @@ export function NewCollection() {
   );
 }
 
-/** The Owner's Share, Rename, and Delete for a Collection they created. */
+/** The Owner's Share, API keys, Rename, and Delete for a Collection they created. */
 export function CollectionSettings({
   collection,
   documentCount,
   invites,
   members,
+  apiKeys,
 }: {
   collection: { id: string; name: string; public?: boolean; public_until?: string | null };
   /** How many Documents deleting it removes, said in the confirmation. */
@@ -85,12 +88,16 @@ export function CollectionSettings({
   invites: InviteSummary[];
   /** Everyone with access, shown when sharing opens. */
   members: MemberSummary[];
+  /** The Collection's API Keys, shown when "API keys" opens. */
+  apiKeys: ApiKeySummary[];
 }) {
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
   // Opens at once when invites are waiting, or it is public, so the Owner sees that.
   const [sharing, setSharing] = useState(invites.length > 0 || Boolean(collection.public));
   const panelId = useId();
+  const [keysOpen, setKeysOpen] = useState(false);
+  const keysPanelId = useId();
   const rename = useRef<HTMLButtonElement>(null);
 
   if (renaming) {
@@ -129,6 +136,15 @@ export function CollectionSettings({
           onClick={() => setSharing((open) => !open)}
         >
           Share
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-expanded={keysOpen}
+          aria-controls={keysPanelId}
+          onClick={() => setKeysOpen((open) => !open)}
+        >
+          API keys
         </Button>
         <Button
           ref={rename}
@@ -177,6 +193,9 @@ export function CollectionSettings({
             </div>
           )}
         </div>
+      </div>
+      <div id={keysPanelId} hidden={!keysOpen}>
+        <ApiKeysPanel collectionId={collection.id} initialKeys={apiKeys} />
       </div>
     </div>
   );

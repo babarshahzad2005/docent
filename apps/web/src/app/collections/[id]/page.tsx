@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 
-import { listInvites, listMembers } from "@/app/collections-actions";
+import { listApiKeys, listInvites, listMembers } from "@/app/collections-actions";
 import { listDocuments } from "@/app/documents-actions";
 import { AppShell } from "@/components/app-shell";
 import { CollectionSettings } from "@/components/collection-settings";
@@ -34,14 +34,16 @@ async function Collection({ params }: { params: Promise<{ id: string }> }) {
   if (!collection) notFound();
   if (collection.is_personal) redirect("/");
   const owned = collection.role === "owner" && !collection.is_demo;
-  const [documents, invites, members] = await Promise.all([
+  const [documents, invites, members, apiKeys] = await Promise.all([
     listDocuments(),
     owned ? listInvites(collection.id) : null,
     // The Demo Collection's Members are every User: it has no list to show.
     collection.is_demo ? null : listMembers(collection.id),
+    owned ? listApiKeys(collection.id) : null,
   ]);
   if (!documents.ok) throw new Error(documents.message);
   if (invites && !invites.ok) throw new Error(invites.message);
+  if (apiKeys && !apiKeys.ok) throw new Error(apiKeys.message);
   // Not fatal: removed meanwhile, the next load shows the Collection gone.
   const people = members?.ok ? members.value : [];
 
@@ -61,6 +63,7 @@ async function Collection({ params }: { params: Promise<{ id: string }> }) {
               collection={collection}
               invites={invites?.ok ? invites.value : []}
               members={people}
+              apiKeys={apiKeys?.ok ? apiKeys.value : []}
               documentCount={
                 documents.value.filter((document) => document.collection_id === collection.id)
                   .length
