@@ -29,10 +29,11 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 from psycopg.types.json import Jsonb
 
+from docent_api.api_keys import use_api_key
 from docent_api.conflicts import INSTRUCTIONS as CONFLICT_INSTRUCTIONS
 from docent_api.conflicts import Version, as_records, notice, split_disagreements
 from docent_api.db import get_pool
-from docent_api.limits import check_visitor
+from docent_api.limits import check_api_key, check_visitor
 from docent_api.providers.base import (
     Embedder,
     Generator,
@@ -43,7 +44,14 @@ from docent_api.providers.base import (
     Usage,
 )
 from docent_api.public import PublicCollectionNotFound, public_collection
-from docent_api.retrieval import Passage, documents_state, readable_scope, retrieve
+from docent_api.retrieval import (
+    KeyReader,
+    Passage,
+    Reader,
+    documents_state,
+    readable_scope,
+    retrieve,
+)
 from docent_api.rewriting import HISTORY_TURNS, EarlierTurn, standalone_question
 from docent_api.settings import get_settings
 from docent_api.verification import INSTRUCTIONS, QuoteFilter, Verification, split_answer, verify
@@ -115,6 +123,11 @@ _VISITOR_WORDING = {
         "it isn’t shown. "
         "Try asking in a different way."
     ),
+}
+
+# For an API Key, the same, except that a Collection it asks is gone only if the key is.
+_API_WORDING = {
+    UNAVAILABLE: "This API key was revoked while the question was being answered.",
 }
 
 # Models sometimes write a citation with CJK lenticular brackets (【11】); accept both.
@@ -246,11 +259,22 @@ class Turn:
     history: list[EarlierTurn] = field(default_factory=list)  # earlier turns, oldest first
     rewritten: str | None = None  # a follow-up, rewritten to stand on its own
     conflict: list[Version] | None = None  # when its Documents disagree
-    channel: str = "app"  # where it was asked, for the Answer Log: "app" or "public"
+    channel: str = "app"  # where it was asked, for the Answer Log: "app", "public" or "api"
+    api_key_id: UUID | None = None  # the API Key that asked (channel "api")
 
     def says(self, text: str) -> str:
-        """One of the fixed replies, worded for whoever asked: a Visitor's aren't "yours"."""
-        return text if self.channel == "app" else _VISITOR_WORDING.get(text, text)
+        """One of the fixed replies, worded for whoever asked: a Visitor's, or an API Key's,
+        Documents aren't "yours"."""
+        if self.channel == "app":
+            return text
+        if self.channel == "api" and text in _API_WORDING:
+            return _API_WORDING[text]
+        return _VISITOR_WORDING.get(text, text)
+
+    @property
+    def reader(self) -> Reader:
+        """Who reads the passages: the User, the API Key, or a Visitor (None)."""
+        return KeyReader(self.api_key_id) if self.api_key_id else self.user_id
 
     @property
     def standalone(self) -> str:
@@ -289,6 +313,25 @@ async def start_visitor_turn(collection_id: UUID, question: str, address: str) -
     return await asyncio.to_thread(begin)
 
 
+async def start_api_turn(secret: str, question: str) -> Turn:
+    """A question asked with an API Key, of the key's Collection (GLOSSARY: API Key): like a
+    Visitor's, it stands alone and only the Answer Log entry is saved, logged with the key.
+
+    Raises ApiKeyNotFound for a missing, wrong, or revoked key, then RateLimited if the key
+    has asked enough this hour (limits.py). One short-lived connection, off the event loop.
+    """
+
+    def begin() -> Turn:
+        with get_pool().connection() as conn:
+            key = use_api_key(conn, secret)
+            check_api_key(conn, key.id)
+        return Turn(
+            None, question, [key.collection_id], None, None, channel="api", api_key_id=key.id
+        )
+
+    return await asyncio.to_thread(begin)
+
+
 async def answer(
     turn: Turn, embedder: Embedder, generator: Generator, rewriter: Generator | None = None
 ) -> AsyncIterator[AnswerEvent]:
@@ -320,7 +363,7 @@ async def answer(
             # Declined before asking the model: nothing to read, or nothing close enough.
             if state == "unavailable":
                 # Turned private, or expired, since the question arrived.
-                turn.answer, outcome = UNAVAILABLE, "no_documents"
+                turn.answer, outcome = turn.says(UNAVAILABLE), "no_documents"
                 turn.decline_reason = "unavailable"
             elif state != "indexed":
                 turn.answer = turn.says(STILL_PROCESSING if state == "processing" else NO_DOCUMENTS)
@@ -429,12 +472,19 @@ def _documents_state(turn: Turn) -> str:
     if not turn.scope:
         return "none"
     with get_pool().connection() as conn:
-        if turn.user_id is None:
+        if turn.api_key_id is not None:
+            key = conn.execute(
+                "select 1 from app.api_keys where id = %s and revoked_at is null",
+                (turn.api_key_id,),
+            ).fetchone()
+            if key is None:
+                return "unavailable"
+        elif turn.user_id is None:
             try:
                 public_collection(conn, turn.scope[0])
             except PublicCollectionNotFound:
                 return "unavailable"
-        return documents_state(conn, turn.user_id, turn.scope)
+        return documents_state(conn, turn.reader, turn.scope)
 
 
 def is_decline(text: str) -> bool:
@@ -569,7 +619,7 @@ def _retrieve(turn: Turn, vector: list[float] | None) -> list[Passage]:
     if not turn.scope:
         return []
     with get_pool().connection() as conn:
-        return retrieve(conn, turn.user_id, turn.scope, turn.standalone, vector)
+        return retrieve(conn, turn.reader, turn.scope, turn.standalone, vector)
 
 
 def _finish(
@@ -591,12 +641,12 @@ def _finish(
                 (message_id, user_id, question, scope, retrieved, prompt, answer, outcome,
                  model, model_version, fell_back_from, latency_ms, first_token_ms,
                  input_tokens, output_tokens, raw_answer, verification, decline_reason,
-                 rewritten_question, conflict, channel)
+                 rewritten_question, conflict, channel, api_key_id)
             values (%(message_id)s, %(user_id)s, %(question)s, %(scope)s, %(retrieved)s,
                     %(prompt)s, %(answer)s, %(outcome)s, %(model)s, %(version)s,
                     %(fell_back_from)s, %(latency)s, %(first_token)s, %(input)s, %(output)s,
                     %(raw)s, %(verification)s, %(decline_reason)s, %(rewritten)s, %(conflict)s,
-                    %(channel)s)
+                    %(channel)s, %(api_key)s)
             """,
             {
                 "message_id": turn.message_id,
@@ -623,6 +673,7 @@ def _finish(
                 "rewritten": turn.rewritten,
                 "conflict": Jsonb(as_records(turn.conflict)) if turn.conflict else None,
                 "channel": turn.channel,
+                "api_key": turn.api_key_id,
             },
         )
 

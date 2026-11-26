@@ -56,6 +56,12 @@ export default function PrivacyPage() {
             to the answer log, not linked to anyone, and are deleted after 90 days.
           </li>
           <li>
+            <strong>Questions asked with an API key:</strong> a collection&rsquo;s owner can
+            create keys that let their own apps ask it. Those questions and answers go to the
+            answer log with the key that asked, and are deleted after 90 days. The key itself is
+            kept only in a form that can&rsquo;t be turned back into it.
+          </li>
+          <li>
             <strong>Counts for rate limits:</strong> to limit how often people can ask public
             collections, Docent counts each visitor&rsquo;s questions under a one-way, keyed
             hash of their network address, never the address itself. Counts more than two days

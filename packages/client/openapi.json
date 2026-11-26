@@ -1,6 +1,109 @@
 {
   "components": {
     "schemas": {
+      "ApiAnswer": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/ApiCitation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "closest": {
+            "items": {
+              "$ref": "#/components/schemas/ApiCitation"
+            },
+            "title": "Closest",
+            "type": "array"
+          },
+          "conflict": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict"
+          },
+          "outcome": {
+            "enum": [
+              "answered",
+              "declined",
+              "unverified",
+              "no_documents"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "answer",
+          "outcome",
+          "verified",
+          "citations"
+        ],
+        "title": "ApiAnswer",
+        "type": "object"
+      },
+      "ApiCitation": {
+        "description": "A passage the answer cites, as `[number]` in its text.",
+        "properties": {
+          "document_name": {
+            "title": "Document Name",
+            "type": "string"
+          },
+          "heading_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Heading Path",
+            "type": "array"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "passage": {
+            "title": "Passage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "document_name",
+          "heading_path",
+          "page",
+          "passage"
+        ],
+        "title": "ApiCitation",
+        "type": "object"
+      },
       "ApiKeyName": {
         "properties": {
           "name": {
@@ -1203,6 +1306,11 @@
       }
     },
     "securitySchemes": {
+      "ApiKey": {
+        "description": "An API Key, created by a Collection's Owner in its settings.",
+        "scheme": "bearer",
+        "type": "http"
+      },
       "HTTPBearer": {
         "scheme": "bearer",
         "type": "http"
@@ -1303,6 +1411,62 @@
         "summary": "Revoke Key",
         "tags": [
           "api keys"
+        ]
+      }
+    },
+    "/ask": {
+      "post": {
+        "description": "Answer a question from the API Key's Collection, with the same cited, verified answer\nthe app gives, as one response.\n\nSend the key as `Authorization: Bearer <key>`. Each question stands alone (no follow-ups),\nand each key may ask 60 questions an hour.\n\n    curl -X POST https://docent-api-five.vercel.app/ask \\\n      -H \"Authorization: Bearer $DOCENT_API_KEY\" \\\n      -H \"Content-Type: application/json\" \\\n      -d '{\"question\": \"How much holiday do I get?\"}'",
+        "operationId": "ask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisitorQuestion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiAnswer"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No API Key, or a wrong or revoked one"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "Over the key's hourly limit; `Retry-After` says when to ask again"
+          },
+          "503": {
+            "description": "The answer couldn't be finished; try again"
+          }
+        },
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "summary": "Ask With Key",
+        "tags": [
+          "api"
         ]
       }
     },

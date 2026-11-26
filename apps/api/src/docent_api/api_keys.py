@@ -39,6 +39,11 @@ class ApiKeyNotFound(Exception):
     """No such key, or it was revoked."""
 
 
+class KeyInUse(BaseModel):
+    id: UUID
+    collection_id: UUID
+
+
 def key_hash(secret: str) -> bytes:
     return hashlib.sha256(secret.encode()).digest()
 
@@ -64,6 +69,25 @@ def create_api_key(
             (collection_id, name, key_hash(secret), user_id),
         ).fetchone()
     return NewApiKey(key=ApiKeySummary.model_validate(row), secret=secret)
+
+
+def use_api_key(conn: Connection[DictRow], secret: str) -> KeyInUse:
+    """The key with this secret, if it isn't revoked, marked as used now. Raises ApiKeyNotFound
+    otherwise. Looked up by hash, so the secret is never compared or stored."""
+    if not secret.startswith(PREFIX):
+        raise ApiKeyNotFound(None)
+    with conn.transaction():
+        row = conn.execute(
+            """
+            update app.api_keys set last_used_at = now()
+            where key_hash = %s and revoked_at is null
+            returning id, collection_id
+            """,
+            (key_hash(secret),),
+        ).fetchone()
+    if row is None:
+        raise ApiKeyNotFound(None)
+    return KeyInUse.model_validate(row)
 
 
 def list_api_keys(

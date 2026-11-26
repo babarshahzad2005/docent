@@ -44,9 +44,43 @@ _PUBLIC_READABLE = f"""
 """
 
 
-def _readable(user_id: UUID | None) -> str:
-    """Who reads: a User through their Memberships, or a Visitor (None) through publicity."""
-    return _PUBLIC_READABLE if user_id is None else _READABLE
+# The passages an API Key may read: the same, in its own Collection, while it isn't revoked.
+# Public or not doesn't matter (GLOSSARY: API Key).
+_KEY_READABLE = """
+    from app.chunks c
+    join app.documents d on d.id = c.document_id and d.status = 'indexed'
+        and d.replaces_id is null
+    join app.api_keys k on k.collection_id = c.collection_id and k.id = %(key_id)s
+        and k.revoked_at is null
+    where c.collection_id = any(%(scope)s) and c.superseded_at is null
+"""
+
+
+@dataclass(frozen=True)
+class KeyReader:
+    """An API Key, reading its own Collection while it is in use."""
+
+    key_id: UUID
+
+
+# Who reads: a User (their id), an API Key, or a Visitor (None).
+Reader = UUID | KeyReader | None
+
+
+def _readable(reader: Reader) -> str:
+    """A User reads through their Memberships, an API Key through its Collection, and a
+    Visitor (None) through publicity."""
+    if isinstance(reader, KeyReader):
+        return _KEY_READABLE
+    return _PUBLIC_READABLE if reader is None else _READABLE
+
+
+def _who(reader: Reader) -> dict[str, UUID | None]:
+    """The query parameters naming the reader."""
+    return {
+        "user_id": reader if isinstance(reader, UUID) else None,
+        "key_id": reader.key_id if isinstance(reader, KeyReader) else None,
+    }
 
 
 @dataclass(frozen=True)
@@ -91,7 +125,7 @@ def readable_scope(
 
 def retrieve(
     conn: Connection[DictRow],
-    user_id: UUID | None,
+    user_id: Reader,
     scope: Sequence[UUID],
     question: str,
     question_vector: Sequence[float] | None,
@@ -100,10 +134,11 @@ def retrieve(
     """The passages most likely to answer `question`, best first.
 
     Without a question vector (the embedding provider was unavailable), keyword search alone
-    still finds passages. A Visitor (`user_id` None) reads only Collections public now.
+    still finds passages. A Visitor (`user_id` None) reads only Collections public now, and
+    an API Key (a KeyReader) only its own Collection.
     """
     readable = _readable(user_id)
-    params = {"user_id": user_id, "scope": list(scope), "k": CANDIDATES, "question": question}
+    params = {**_who(user_id), "scope": list(scope), "k": CANDIDATES, "question": question}
     vector_ids: list[UUID] = []
     similarity: dict[UUID, float] = {}
     if question_vector is not None:
@@ -232,15 +267,22 @@ def _details(
     return passages
 
 
-def documents_state(conn: Connection[DictRow], user_id: UUID | None, scope: Sequence[UUID]) -> str:
-    """What the User (or a Visitor, None) can search in `scope`: "indexed" (some Document is
-    ready), "processing" (none is ready, but some is still on its way), or "none"."""
-    access = (
-        f"join app.collections p on p.id = d.collection_id and {public_now('p')}"
-        if user_id is None
-        else "join app.memberships m on m.collection_id = d.collection_id"
-        " and m.user_id = %(user_id)s"
-    )
+def documents_state(conn: Connection[DictRow], user_id: Reader, scope: Sequence[UUID]) -> str:
+    """What the User (or an API Key, or a Visitor, None) can search in `scope`: "indexed"
+    (some Document is ready), "processing" (none is ready, but some is still on its way), or
+    "none"."""
+    if isinstance(user_id, KeyReader):
+        access = (
+            "join app.api_keys k on k.collection_id = d.collection_id and k.id = %(key_id)s"
+            " and k.revoked_at is null"
+        )
+    elif user_id is None:
+        access = f"join app.collections p on p.id = d.collection_id and {public_now('p')}"
+    else:
+        access = (
+            "join app.memberships m on m.collection_id = d.collection_id"
+            " and m.user_id = %(user_id)s"
+        )
     row = conn.execute(
         f"""
         select bool_or(d.status = 'indexed') as indexed,
@@ -249,7 +291,7 @@ def documents_state(conn: Connection[DictRow], user_id: UUID | None, scope: Sequ
         {access}
         where d.collection_id = any(%(scope)s::uuid[])
         """,
-        {"user_id": user_id, "scope": list(scope)},
+        {**_who(user_id), "scope": list(scope)},
     ).fetchone()
     if row is not None and row["indexed"]:
         return "indexed"

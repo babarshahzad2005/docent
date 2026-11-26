@@ -187,7 +187,7 @@ No fixed deadline; each milestone has a target duration to keep scope honest. Ea
 | 2026-11-15 | Decline in two layers: retrieval-score threshold before the LLM, plus model-level decline; threshold tuned on the Eval Set | Saves quota; balances decline rate against false declines |
 | 2026-11-15 | Monorepo: apps/web, apps/api, packages/client, evals, docs | One place for reviewers and CI |
 | 2026-11-15 | Demo Collection: 30–50 docs from the GitLab Handbook (CC BY-SA) and GOV.UK guidance (Open Government Licence), licenses verified per source, attributed in app and README | Covers HTML, Markdown, PDF, DOCX; real old/new versions give conflict cases |
-| 2026-11-15 | API Keys belong to one Collection, ask-only, revocable, rate-limited per key | A leaked key is contained to one Collection |
+| 2026-11-15 | API Keys belong to one Collection, ask-only, revocable, rate-limited per key | A leaked key is contained to one Collection (done 2026-11-26: keys in collection settings, stored as hashes, revoked keys kept for the Answer Log; `POST /ask`, 60 questions an hour per key) |
 | 2026-11-15 | One Eval Set on the Demo Collection; only the maintainer promotes items, only from the Demo Collection | Private data never enters the repo or CI |
 | 2026-11-15 | CI evals: temperature 0, pinned models; block if a metric drops > 2 points vs main or below target; 30-question subset per PR, full set nightly and pre-release | Tolerates model nondeterminism; fits free quota |
 | 2026-11-15 | Debug panel: Owners and Editors on their Collections, everyone on the Demo Collection | Showing how grounding works is a demo strength |

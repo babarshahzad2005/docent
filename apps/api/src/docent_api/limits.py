@@ -18,6 +18,7 @@ import os
 import secrets
 from functools import lru_cache
 from typing import Literal
+from uuid import UUID
 
 from fastapi import Request
 from psycopg import Connection
@@ -125,7 +126,23 @@ def check_visitor(conn: Connection[DictRow], address: str) -> None:
             )
 
 
+def check_api_key(conn: Connection[DictRow], key_id: UUID) -> None:
+    """Count a question asked with an API Key, or raise RateLimited past its hourly limit. As
+    for Visitors, a refused question doesn't count."""
+    with conn.transaction():
+        hits, retry_after = count(conn, f"api-key:{key_id}", "hour")
+        if hits > get_settings().api_key_questions_per_hour:
+            raise RateLimited(
+                retry_after,
+                f"This API key has asked {get_settings().api_key_questions_per_hour} questions "
+                f"this hour. Try again in {_wait(retry_after)}.",
+            )
+
+
 def _wait_message(seconds: int) -> str:
+    return f"You’ve asked a lot of questions in a short time. Try again in {_wait(seconds)}."
+
+
+def _wait(seconds: int) -> str:
     minutes = max(1, -(-seconds // 60))
-    when = "a minute" if minutes == 1 else f"{minutes} minutes"
-    return f"You’ve asked a lot of questions in a short time. Try again in {when}."
+    return "a minute" if minutes == 1 else f"{minutes} minutes"

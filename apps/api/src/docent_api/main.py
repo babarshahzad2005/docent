@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator
 from datetime import date, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
@@ -16,10 +16,15 @@ from pydantic import BaseModel, Field, field_validator
 
 from docent_api import __version__
 from docent_api.answers import (
+    Completed,
     ConversationNotFound,
+    Failed,
+    SourceInfo,
+    Started,
     answer,
     list_conversations,
     load_conversation,
+    start_api_turn,
     start_turn,
     start_visitor_turn,
     to_sse,
@@ -1036,3 +1041,115 @@ def public_passage(collection_id: UUID, chunk_id: UUID, conn: Db) -> PassageOut:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, "That passage isn’t available any more."
         ) from None
+
+
+_api_key = HTTPBearer(
+    auto_error=False,
+    scheme_name="ApiKey",
+    description="An API Key, created by a Collection's Owner in its settings.",
+)
+_BAD_KEY = (
+    "Send a valid API key as `Authorization: Bearer <key>`. "
+    "It may have been revoked; its collection's owner can create another."
+)
+
+
+class ApiCitation(BaseModel):
+    """A passage the answer cites, as `[number]` in its text."""
+
+    number: int
+    document_name: str
+    heading_path: list[str]
+    page: int | None
+    passage: str
+
+
+class ApiAnswer(BaseModel):
+    answer: str
+    # "answered"; "declined" (the Documents don't contain the answer); "unverified" (nothing in
+    # it could be checked); or "no_documents" (nothing to search yet).
+    outcome: Literal["answered", "declined", "unverified", "no_documents"]
+    verified: bool  # every Citation was checked against its passage
+    citations: list[ApiCitation]
+    # For a Decline, the passages that came closest, for a person to look at instead.
+    closest: list[ApiCitation] = Field(default_factory=list)
+    # When the Documents disagree: each version, newest first.
+    conflict: list[dict[str, Any]] | None = None
+
+
+def _api_citation(source: SourceInfo) -> ApiCitation:
+    return ApiCitation(
+        number=source.number,
+        document_name=source.document_name,
+        heading_path=source.heading_path,
+        page=source.page,
+        passage=source.passage,
+    )
+
+
+@app.post(
+    "/ask",
+    operation_id="ask",
+    tags=["api"],
+    responses={
+        401: {"description": "No API Key, or a wrong or revoked one"},
+        429: {"description": "Over the key's hourly limit; `Retry-After` says when to ask again"},
+        503: {"description": "The answer couldn't be finished; try again"},
+    },
+)
+async def ask_with_key(
+    body: VisitorQuestion,
+    key: Annotated[HTTPAuthorizationCredentials | None, Depends(_api_key)],
+) -> ApiAnswer:
+    """Answer a question from the API Key's Collection, with the same cited, verified answer
+    the app gives, as one response.
+
+    Send the key as `Authorization: Bearer <key>`. Each question stands alone (no follow-ups),
+    and each key may ask 60 questions an hour.
+
+        curl -X POST https://docent-api-five.vercel.app/ask \\
+          -H "Authorization: Bearer $DOCENT_API_KEY" \\
+          -H "Content-Type: application/json" \\
+          -d '{"question": "How much holiday do I get?"}'
+    """
+    unauthorized = HTTPException(
+        status.HTTP_401_UNAUTHORIZED, _BAD_KEY, headers={"WWW-Authenticate": "Bearer"}
+    )
+    if key is None:
+        raise unauthorized
+    try:
+        turn = await start_api_turn(key.credentials, body.question)
+    except ApiKeyNotFound:
+        raise unauthorized from None
+    except RateLimited as limited:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            limited.message,
+            headers={"Retry-After": str(limited.retry_after)},
+        ) from None
+
+    # Read the stream to its end, even past `done`: the Answer Log entry is written as the
+    # stream finishes, and a stream left open might never write it.
+    sources: dict[int, SourceInfo] = {}
+    done: Completed | None = None
+    failed: Failed | None = None
+    async for event in answer(turn, embedder(), answer_generator()):
+        if isinstance(event, Started):
+            sources = {source.number: source for source in event.sources}
+        elif isinstance(event, Completed):
+            done = event
+        elif isinstance(event, Failed):
+            failed = event
+    if done is None:
+        message = failed.message if failed else "The answer couldn’t be finished."
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, message)
+    cited = [_api_citation(sources[n]) for n in done.cited if n in sources]
+    declined = done.outcome == "declined"
+    return ApiAnswer(
+        answer=done.answer,
+        outcome=done.outcome,  # type: ignore[arg-type]
+        verified=done.verified,
+        citations=[] if declined else cited,
+        closest=cited if declined else [],
+        conflict=done.conflict,
+    )
