@@ -1128,21 +1128,28 @@ async def ask_with_key(
             headers={"Retry-After": str(limited.retry_after)},
         ) from None
 
+    # Read the stream to its end, even past `done`: the Answer Log entry is written as the
+    # stream finishes, and a stream left open might never write it.
     sources: dict[int, SourceInfo] = {}
+    done: Completed | None = None
+    failed: Failed | None = None
     async for event in answer(turn, embedder(), answer_generator()):
         if isinstance(event, Started):
             sources = {source.number: source for source in event.sources}
         elif isinstance(event, Completed):
-            cited = [_api_citation(sources[n]) for n in event.cited if n in sources]
-            declined = event.outcome == "declined"
-            return ApiAnswer(
-                answer=event.answer,
-                outcome=event.outcome,  # type: ignore[arg-type]
-                verified=event.verified,
-                citations=[] if declined else cited,
-                closest=cited if declined else [],
-                conflict=event.conflict,
-            )
+            done = event
         elif isinstance(event, Failed):
-            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, event.message)
-    raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "The answer couldn’t be finished.")
+            failed = event
+    if done is None:
+        message = failed.message if failed else "The answer couldn’t be finished."
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, message)
+    cited = [_api_citation(sources[n]) for n in done.cited if n in sources]
+    declined = done.outcome == "declined"
+    return ApiAnswer(
+        answer=done.answer,
+        outcome=done.outcome,  # type: ignore[arg-type]
+        verified=done.verified,
+        citations=[] if declined else cited,
+        closest=cited if declined else [],
+        conflict=done.conflict,
+    )
