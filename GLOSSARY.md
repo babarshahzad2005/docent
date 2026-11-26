@@ -25,7 +25,7 @@ The Collection of openly licensed Documents that every User can ask, read-only, 
 _Avoid_: Sample data, showcase
 
 **Widget**:
-The embeddable chat that answers from one Public Collection on any website.
+The embeddable chat that answers from one Public Collection on any website: a chat button added with one script tag (the embed snippet), opening Docent in a frame so the site's styles can't change it.
 _Avoid_: Embed, plugin, chatbot
 
 **API Key**:
