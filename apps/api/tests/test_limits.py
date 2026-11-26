@@ -15,7 +15,7 @@ from docent_api.auth import AuthUser
 from docent_api.collection_settings import create_collection
 from docent_api.db import get_connection
 from docent_api.library import ensure_user
-from docent_api.limits import RateLimited, check_visitor, visitor_bucket
+from docent_api.limits import RateLimited, check_api_key, check_visitor, visitor_bucket
 from docent_api.public import set_public
 from docent_api.settings import get_settings
 
@@ -151,6 +151,23 @@ def test_the_api_refuses_with_retry_after_and_only_counts_public_questions(
     finally:
         main.app.dependency_overrides.clear()
         pool.close()
+
+
+def test_each_api_key_gets_so_many_questions_an_hour(
+    conn: Connection[DictRow], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "api_key_questions_per_hour", 2)
+    key, other = uuid4(), uuid4()
+    check_api_key(conn, key)
+    check_api_key(conn, key)
+
+    with pytest.raises(RateLimited) as refused:
+        check_api_key(conn, key)
+
+    assert "This API key has asked 2 questions this hour" in refused.value.message
+    check_api_key(conn, other)  # each key has its own count
+    with pytest.raises(RateLimited):
+        check_api_key(conn, key)  # a refused question didn't count, but the limit still holds
 
 
 def test_the_web_app_may_call_it_from_the_browser() -> None:

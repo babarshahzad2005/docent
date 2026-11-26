@@ -26,6 +26,35 @@ Keyword search misses anything not phrased exactly right, and general-purpose ch
 
 Create Collections, invite people by email as Editors or Viewers, and manage who has access. Docent sends no email: the Owner copies an invite link, and signing in with the invited address is what grants access. Access is checked inside the retrieval query, so a change applies from the next question; someone removed keeps their past answers but no longer sees the cited passages. `apps/api/tests/test_leaks.py` calls every API endpoint as an Owner, Editor, Viewer, removed Member, and stranger across two Collections, and fails if a new endpoint isn't covered.
 
+### REST API (v0.3)
+
+The Owner of a Collection creates an API Key in its settings (**API keys**). A key can only ask questions, only of its own Collection, public or private, and is revoked from the same place. `POST /ask` returns the same cited, verified answer as the app, as one JSON response:
+
+```bash
+curl -X POST https://docent-api-five.vercel.app/ask   -H "Authorization: Bearer $DOCENT_API_KEY"   -H "Content-Type: application/json"   -d '{"question": "How much paid holiday do full-time workers get?"}'
+```
+
+```json
+{
+  "answer": "Most workers get 5.6 weeks of paid holiday a year [1].",
+  "outcome": "answered",
+  "verified": true,
+  "citations": [
+    {
+      "number": 1,
+      "document_name": "holiday-policy.md",
+      "heading_path": ["Holiday entitlement"],
+      "page": null,
+      "passage": "Most workers who work a 5-day week must receive at least 28 days' paid annual leave a year."
+    }
+  ],
+  "closest": [],
+  "conflict": null
+}
+```
+
+`outcome` is `answered`, `declined` (the documents don't say; `closest` lists the nearest passages), `unverified`, or `no_documents`. A missing, wrong, or revoked key gets `401`. Each key may ask 60 questions an hour; past that, `429` with `Retry-After`. Each question stands alone. The full schema is at [/docs](https://docent-api-five.vercel.app/docs).
+
 ## Architecture
 
 - **Web:** Next.js (TypeScript)

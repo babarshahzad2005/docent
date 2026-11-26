@@ -44,6 +44,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask With Key
+         * @description Answer a question from the API Key's Collection, with the same cited, verified answer
+         *     the app gives, as one response.
+         *
+         *     Send the key as `Authorization: Bearer <key>`. Each question stands alone (no follow-ups),
+         *     and each key may ask 60 questions an hour.
+         *
+         *         curl -X POST https://docent-api-five.vercel.app/ask \
+         *           -H "Authorization: Bearer $DOCENT_API_KEY" \
+         *           -H "Content-Type: application/json" \
+         *           -d '{"question": "How much holiday do I get?"}'
+         */
+        post: operations["ask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/collections": {
         parameters: {
             query?: never;
@@ -599,6 +628,42 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ApiAnswer */
+        ApiAnswer: {
+            /** Answer */
+            answer: string;
+            /** Citations */
+            citations: components["schemas"]["ApiCitation"][];
+            /** Closest */
+            closest?: components["schemas"]["ApiCitation"][];
+            /** Conflict */
+            conflict?: {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "answered" | "declined" | "unverified" | "no_documents";
+            /** Verified */
+            verified: boolean;
+        };
+        /**
+         * ApiCitation
+         * @description A passage the answer cites, as `[number]` in its text.
+         */
+        ApiCitation: {
+            /** Document Name */
+            document_name: string;
+            /** Heading Path */
+            heading_path: string[];
+            /** Number */
+            number: number;
+            /** Page */
+            page: number | null;
+            /** Passage */
+            passage: string;
+        };
         /** ApiKeyName */
         ApiKeyName: {
             /** Name */
@@ -1169,6 +1234,60 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    ask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisitorQuestion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiAnswer"];
+                };
+            };
+            /** @description No API Key, or a wrong or revoked one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Over the key's hourly limit; `Retry-After` says when to ask again */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The answer couldn't be finished; try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

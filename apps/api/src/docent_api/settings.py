@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # Visitors together each day, keeping most of the free model quota for signed-in Users.
     visitor_questions_per_hour: int = 20
     visitor_questions_per_day: int = 200
+    api_key_questions_per_hour: int = 60
     # Keys the hash of Visitors' network addresses; derived from supabase_secret_key if unset.
     visitor_hash_key: str = ""
     # Sites whose pages may call the API from the browser: a Visitor's questions go straight

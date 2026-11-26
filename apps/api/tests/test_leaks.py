@@ -89,6 +89,7 @@ COVERED = {
     ("GET", "/public/{collection_id}/passages/{chunk_id}"): (
         "test_visitors_see_a_collection_only_while_public"
     ),
+    ("POST", "/ask"): "test_an_api_key_asks_only_its_collection",
 }
 
 MEMBERS = ("owner", "editor", "viewer")
@@ -622,3 +623,75 @@ def test_visitors_see_a_collection_only_while_public(
     off = owner.put(f"/collections/{world.team_a}/public", json={"public": False})
     assert off.json() == {"public": False, "public_until": None}
     assert visitor_can_reach(visitor_client(database_url), world) == closed
+
+
+def test_an_api_key_asks_only_its_collection(
+    database_url: str, conn: Connection[DictRow], world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = create_api_key(conn, world.users["owner"].id, world.team_a, "Bot")
+    client = visitor_client(database_url)  # no signed-in User: only the key
+    question = {"question": "How much leave carries over?"}
+
+    # No key, a wrong one, or one shaped right but unknown: 401, and nothing is answered.
+    model = ScriptedModel(["Up to 10 days [1].", QUOTES])
+    monkeypatch.setattr(main, "answer_generator", lambda: model)
+    for headers in ({}, {"Authorization": "Bearer nope"}, {"Authorization": "Bearer dk_x"}):
+        refused = client.post("/ask", json=question, headers=headers)
+        assert refused.status_code == 401, headers
+        assert refused.headers["www-authenticate"] == "Bearer"
+    assert model.prompts == []
+
+    # Team A is private: a key works all the same, and reads Team A only.
+    bearer = {"Authorization": f"Bearer {created.secret}"}
+    response = client.post("/ask", json=question, headers=bearer)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["outcome"] == "answered"
+    assert body["verified"] is True
+    assert "10 days" in body["answer"]
+    assert [c["document_name"] for c in body["citations"]] == ["leave.md"]
+    assert body["citations"][0]["number"] == 1
+    assert "10 days" in body["citations"][0]["passage"]
+    sent = " ".join(model.prompts)
+    assert "PERIWINKLE" not in sent and "40 days" not in sent
+    log = conn.execute(
+        "select user_id, message_id, channel, scope, api_key_id from app.answer_logs "
+        "order by created_at desc limit 1"
+    ).fetchone()
+    key_row = conn.execute(
+        "select last_used_at from app.api_keys where id = %s", (created.key.id,)
+    ).fetchone()
+    conn.commit()
+    assert log == {
+        "user_id": None,
+        "message_id": None,
+        "channel": "api",
+        "scope": [world.team_a],
+        "api_key_id": created.key.id,
+    }
+    assert key_row is not None and key_row["last_used_at"] is not None
+
+    # Nothing reads Team B through Team A's key.
+    from docent_api.retrieval import KeyReader
+
+    reader = KeyReader(created.key.id)
+    assert retrieve(conn, reader, [world.team_b], "board leave code word periwinkle", None) == []
+    conn.commit()
+
+    # Over the key's hourly limit: 429 with Retry-After.
+    from docent_api.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "api_key_questions_per_hour", 1)
+    limited = client.post("/ask", json=question, headers=bearer)
+    assert limited.status_code == 429
+    assert 0 < int(limited.headers["retry-after"]) <= 3600
+
+    # Revoked, it stops at once, and reads nothing.
+    monkeypatch.setattr(get_settings(), "api_key_questions_per_hour", 60)
+    owner = client_for(database_url, world.users["owner"])
+    assert owner.delete(f"/api-keys/{created.key.id}").status_code == 204
+    client = visitor_client(database_url)
+    assert client.post("/ask", json=question, headers=bearer).status_code == 401
+    assert retrieve(conn, reader, [world.team_a], "leave carries over", None) == []
+    conn.commit()
