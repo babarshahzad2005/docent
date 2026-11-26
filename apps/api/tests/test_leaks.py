@@ -449,7 +449,10 @@ def state(conn: Connection[DictRow], world: World) -> dict[str, object]:
             world.team_a,
         ),
         "invite": one("select role from app.invites where id = %s", world.invite_a),
-        "keys": one("select count(*) from app.api_keys where collection_id = %s", world.team_a),
+        "keys": one(
+            "select count(*) from app.api_keys where collection_id = %s and revoked_at is null",
+            world.team_a,
+        ),
     }
     conn.commit()
     return snapshot

@@ -69,13 +69,13 @@ def create_api_key(
 def list_api_keys(
     conn: Connection[DictRow], user_id: UUID, collection_id: UUID
 ) -> list[ApiKeySummary]:
-    """The Collection's keys, newest first, without their secrets (its Owner)."""
+    """The Collection's keys still in use, newest first, without their secrets (its Owner)."""
     with conn.transaction():
         require_owner(conn, user_id, collection_id)
         rows = conn.execute(
             """
             select id, name, created_at, last_used_at from app.api_keys
-            where collection_id = %s order by created_at desc
+            where collection_id = %s and revoked_at is null order by created_at desc
             """,
             (collection_id,),
         ).fetchall()
@@ -83,12 +83,17 @@ def list_api_keys(
 
 
 def revoke_api_key(conn: Connection[DictRow], user_id: UUID, key_id: UUID) -> None:
-    """Delete a key (its Collection's Owner); it stops working at once."""
+    """Revoke a key (its Collection's Owner); it stops working at once. The row stays, marked,
+    so answers it asked for can still be traced to it."""
     with conn.transaction():
         row = conn.execute(
-            "select collection_id from app.api_keys where id = %s", (key_id,)
+            "select collection_id from app.api_keys where id = %s and revoked_at is null",
+            (key_id,),
         ).fetchone()
         if row is None:
             raise ApiKeyNotFound(key_id)
         require_owner(conn, user_id, row["collection_id"])
-        conn.execute("delete from app.api_keys where id = %s", (key_id,))
+        conn.execute(
+            "update app.api_keys set revoked_at = now() where id = %s and revoked_at is null",
+            (key_id,),
+        )

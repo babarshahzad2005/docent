@@ -9,6 +9,7 @@ import {
 } from "@/app/collections-actions";
 import { Button } from "@/components/ui/button";
 import { formatLocalDate } from "@/lib/dates";
+import { useInBrowser } from "@/lib/use-in-browser";
 
 const CONNECTION =
   "Can’t reach the server. Check your connection and try again.";
@@ -225,6 +226,8 @@ function WaitingInvite({
   const [cancelling, setCancelling] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const role = ROLES.find((r) => r.value === invite.role)?.label ?? invite.role;
+  // In the reader's time zone, known only in the browser.
+  const until = useInBrowser() ? formatLocalDate(invite.expires_at) : "…";
   return (
     <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border py-2">
       <span className="flex min-w-0 flex-col">
@@ -232,7 +235,7 @@ function WaitingInvite({
           {invite.email}
         </span>
         <span className="text-meta text-muted-foreground">
-          {role} · link works until {formatLocalDate(invite.expires_at)}
+          {role} · link works until {until}
         </span>
       </span>
       <span className="flex items-center gap-1">

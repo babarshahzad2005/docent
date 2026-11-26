@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { type RefObject, useEffect, useId, useRef, useState } from "react";
 
 import {
   type ApiKeySummary,
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { formatLocalDate } from "@/lib/dates";
+import { useInBrowser } from "@/lib/use-in-browser";
 
 const CONNECTION = "Can’t reach the server. Check your connection and try again.";
 
@@ -160,11 +161,11 @@ export function ApiKeysPanel({
             <KeyRow
               key={key.id}
               apiKey={key}
+              afterRevoke={nameInput}
               onRevoked={() => {
                 setKeys((current) => current.filter((k) => k.id !== key.id));
                 if (created?.key.id === key.id) setCreated(null);
                 setAnnouncement(`Key ${key.name} revoked. It no longer works.`);
-                nameInput.current?.focus();
               }}
             />
           ))}
@@ -177,10 +178,23 @@ export function ApiKeysPanel({
   );
 }
 
-function KeyRow({ apiKey, onRevoked }: { apiKey: ApiKeySummary; onRevoked: () => void }) {
+function KeyRow({
+  apiKey,
+  afterRevoke,
+  onRevoked,
+}: {
+  apiKey: ApiKeySummary;
+  /** Where focus goes once the key, and its row, are gone. */
+  afterRevoke: RefObject<HTMLElement | null>;
+  onRevoked: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [done, setDone] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const inBrowser = useInBrowser();
+  // Dates are in the reader's time zone, known only in the browser.
+  const date = (iso: string) => (inBrowser ? formatLocalDate(iso) : "…");
   return (
     <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border py-2">
       <span className="flex min-w-0 flex-col">
@@ -188,8 +202,8 @@ function KeyRow({ apiKey, onRevoked }: { apiKey: ApiKeySummary; onRevoked: () =>
           {apiKey.name}
         </span>
         <span className="text-meta text-muted-foreground">
-          Created {formatLocalDate(apiKey.created_at)} ·{" "}
-          {apiKey.last_used_at ? `last used ${formatLocalDate(apiKey.last_used_at)}` : "never used"}
+          Created {date(apiKey.created_at)} ·{" "}
+          {apiKey.last_used_at ? `last used ${date(apiKey.last_used_at)}` : "never used"}
         </span>
       </span>
       <AlertDialog
@@ -205,7 +219,7 @@ function KeyRow({ apiKey, onRevoked }: { apiKey: ApiKeySummary; onRevoked: () =>
         >
           Revoke
         </AlertDialogTrigger>
-        <AlertDialogContent>
+        <AlertDialogContent finalFocus={done ? afterRevoke : undefined}>
           <AlertDialogTitle>Revoke {apiKey.name}?</AlertDialogTitle>
           <AlertDialogDescription>
             Anything using this key stops getting answers at once. This can’t be undone.
@@ -226,6 +240,7 @@ function KeyRow({ apiKey, onRevoked }: { apiKey: ApiKeySummary; onRevoked: () =>
                 setRevoking(false);
                 if (!result) return setProblem(CONNECTION);
                 if (!result.ok) return setProblem(result.message);
+                setDone(true);
                 setOpen(false);
                 onRevoked();
               }}

@@ -94,13 +94,17 @@ def test_a_key_needs_a_short_name(conn: Connection[DictRow], owner: AuthUser, te
         create_api_key(conn, owner.id, team, "x" * 81)
 
 
-def test_revoking_deletes_the_key(conn: Connection[DictRow], owner: AuthUser, team: UUID) -> None:
+def test_a_revoked_key_is_kept_but_marked(
+    conn: Connection[DictRow], owner: AuthUser, team: UUID
+) -> None:
     key = create_api_key(conn, owner.id, team, "Site").key
 
     revoke_api_key(conn, owner.id, key.id)
 
     assert list_api_keys(conn, owner.id, team) == []
+    row = conn.execute("select revoked_at from app.api_keys where id = %s", (key.id,)).fetchone()
     conn.commit()
+    assert row is not None and row["revoked_at"] is not None
     with pytest.raises(ApiKeyNotFound):
         revoke_api_key(conn, owner.id, key.id)
 
@@ -130,10 +134,26 @@ def test_the_personal_and_demo_collections_have_no_keys(
     conn: Connection[DictRow], owner: AuthUser
 ) -> None:
     personal = next(c.id for c in list_collections(conn, owner.id) if c.is_personal)
+    demo = conn.execute("select id from app.collections where is_demo").fetchone()
+    if demo is None:
+        demo = conn.execute(
+            "insert into app.collections (name, is_demo, public) "
+            "values ('Demo Collection', true, true) returning id"
+        ).fetchone()
+    assert demo is not None
+    # Even made its Owner by hand, nobody gets keys for it.
+    conn.execute(
+        "insert into app.memberships (collection_id, user_id, role) values (%s, %s, 'owner') "
+        "on conflict (collection_id, user_id) do update set role = 'owner'",
+        (demo["id"], owner.id),
+    )
     conn.commit()
 
-    with pytest.raises(FixedCollection):
-        create_api_key(conn, owner.id, personal, "Site")
+    for fixed in (personal, demo["id"]):
+        with pytest.raises(FixedCollection):
+            create_api_key(conn, owner.id, fixed, "Site")
+        with pytest.raises(FixedCollection):
+            list_api_keys(conn, owner.id, fixed)
 
 
 def test_deleting_the_collection_removes_its_keys(
