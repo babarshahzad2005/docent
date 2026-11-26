@@ -55,6 +55,7 @@ test("a phone sees the Widget full screen, with its own Close button", async ({
   await page.getByRole("button", { name: "Ask a question" }).click();
   const panel = page.getByRole("dialog", { name: "Ask Docent" });
   await expect(panel).toHaveCSS("width", "375px");
+  await expect(panel).toHaveAttribute("aria-modal", "true");
   await panel.getByRole("button", { name: "Close chat" }).focus();
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
