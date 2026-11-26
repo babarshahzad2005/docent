@@ -6,7 +6,7 @@ Ask questions of your own documents and get answers that cite the exact passages
 
 **On a website:** https://babarshahzad2005.github.io/docent/ shows the chat Widget on an example site, answering from the Demo Collection.
 
-> **Status:** in development. First public release (v0.1) is planned at the end of milestone M2. See the [roadmap](#roadmap).
+> **Status:** v0.3 released: public collections, an embeddable widget, and a REST API. v1.0 is planned at the end of milestone M5. See the [roadmap](#roadmap).
 
 ## Why
 
@@ -25,6 +25,10 @@ Keyword search misses anything not phrased exactly right, and general-purpose ch
 ### Sharing (v0.2)
 
 Create Collections, invite people by email as Editors or Viewers, and manage who has access. Docent sends no email: the Owner copies an invite link, and signing in with the invited address is what grants access. Access is checked inside the retrieval query, so a change applies from the next question; someone removed keeps their past answers but no longer sees the cited passages. `apps/api/tests/test_leaks.py` calls every API endpoint as an Owner, Editor, Viewer, removed Member, and stranger across two Collections, and fails if a new endpoint isn't covered.
+
+### Public collections and the widget (v0.3)
+
+An Owner can make a Collection public, for good or for 1, 7, or 30 days: anyone with its link can ask it without signing in, and sees answers and the passages cited, never the document list. The same Collection can go on any website as a chat button, with one script tag copied from its settings; see it on the [example site](https://babarshahzad2005.github.io/docent/). Anyone can [try the demo](https://docent-tan.vercel.app/demo) the same way. Visitors are rate-limited (20 questions an hour per network, 200 a day in all), and their network addresses are stored only as keyed hashes.
 
 ### REST API (v0.3)
 
@@ -74,7 +78,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs
 | M1 | Ingestion |
 | M2 | Cited answers and eval suite → **v0.1** |
 | M3 | Collections and sharing → **v0.2** |
-| M4 | Public collections, widget, API |
+| M4 | Public collections, widget, API → **v0.3** |
 | M5 | Full eval set, history, load test → **v1.0** |
 
 Full requirements: [docs/PRD.md](docs/PRD.md). Terminology: [GLOSSARY.md](GLOSSARY.md).
