@@ -24,6 +24,15 @@ from docent_api.answers import (
     start_visitor_turn,
     to_sse,
 )
+from docent_api.api_keys import (
+    ApiKeyNotFound,
+    ApiKeySummary,
+    BadKeyName,
+    NewApiKey,
+    create_api_key,
+    list_api_keys,
+    revoke_api_key,
+)
 from docent_api.auth import AuthUser, current_user
 from docent_api.collection_settings import (
     BadName,
@@ -450,6 +459,81 @@ def new_invite(collection_id: UUID, body: NewInvite, user: User, conn: Db) -> In
         raise HTTPException(
             status.HTTP_409_CONFLICT, f"{member} already has access to this collection."
         ) from None
+
+
+class ApiKeyName(BaseModel):
+    name: str = Field(max_length=500)
+
+
+_NO_KEYS = (
+    "Your Personal Collection and the Demo Collection can’t have API keys. "
+    "Create a collection to use the API."
+)
+
+
+@app.get(
+    "/collections/{collection_id}/api-keys",
+    operation_id="listApiKeys",
+    tags=["api keys"],
+    responses={
+        403: {"description": "Only the Owner sees API Keys"},
+        404: {"description": "No such Collection, or not a Member"},
+    },
+)
+def api_keys(collection_id: UUID, user: User, conn: Db) -> list[ApiKeySummary]:
+    """The Collection's API Keys, without their secrets (its Owner)."""
+    try:
+        return list_api_keys(conn, user.id, collection_id)
+    except CollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotOwner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        return []
+
+
+@app.post(
+    "/collections/{collection_id}/api-keys",
+    operation_id="createApiKey",
+    tags=["api keys"],
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "The name is empty or too long"},
+        403: {"description": "Only the Owner creates API Keys"},
+        404: {"description": "No such Collection, or not a Member"},
+        409: {"description": "The Personal or Demo Collection"},
+    },
+)
+def new_api_key(collection_id: UUID, body: ApiKeyName, user: User, conn: Db) -> NewApiKey:
+    """Create an API Key that can only ask this Collection. Its secret is in this response
+    only: Docent stores a hash of it and can't show it again."""
+    try:
+        return create_api_key(conn, user.id, collection_id, body.name)
+    except BadKeyName as bad:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(bad)) from None
+    except CollectionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _COLLECTION_NOT_FOUND) from None
+    except NotOwner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
+    except FixedCollection:
+        raise HTTPException(status.HTTP_409_CONFLICT, _NO_KEYS) from None
+
+
+@app.delete(
+    "/api-keys/{key_id}",
+    operation_id="revokeApiKey",
+    tags=["api keys"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={403: {"description": "Only the Owner revokes API Keys"}},
+)
+def revoke_key(key_id: UUID, user: User, conn: Db) -> None:
+    """Revoke an API Key; it stops working at once. Repeating the call is harmless."""
+    try:
+        revoke_api_key(conn, user.id, key_id)
+    except (ApiKeyNotFound, CollectionNotFound):
+        return
+    except (NotOwner, FixedCollection):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_OWNER) from None
 
 
 @app.delete(

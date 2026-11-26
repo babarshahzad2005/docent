@@ -53,6 +53,7 @@ Solid arrows: main path. Dotted: edge paths and the follow-up loop.
 - Visitor asks anonymously, rate-limited per IP (20 questions an hour) and across all Visitors (200 a day), then told when to ask again; answers cite only that collection; each question stands alone (no follow-ups) and nothing is saved but the Answer Log entry
 - The embed snippet is one script tag (`/widget.js` with the collection id); it adds a chat button that opens `/embed/{collection id}` in a frame, with the same rate limits as the link
 - Off or expired: widget shows “unavailable”, API returns 404
+- API Keys (collection settings › API keys, Owner only): name a key, copy its secret once (only a hash is kept), see when each was created and last used, revoke one at once; a key asks only its Collection, public or not; the Personal and Demo Collections have none; deleting the Collection deletes its keys
 
 ## Improve
 
