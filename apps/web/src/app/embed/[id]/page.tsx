@@ -20,18 +20,15 @@ const LINK =
  */
 export default function EmbedPage({ params }: PageProps<"/embed/[id]">) {
   return (
-    <>
-      <EmbedBridge />
-      <Suspense
-        fallback={
-          <p role="status" className="p-4 text-muted-foreground">
-            Opening the chat…
-          </p>
-        }
-      >
-        <Embed params={params} />
-      </Suspense>
-    </>
+    <Suspense
+      fallback={
+        <p role="status" className="p-4 text-muted-foreground">
+          Opening the chat…
+        </p>
+      }
+    >
+      <Embed params={params} />
+    </Suspense>
   );
 }
 
@@ -41,6 +38,7 @@ async function Embed({ params }: { params: Promise<{ id: string }> }) {
   if (!collection) {
     return (
       <main className="flex min-h-dvh flex-col justify-center gap-3 px-4 py-8">
+        <EmbedBridge />
         <h1 className="font-serif text-heading font-medium text-balance">
           This collection isn’t available
         </h1>
@@ -51,6 +49,7 @@ async function Embed({ params }: { params: Promise<{ id: string }> }) {
   return (
     <main className="flex min-h-dvh flex-col">
       <title>{`${collection.name} · Docent`}</title>
+      <EmbedBridge />
       <VisitorConversation
         collectionId={collection.id}
         apiUrl={apiBaseUrl()}
