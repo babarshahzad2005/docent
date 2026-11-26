@@ -194,4 +194,4 @@ No fixed deadline; each milestone has a target duration to keep scope honest. Ea
 | 2026-11-15 | Visitor IPs stored only as salted hashes (as built: keyed hashes, see 2026-11-23); Answer Log retained 90 days (Eval Set items kept); account deletion anonymizes log entries; plain-language privacy note | Minimal personal data; metrics stay intact |
 | 2026-11-15 | English supported and measured; other languages best-effort | Multi-language tuning is a non-goal |
 | 2026-11-15 | PDF export and date filters moved post-v1 | M5 scope; Markdown export covers the need |
-| 2026-11-15 | Widget's "real website": a small static demo site built in M4 on a free host; switch to the maintainer's portfolio site if one exists by then | No portfolio site confirmed; decision is cheap to revisit at M4 |
+| 2026-11-15 | Widget's "real website": a small static demo site built in M4 on a free host; switch to the maintainer's portfolio site if one exists by then | No portfolio site confirmed; decision is cheap to revisit at M4 (done 2026-11-26: `site/`, published to https://babarshahzad2005.github.io/docent/ from main) |

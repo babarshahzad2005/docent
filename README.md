@@ -4,6 +4,8 @@ Ask questions of your own documents and get answers that cite the exact passages
 
 **Live:** https://docent-tan.vercel.app
 
+**On a website:** https://babarshahzad2005.github.io/docent/ shows the chat Widget on an example site, answering from the Demo Collection.
+
 > **Status:** in development. First public release (v0.1) is planned at the end of milestone M2. See the [roadmap](#roadmap).
 
 ## Why
