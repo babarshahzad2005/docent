@@ -20,6 +20,11 @@ export function publicPath(collectionId: string): string {
   return `/public/${collectionId}`;
 }
 
+/** The one tag a website adds to show the Widget (GLOSSARY: Widget; public/widget.js). */
+export function embedSnippet(origin: string, collectionId: string): string {
+  return `<script src="${origin}/widget.js" data-collection="${collectionId}" async></script>`;
+}
+
 const noChanges = () => () => {};
 
 /** This site's address; empty while rendering on the server, before it is known. */
@@ -51,6 +56,8 @@ export function PublicPanel({
   const headingId = useId();
   const expiryId = useId();
   const problemId = useId();
+  const snippetId = useId();
+  const snippetHelpId = useId();
   const linkInput = useRef<HTMLInputElement>(null);
   const turnOn = useRef<HTMLButtonElement>(null);
   const origin = useOrigin();
@@ -79,12 +86,12 @@ export function PublicPanel({
     );
   };
 
-  const copy = async () => {
+  const copy = async (text: string, what: "link" | "snippet") => {
     try {
-      await navigator.clipboard.writeText(link);
-      setAnnouncement("Public link copied.");
+      await navigator.clipboard.writeText(text);
+      setAnnouncement(what === "link" ? "Public link copied." : "Embed snippet copied.");
     } catch {
-      setAnnouncement("Couldn’t copy. Select the link and copy it yourself.");
+      setAnnouncement(`Couldn’t copy. Select the ${what} and copy it yourself.`);
     }
   };
 
@@ -117,9 +124,35 @@ export function PublicPanel({
               onFocus={(event) => event.currentTarget.select()}
               className="h-9 min-w-0 flex-1 basis-56 rounded-md border border-border-strong bg-background px-2 text-meta text-foreground"
             />
-            <Button size="sm" onClick={() => void copy()}>
+            <Button size="sm" onClick={() => void copy(link, "link")}>
               Copy link
             </Button>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor={snippetId} className="text-meta text-muted-foreground">
+              Add to a website
+            </label>
+            <p id={snippetHelpId} className="text-meta text-pretty text-text-secondary">
+              Paste this before {"</body>"} on any web page to add a chat button that asks this
+              collection.
+            </p>
+            <div className="flex flex-wrap items-start gap-2">
+              <textarea
+                id={snippetId}
+                readOnly
+                rows={3}
+                aria-describedby={snippetHelpId}
+                value={origin ? embedSnippet(origin, collectionId) : ""}
+                onFocus={(event) => event.currentTarget.select()}
+                className="min-w-0 flex-1 basis-56 resize-none rounded-md border border-border-strong bg-background px-2 py-1.5 font-mono text-meta break-all text-foreground"
+              />
+              <Button
+                size="sm"
+                onClick={() => void copy(embedSnippet(origin, collectionId), "snippet")}
+              >
+                Copy snippet
+              </Button>
+            </div>
           </div>
           <div>
             <Button

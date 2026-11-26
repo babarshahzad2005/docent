@@ -51,7 +51,8 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Questions asked of a public collection:</strong> anyone with a public
-            collection&rsquo;s link can ask it without signing in. Their questions and answers go
+            collection&rsquo;s link, or on a website showing its chat button, can ask it without
+            signing in. The chat button sets no cookies on that website. Their questions and answers go
             to the answer log, not linked to anyone, and are deleted after 90 days.
           </li>
           <li>

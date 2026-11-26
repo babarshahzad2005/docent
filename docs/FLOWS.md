@@ -51,6 +51,7 @@ Solid arrows: main path. Dotted: edge paths and the follow-up loop.
 - The link is `/public/{collection id}`; the Personal Collection is never public
 - The Demo Collection is always public: "Try the demo" on the sign-in page opens it at `/demo`; its questions count toward the same Visitor limits, so a busy demo can use up the day's cap for every Public Collection (accepted while traffic is small)
 - Visitor asks anonymously, rate-limited per IP (20 questions an hour) and across all Visitors (200 a day), then told when to ask again; answers cite only that collection; each question stands alone (no follow-ups) and nothing is saved but the Answer Log entry
+- The embed snippet is one script tag (`/widget.js` with the collection id); it adds a chat button that opens `/embed/{collection id}` in a frame, with the same rate limits as the link
 - Off or expired: widget shows “unavailable”, API returns 404
 
 ## Improve
