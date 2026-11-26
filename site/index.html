@@ -39,10 +39,11 @@
         color: var(--text);
         font: 17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
       }
-      main {
+      main,
+      footer {
         max-width: 40rem;
         margin: 0 auto;
-        padding: 48px 16px 120px;
+        padding: 48px 16px 0;
       }
       h1,
       h2 {
@@ -92,7 +93,9 @@
         overflow-wrap: anywhere;
       }
       footer {
-        margin-top: 48px;
+        padding-bottom: 120px;
+      }
+      footer p {
         padding-top: 16px;
         border-top: 1px solid var(--border);
       }
@@ -137,16 +140,19 @@
         The chat opens in its own frame, so your site’s styles don’t change it. Visitors don’t
         sign in, nothing they ask is linked to them, and questions are rate-limited.
       </p>
-
-      <footer class="note">
-        <p>
-          The documents come from the GitLab Handbook (CC BY-SA 4.0) and GOV.UK (Open Government
-          Licence v3.0); this site isn’t affiliated with either.
-          <a href="https://docent-tan.vercel.app/demo">Try the demo full screen</a> ·
-          <a href="https://github.com/babarshahzad2005/docent">Docent on GitHub</a>
-        </p>
-      </footer>
     </main>
+    <footer class="note">
+      <p>
+        The documents are GOV.UK pages, © Crown copyright, under the
+        <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
+          >Open Government Licence v3.0</a
+        >, and pages adapted from the GitLab Handbook, © GitLab B.V., under
+        <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. This site
+        isn’t affiliated with either.
+        <a href="https://docent-tan.vercel.app/demo">Try the demo full screen</a> ·
+        <a href="https://github.com/babarshahzad2005/docent">Docent on GitHub</a>
+      </p>
+    </footer>
 
     <script
       src="https://docent-tan.vercel.app/widget.js"
