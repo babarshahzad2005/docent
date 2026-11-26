@@ -31,7 +31,10 @@ Create Collections, invite people by email as Editors or Viewers, and manage who
 The Owner of a Collection creates an API Key in its settings (**API keys**). A key can only ask questions, only of its own Collection, public or private, and is revoked from the same place. `POST /ask` returns the same cited, verified answer as the app, as one JSON response:
 
 ```bash
-curl -X POST https://docent-api-five.vercel.app/ask   -H "Authorization: Bearer $DOCENT_API_KEY"   -H "Content-Type: application/json"   -d '{"question": "How much paid holiday do full-time workers get?"}'
+curl -X POST https://docent-api-five.vercel.app/ask \
+  -H "Authorization: Bearer $DOCENT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How much paid holiday do full-time workers get?"}'
 ```
 
 ```json
