@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { getPublicCollection } from "@/app/public-actions";
-import { EmbedBridge } from "@/components/embed-bridge";
+import { EmbedBridge, EmbedEscape } from "@/components/embed-bridge";
 import { VisitorConversation } from "@/components/visitor-conversation";
 import { apiBaseUrl } from "@/lib/api-status";
 
@@ -20,15 +20,18 @@ const LINK =
  */
 export default function EmbedPage({ params }: PageProps<"/embed/[id]">) {
   return (
-    <Suspense
-      fallback={
-        <p role="status" className="p-4 text-muted-foreground">
-          Opening the chat…
-        </p>
-      }
-    >
-      <Embed params={params} />
-    </Suspense>
+    <>
+      <EmbedEscape />
+      <Suspense
+        fallback={
+          <p role="status" className="p-4 text-muted-foreground">
+            Opening the chat…
+          </p>
+        }
+      >
+        <Embed params={params} />
+      </Suspense>
+    </>
   );
 }
 
