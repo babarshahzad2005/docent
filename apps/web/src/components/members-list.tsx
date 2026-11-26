@@ -311,8 +311,8 @@ function Confirm({
         setOpen(next);
         setProblem(null);
       }}
-      // Done once the dialog has closed and moved focus on: a row removed sooner takes the
-      // dialog with it, and focus falls to the page.
+      // Done once the dialog has closed, so it can still send focus on (finalFocus); a row
+      // removed sooner takes the dialog with it, and focus falls to the page.
       onOpenChangeComplete={(isOpen) => {
         if (!isOpen && done) onDone();
       }}

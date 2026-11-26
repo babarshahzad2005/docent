@@ -213,8 +213,8 @@ function KeyRow({
           setOpen(next);
           setProblem(null);
         }}
-        // The row goes once the dialog has closed and moved focus on: removed sooner, the
-        // dialog goes with it, and focus falls to the page.
+        // The row goes once the dialog has closed, so the dialog can still send focus on (to
+        // the name field); removed sooner, the dialog goes with it and focus falls to the page.
         onOpenChangeComplete={(isOpen) => {
           if (!isOpen && done) onRevoked();
         }}
